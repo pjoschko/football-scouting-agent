@@ -1,4 +1,5 @@
 {
+  "id": "041c39f9-c992-486f-962e-51882a7c7ce3",
   "name": "AI Sporting Director",
   "nodes": [
     {
@@ -239,6 +240,18 @@
           "name": "[cimt] Ollama"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst rawMessage = (item && item.error && item.error.message) ? item.error.message : 'Unbekannter Fehler';\n\nreturn [{\n  json: {\n    ...item,\n    errorMessage: 'Bei der Kommunikation mit dem lokalen Ollama-Modell ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.\\n\\nDetails: ' + rawMessage\n  }\n}];"
+      },
+      "id": "c1d2e3f4-99aa-4b1c-8d2e-3f4a5b6c7d8e",
+      "name": "LLM-Fehler normalisieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 700],
+      "notesInFlow": false,
+      "notes": "Normalisiert den Fehler-Output eines künftigen Chain-/Agent-Nodes (onError: continueErrorOutput, $json.error.message, wie zuvor 'Antwort von Ollama generieren' in question-answer-workflow.json) in eine verständliche errorMessage und leitet ihn in den bestehenden zentralen Fehlerpfad (Fehler anzeigen). Noch ohne eingehende Verbindung, da der Chain-/Agent-Node erst in einer späteren Story hinzugefügt wird — siehe n8n/README.md."
     }
   ],
   "connections": {
@@ -276,6 +289,11 @@
     "Ausgabe gültig?": {
       "main": [
         [{ "node": "Ergebnis anzeigen", "type": "main", "index": 0 }],
+        [{ "node": "Fehler anzeigen", "type": "main", "index": 0 }]
+      ]
+    },
+    "LLM-Fehler normalisieren": {
+      "main": [
         [{ "node": "Fehler anzeigen", "type": "main", "index": 0 }]
       ]
     }

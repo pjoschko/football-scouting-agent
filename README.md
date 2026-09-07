@@ -9,6 +9,7 @@ An n8n-based agent for football scouting workflows.
   this workflow in place; no new parallel main workflow is created.
   Currently covers: start form → normalize → validate → dummy agent answer →
   check output → show result or error. It also carries a prepared, not yet
-  connected, Ollama configuration (`[cimt] Ollama` / `Qwen3.8:latest`) as the
-  basis for the future story that replaces the dummy agent answer with the
-  real AI agent.
+  connected, Ollama configuration (`[cimt] Ollama` / `Qwen3.8:latest`) and a
+  matching error-normalization node, both as the basis for the future story
+  that replaces the dummy agent answer with the real AI agent and its
+  controlled error routing.
