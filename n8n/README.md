@@ -106,3 +106,83 @@ n8n import:workflow --input=n8n/question-answer-workflow.json
    point the credential at an unreachable URL) and submit a question again.
    **Expected result:** the browser shows the friendly error page from
    **Fehler anzeigen** instead of a fabricated answer.
+
+# AI Sporting Director – Startformular
+
+A browser-accessible form through which a user commissions the AI Sporting
+Director with an open sporting objective for a chosen club, plus optional
+context — without prescribing a diagnosis, a player profile, transfer
+candidates or a root cause. It is meant to replace the generic
+question-and-answer form above as the entry point of the later scouting
+workflow, while other clubs can be added to the dropdown without any
+structural change to what follows.
+
+## What it does
+
+1. **AI Sporting Director beauftragen** (Form Trigger) — publishes a form
+   titled `AI Sporting Director` with three fields:
+   - `Verein` (required, dropdown): lists several Bundesliga clubs with
+     `Hamburger SV` first, so it is preselected. Further clubs can be added
+     to this list without changing any other node.
+   - `Was soll der Sporting Director untersuchen?` (required, multi-line):
+     prefilled with an example objective about the Hamburger SV that can be
+     submitted as-is for a demo, but remains freely editable.
+   - `Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?` (optional,
+     multi-line): no prefilled value.
+   The submit button is labelled `Analyse starten`. Because `Verein` and the
+   objective field are required, the form cannot be submitted (and no
+   analysis is started) while either is empty.
+2. **Auftrag strukturieren** (Set / Edit Fields) — maps the German-labelled
+   form output onto the structured keys `club`, `objective` and
+   `additionalContext` that the follow-up workflow consumes. When the
+   optional context field is left empty, `additionalContext` is an empty
+   string rather than a missing field.
+3. **Auftrag bestätigen** (Form / completion) — shows the user a
+   confirmation of the club, objective and (if given) additional context
+   that were captured. No Qlik/MCP query, diagnosis, player search or
+   recommendation happens here — that is deliberately out of scope for this
+   form.
+
+The exported JSON contains no credentials or secrets.
+
+## Import & run
+
+1. Open your n8n instance.
+2. Go to **Workflows** → **Add workflow** → **Import from File** (or use the
+   "⋮" menu → **Import from File** on an existing workflow).
+3. Select
+   [`ai-sporting-director-start-form.json`](./ai-sporting-director-start-form.json)
+   from this directory.
+4. Use **Test workflow** to obtain a test-mode form URL for manual testing,
+   or activate the workflow (toggle **Active** in the top right) to make the
+   form reachable at its production URL shown on the **AI Sporting Director
+   beauftragen** node.
+
+Alternatively, with the [n8n CLI](https://docs.n8n.io/hosting/cli-commands/)
+available:
+
+```bash
+n8n import:workflow --input=n8n/ai-sporting-director-start-form.json
+```
+
+## Manual test case
+
+1. Open the form's test or production URL in a browser.
+   **Expected result:** `Verein` shows `Hamburger SV` preselected, and
+   `Was soll der Sporting Director untersuchen?` already contains the
+   example text about the Hamburger SV's sporting problems.
+2. Clear the `Was soll der Sporting Director untersuchen?` field and click
+   `Analyse starten`.
+   **Expected result:** the form does not submit and marks the field as
+   required.
+3. Restore the example text (or enter your own), optionally fill in
+   `Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?`, and click
+   `Analyse starten`.
+   **Expected result:** the browser shows the confirmation page from
+   **Auftrag bestätigen** with the chosen club, the entered objective and,
+   if provided, the additional context. In the n8n **Executions** list the
+   run is successful, and the **Auftrag strukturieren** node's output shows
+   `club`, `objective` and `additionalContext` as separate fields.
+4. Repeat step 3 without filling in the optional context field.
+   **Expected result:** the execution still succeeds and
+   `additionalContext` is an empty string rather than missing.

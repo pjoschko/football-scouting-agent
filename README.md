@@ -9,3 +9,6 @@ An n8n-based agent for football scouting workflows.
 - [Question & Answer workflow (Ollama)](n8n/README.md#question--answer-workflow-ollama) —
   browser form that sends a freely formulated question to the local Ollama
   model and displays the generated answer.
+- [AI Sporting Director – Startformular](n8n/README.md#ai-sporting-director--startformular) —
+  browser form that captures a club, an open sporting objective and
+  optional context, and structures them for the future scouting workflow.
