@@ -19,6 +19,7 @@
                   { "option": "Bayer 04 Leverkusen" }
                 ]
               },
+              "defaultValue": "Hamburger SV",
               "requiredField": true
             },
             {
@@ -34,7 +35,6 @@
             }
           ]
         },
-        "responseMode": "responseNode",
         "options": {
           "buttonLabel": "Analyse starten"
         }
