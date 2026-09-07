@@ -1,0 +1,52 @@
+{
+  "id": "802fdb6b-4c0a-413f-952d-250c91ddc476",
+  "name": "Recherche (Dummy)",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "f4b1e3cb-be11-44ef-8c30-d90a3018b331",
+      "name": "Wenn von anderem Workflow aufgerufen",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst shortlist = (item.playerSearch && Array.isArray(item.playerSearch.shortlist))\n  ? item.playerSearch.shortlist\n  : [];\nconst now = new Date().toISOString();\n\n// Deterministischer Dummy je Kandidat. Es wird explizit keine echte\n// Qlik-Analyse oder Websuche durchgefuehrt; jeder Eintrag ist klar als\n// simulierte Dummy-Quelle gekennzeichnet.\nconst research = shortlist.map((candidate, idx) => ({\n  candidate: candidate.name,\n  club: `Dummy-Verein ${idx + 1}`,\n  contract: 'Simulierter Vertrag bis 30.06.2027 (keine echte Recherche)',\n  marketValue: `${(5 + idx).toFixed(1)} Mio. EUR (simuliert)`,\n  injuries: 'Keine bekannten Verletzungen (simuliert, keine echte Recherche)',\n  news: [`Simulierte Meldung zu ${candidate.name} (keine echte Websuche durchgefuehrt)`],\n  source: 'Dummy-Quelle (keine echte Web-/Qlik-Recherche)',\n  timestamp: now,\n  confidence: 0.4\n}));\n\nreturn [{ json: { ...item, research } }];"
+      },
+      "id": "cd4ba8bd-57fe-4e33-a476-bfde3b8ef247",
+      "name": "Recherche-Dummy je Kandidat erzeugen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Wenn von anderem Workflow aufgerufen": {
+      "main": [
+        [
+          {
+            "node": "Recherche-Dummy je Kandidat erzeugen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
