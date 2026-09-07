@@ -90,8 +90,11 @@ zur nächsten Stufe.
     (Marktwert), `injuries` (Verletzungen) und `news` (Meldungen), jeweils
     mit `source` (Dummy-Quelle), `timestamp` (Zeitpunkt) und `confidence`
     (Konfidenz) — siehe [Recherche-Subworkflow](#recherche-subworkflow).
-14. **Recherche prüfen** (Code) — prüft, dass `research` genau einen Eintrag
-    je Shortlist-Kandidat enthält und jeder Eintrag alle Pflichtfelder hat.
+14. **Recherche prüfen** (Code) — prüft die Kandidatenabdeckung per
+    Set-Gleichheit (jeder Shortlist-Name kommt in `research` vor und
+    umgekehrt) plus Duplikatprüfung, sodass `research` **genau einen**
+    Eintrag je Shortlist-Kandidat enthält (nicht nur dieselbe Anzahl), und
+    dass jeder Eintrag alle Pflichtfelder hat.
 15. **Recherche gültig?** (IF) — **falsch** → **Fehler anzeigen**; **wahr**
     → **Empfehlung erzeugen**.
 16. **Empfehlung erzeugen** (Code) — wählt den Kandidaten mit dem höchsten
@@ -101,8 +104,11 @@ zur nächsten Stufe.
     `uncertainties`, `nextStep`.
 17. **Final Validation** (Code) — prüft alle vorherigen Stufenergebnisse
     noch einmal im Zusammenhang (u. a. dass `recommendation.candidate`
-    tatsächlich Teil der validierten `playerSearch.shortlist` ist) — analog
-    zur bisherigen **Ausgabe prüfen**, jetzt über den gesamten Ablauf.
+    tatsächlich Teil der validierten `playerSearch.shortlist` ist) sowie den
+    vollständigen Empfehlungsvertrag: `candidate`, `alternatives` (Array),
+    `reasoning`, `risks` (nichtleeres Array), `uncertainties` (nichtleeres
+    Array) und `nextStep` — analog zur bisherigen **Ausgabe prüfen**, jetzt
+    über den gesamten Ablauf.
 18. **Final Validation gültig?** (IF) — **falsch** → **Fehler anzeigen**;
     **wahr** → **Ergebnisseiten aufbereiten**.
 19. **Ergebnisseiten aufbereiten** (Code) — baut `formattedResult`: einen
@@ -233,16 +239,33 @@ wird der positive Testfall erneut ausgeführt.
    Shortlist ist. **Erwartet:** Fehlermeldung "Die finale Validierung ist
    fehlgeschlagen …" (fängt damit auch einen Fehler ab, der die einzelnen
    Stufen-Gates unbeschädigt durchlaufen hat).
+6. **Recherche gültig?** (Kandidatenabdeckung) — im Recherche-Subworkflow
+   den `research`-Eintrag des letzten Shortlist-Kandidaten durch ein Duplikat
+   des ersten Kandidaten ersetzen, sodass `research` weiterhin genauso viele
+   Einträge wie die Shortlist hat, aber ein Kandidat doppelt und ein anderer
+   gar nicht recherchiert wurde. **Erwartet:** **Recherche prüfen** erkennt
+   sowohl das Duplikat als auch den fehlenden Kandidaten und setzt
+   `valid: false` mit Fehlermeldung "Die Recherche ist ungültig …" (deckt
+   damit ab, dass gleiche Länge/erlaubte Namen allein keine 1:1-Abdeckung
+   der Shortlist beweisen).
+7. **Final Validation gültig?** (vollständiger Empfehlungsvertrag) — in
+   **Empfehlung erzeugen** einzeln `alternatives`, `risks` bzw.
+   `uncertainties` aus der Empfehlung entfernen oder auf ein leeres Array
+   setzen. **Erwartet:** **Final Validation** setzt in jedem der drei Fälle
+   `valid: false` mit einer feldspezifischen Fehlermeldung ("Die finale
+   Validierung ist fehlgeschlagen …"); keiner der Fälle erreicht
+   **Ergebnis anzeigen**.
 
-**Ausgeführt (Logiksimulation):** Alle fünf Fälle wurden wie oben beschrieben
-mit Node.js gegen die HSV-Beispieldaten durchgespielt (jeweils ein einzelnes
-Feld/Array gezielt entfernt bzw. geleert, alle anderen Stufen unverändert
-gelassen). In jedem Fall meldete genau das erwartete Gate `valid: false` mit
-der oben genannten Fehlermeldung, alle nachfolgenden Stufen wurden nicht mehr
-ausgeführt, und keiner der Fälle erreichte **Ergebnis anzeigen**. Nicht
-ausgeführt: das manuelle Editieren der Nodes und Beobachten der
-**Executions**-Liste in einer laufenden n8n-Instanz — offen für die nächste
-Person (oder Session) mit interaktivem Zugriff.
+**Ausgeführt (Logiksimulation):** Alle sieben Fälle wurden wie oben
+beschrieben mit Node.js gegen die HSV-Beispieldaten durchgespielt (jeweils
+ein einzelnes Feld/Array gezielt entfernt, geleert oder dupliziert, alle
+anderen Stufen unverändert gelassen). In jedem Fall meldete genau das
+erwartete Gate `valid: false` mit der oben genannten Fehlermeldung, alle
+nachfolgenden Stufen wurden nicht mehr ausgeführt, und keiner der Fälle
+erreichte **Ergebnis anzeigen**. Nicht ausgeführt: das manuelle Editieren der
+Nodes und Beobachten der **Executions**-Liste in einer laufenden
+n8n-Instanz — offen für die nächste Person (oder Session) mit interaktivem
+Zugriff.
 
 ### Negativer Testfall (Validierung des Startformulars)
 
