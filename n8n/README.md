@@ -7,21 +7,29 @@ neuer paralleler Hauptworkflow angelegt, außer eine Story verlangt ausdrücklic
 einen technischen Subworkflow.
 
 Der Workflow entstand durch Konsolidierung der bisher separat entwickelten
-n8n-Workflows dieses Repositories:
+n8n-Workflows dieses Repositories. Die beiden früheren Altworkflow-Dateien
+(ein Hello-World-Workflow und ein Frage-Antwort-Workflow) sind vollständig
+gegen den Hauptworkflow geprüft und aufgelöst worden und wurden danach aus
+dem Repository entfernt (siehe [Migration der
+Altworkflows](#migration-der-altworkflows) unten); `ai-sporting-director.json`
+ist jetzt die einzige n8n-Workflow-Datei in diesem Repository:
 
-- Das Startformular (Verein/Objective/Kontext) stammt aus Story 33
-  ([`ai-sporting-director-start-form.json`](#abgel%C3%B6ste-workflows), jetzt Teil
-  des Hauptworkflows).
+- Das Startformular (Verein/Objective/Kontext) stammt aus Story 33, jetzt Teil
+  des Hauptworkflows.
 - Normalisierung, Validierung, die Dummy-Agentenantwort und die
   Ergebnis-/Fehleranzeige setzen die noch offene Story 34 direkt im
   Hauptworkflow um (bisher gab es dafür keinen eigenen Workflow).
-- Die Ollama-Konfiguration aus Story 32
-  ([`question-answer-workflow.json`](#abgel%C3%B6ste-workflows)) bleibt
-  wiederverwendbar für die spätere Story, in der der Dummy durch den echten
-  AI Agent ersetzt wird — sie ersetzt den Dummy in diesem Workflow noch nicht.
+- Die Ollama-Konfiguration aus Story 32 (vormals im Frage-Antwort-Altworkflow)
+  ist als eigener, noch nicht verbundener Node **Ollama Modell
+  (Qwen3.8:latest)** in den Hauptworkflow übernommen.
+  Sie bleibt die Grundlage für die spätere Story, in der der Dummy durch den
+  echten AI Agent ersetzt wird — sie ersetzt den Dummy in diesem Workflow
+  noch nicht.
 
-Credentials werden ausschließlich referenziert (`[cimt] Ollama` in der
-abgelösten Q&A-Workflow-Datei), nie exportiert oder dupliziert.
+Credentials werden ausschließlich referenziert (`[cimt] Ollama` am Node
+**Ollama Modell (Qwen3.8:latest)**, mit dem Platzhalter-Wert
+`REPLACE_WITH_LOCAL_CREDENTIAL_ID` statt einer echten Credential-ID), nie
+exportiert oder dupliziert. Es gelangt kein echtes Secret nach Git.
 
 ## Zielablauf
 
@@ -59,11 +67,43 @@ Startformular → normalisieren → validieren → Dummy-Antwort → Ausgabe pr�
    - **falsch** → **Fehler anzeigen** (Form, Completion) — derselbe Node wie
      im Validierungsfehlerpfad — zeigt die `errorMessage` an; ein ungültiges
      Ergebnis wird nie als fachliche Empfehlung dargestellt.
+7. **Ollama Modell (Qwen3.8:latest)** (Ollama Chat Model, aus dem
+   Frage-Antwort-Altworkflow übernommen) — liegt vorbereitet, aber
+   bewusst noch **ohne Verbindung** im Workflow: Modell `Qwen3.8:latest`,
+   Option **Think** aktiviert, Credential-Referenz `[cimt] Ollama` (nur der
+   Name wird referenziert; die Credential-ID ist der unveränderte Platzhalter
+   `REPLACE_WITH_LOCAL_CREDENTIAL_ID`, keine echte ID oder ein Secret). Der
+   Node dokumentiert seinen Zweck über eine Notiz direkt am Node.
+8. **LLM-Fehler normalisieren** (Code) — bereits jetzt im Hauptworkflow
+   vorhanden und mit **Fehler anzeigen** verbunden, damit der zentrale
+   Fehlerpfad die Fehlerbehandlung aus dem Frage-Antwort-Altworkflow ohne
+   weitere Implementierung übernehmen kann: der Node liest den Fehler-Output
+   eines Chain-/Agent-Nodes bei `onError: continueErrorOutput` robust sowohl
+   als String (`$json.error` — das reale Format, das n8n 2.35.7s **Basic LLM
+   Chain** liefert) als auch als Objekt (`$json.error.message`) und schreibt
+   daraus dieselbe verständliche Ollama-Fehlermeldung wie zuvor im
+   Frage-Antwort-Altworkflow in `errorMessage`. Er hat noch **keine
+   eingehende Verbindung**, da der Chain-/Agent-Node, dessen Fehler-Output
+   ihn speist, erst in der künftigen Story hinzukommt, die den Dummy
+   ersetzt.
 
 Die Struktur erlaubt, `Dummy-Antwort erzeugen` später durch den echten AI
-Agent (z. B. unter Wiederverwendung von `[cimt] Ollama` / `Qwen3.8:latest`)
-zu ersetzen, ohne Formular, Normalisierung, Validierung, Ausgabe-Prüfung oder
-Ergebnisdarstellung neu bauen zu müssen.
+Agent zu ersetzen, ohne Formular, Normalisierung, Validierung,
+Ausgabe-Prüfung, Ergebnisdarstellung oder Fehler-Routing neu bauen zu
+müssen:
+
+- Ein künftiger Chain-/Agent-Node verbindet sich mit **Ollama Modell
+  (Qwen3.8:latest)** als Sprachmodell (`ai_languageModel`-Input), genau wie
+  zuvor im Frage-Antwort-Altworkflow.
+- Für kontrolliertes Fehler-Routing aktiviert dieser künftige Node
+  `onError: continueErrorOutput` (wie zuvor **Antwort von Ollama
+  generieren**) und verbindet seinen Fehler-Output (zweiter `main`-Output)
+  mit dem bereits vorhandenen Node **LLM-Fehler normalisieren**. Dieser
+  schreibt die verständliche Fehlermeldung in `errorMessage` und leitet sie
+  an denselben zentralen Fehlerpfad weiter, der bereits für Validierungs-
+  und Ausgabefehler existiert: **Fehler anzeigen** zeigt jede
+  `errorMessage` unabhängig von ihrer Ursache verständlich an, ohne dass ein
+  eigener Ollama-spezifischer Fehler-Node nötig ist.
 
 ## Import & run
 
@@ -126,134 +166,111 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    gültig?** routes to **Fehler anzeigen**, and the browser shows the error
    page listing the missing field instead of an incomplete recommendation.
 
-## Abgelöste Workflows
+### Regressionstest: Hauptworkflow funktioniert allein (Importtest)
 
-Diese Workflows wurden bereits verglichen und sind durch den Hauptworkflow
-`AI Sporting Director` als Einstiegspunkt abgelöst. Sie werden **nicht**
-gelöscht, da ihre Konfiguration noch benötigt bzw. als Referenz sinnvoll ist:
+1. In a clean n8n instance (or after removing every other workflow),
+   import only [`ai-sporting-director.json`](./ai-sporting-director.json) —
+   the two legacy workflow files that used to live in this directory no
+   longer exist in this repository, so there is nothing left to import
+   alongside it.
+   **Expected result:** the import succeeds without asking to resolve any
+   other workflow or file; the workflow opens with all 11 nodes described
+   above, including the unconnected **Ollama Modell (Qwen3.8:latest)** and
+   **LLM-Fehler normalisieren** nodes.
+   **Executed:** run via the n8n CLI (`n8n import:workflow
+   --input=n8n/ai-sporting-director.json`, n8n 2.35.7) against a fresh
+   SQLite-backed n8n instance. The command reported "Successfully imported
+   1 workflow." and a direct query of the resulting `workflow_entity` row
+   confirms exactly 11 nodes with the names listed above — including
+   **Ollama Modell (Qwen3.8:latest)** and **LLM-Fehler normalisieren**.
+   Because the workflow file previously had no top-level `id`, this CLI
+   version rejected the import with `SQLITE_CONSTRAINT: NOT NULL constraint
+   failed: workflow_entity.id`; a stable `id` was added to
+   `ai-sporting-director.json` to fix this (this affected the file on
+   `main` before this change too — it was not specific to the nodes added
+   here), after which the import above succeeded.
+2. Repeat the positive test case and both negative test cases above against
+   this single imported workflow.
+   **Expected result:** all three behave exactly as described — the HSV
+   start form remains the only functional entry point, and the dummy,
+   validation and error paths are all unaffected by the added Ollama and
+   error-normalization nodes.
+   **Not executed:** these three require submitting the form and reading
+   the **Executions** list of a running n8n web UI, which the CLI import
+   above does not exercise; still open for the next person (or session)
+   with interactive access to the imported instance.
+3. Outside of n8n itself, `n8n/ai-sporting-director.json` was additionally
+   checked to be well-formed JSON with unique node names/ids, connections
+   that only reference existing nodes, exactly one form trigger, and no
+   credential value other than the `REPLACE_WITH_LOCAL_CREDENTIAL_ID`
+   placeholder.
 
-- **`hello-world-workflow.json`** — minimaler Nachweis, dass die n8n-Umgebung
-  grundsätzlich funktioniert (Story ~1). Für die weitere Entwicklung nicht
-  mehr erforderlich, bleibt als Referenz erhalten.
-- **`question-answer-workflow.json`** — generisches Frage/Antwort-Formular
-  mit echter Ollama-Anbindung (Story 32). Als fachlicher Einstiegspunkt durch
-  `AI Sporting Director beauftragen` abgelöst. Die darin enthaltene
-  Ollama-Konfiguration (`Ollama Modell (Qwen3.8:latest)`-Node mit dem
-  referenzierten Credential `[cimt] Ollama`) bleibt die Grundlage für die
-  spätere Story, die **Dummy-Antwort erzeugen** im Hauptworkflow durch den
-  echten AI Agent ersetzt.
+### Regressionstest: vorbereiteter Ollama-Node
 
----
+1. Open the imported main workflow and select the **Ollama Modell
+   (Qwen3.8:latest)** node.
+   **Expected result:** the model field shows `Qwen3.8:latest`, **Options →
+   Think** is enabled, and **Credential to connect with** references
+   `[cimt] Ollama` (select the existing local credential here — the import
+   cannot resolve the instance-specific credential ID automatically).
+2. **Expected result:** the node has no incoming or outgoing connections yet
+   — it does not run as part of any execution of the main workflow, so the
+   positive and negative test cases above are unaffected by its presence.
 
-# n8n Hello World Workflow
+### Regressionstest: vorbereitete Fehler-Normalisierung
 
-A minimal n8n workflow that proves the n8n environment for this project is
-working end to end.
+1. Open the imported main workflow and select the **LLM-Fehler
+   normalisieren** node.
+   **Expected result:** the node is a Code node connected to **Fehler
+   anzeigen** as its only output, and has no incoming connection yet — it
+   does not run as part of any execution of the main workflow, so the
+   positive and negative test cases above are unaffected by its presence.
+2. Open a test copy of the workflow, temporarily wire a manual trigger into
+   **LLM-Fehler normalisieren** and run it once with the input item
+   `{ "error": "Verbindung zu Ollama fehlgeschlagen (Testfall)" }` — the real
+   shape n8n 2.35.7's **Basic LLM Chain** produces on its error output when
+   `onError: continueErrorOutput` is set (`json: { error: error.message }`,
+   i.e. `$json.error` is a **string**, not an object).
+   **Expected result:** the node's output contains `errorMessage` with the
+   text "Bei der Kommunikation mit dem lokalen Ollama-Modell ist ein Fehler
+   aufgetreten. Bitte versuchen Sie es später erneut.\n\nDetails:
+   Verbindung zu Ollama fehlgeschlagen (Testfall)", i.e. the same message
+   shape the Frage-Antwort-Altworkflow used to show on its error-display
+   node.
+3. Repeat step 2 with the input item
+   `{ "error": { "message": "Verbindung zu Ollama fehlgeschlagen (Testfall)" } }`
+   (object shape, in case a future node ever produces it instead of a
+   string).
+   **Expected result:** the same `errorMessage` text as in step 2 — the node
+   still extracts the message correctly.
+4. Repeat step 2 with an input item that has no `error` field.
+   **Expected result:** `errorMessage` falls back to "... Details:
+   Unbekannter Fehler" instead of throwing.
 
-## What it does
+## Migration der Altworkflows
 
-1. **When clicking 'Execute workflow'** (Manual Trigger) — starts the
-   workflow when you click "Execute workflow" in the n8n editor.
-2. **Set Hello World** (Set node) — sets an output field `message` to the
-   text `Hello World`.
+Die beiden früheren Altworkflow-Dateien in diesem Verzeichnis (ein
+Hello-World-Workflow und ein Frage-Antwort-Workflow) wurden gegen die obige
+Analyse geprüft und danach aus dem Repository entfernt:
 
-The workflow contains no credentials or secrets, so it can be imported and
-run in any n8n instance without further configuration.
+- **Der Hello-World-Altworkflow** enthielt nur einen Manual Trigger und ein
+  statisches `Hello World`-Feld. Keine seiner Fähigkeiten wurde benötigt;
+  die Datei wurde ersatzlos gelöscht.
+- **Der Frage-Antwort-Altworkflow** enthielt ein generisches
+  Frage/Antwort-Formular mit einer echten Ollama-Anbindung. Das Formular und
+  die einfache LLM-Chain sind durch den Hauptworkflow abgelöst und wurden
+  nicht übernommen. Die Ollama-Konfiguration selbst (Modell
+  `Qwen3.8:latest`, aktiviertes Thinking, Credential-Referenz `[cimt]
+  Ollama` ohne echte ID oder Secret) wurde 1:1 als der oben beschriebene
+  Node **Ollama Modell (Qwen3.8:latest)** in `ai-sporting-director.json`
+  übernommen, bevor die Datei gelöscht wurde. Das kontrollierte
+  Fehler-Routing dieses Altworkflows (`onError: continueErrorOutput` am
+  Chain-Node, verständliche Fehleranzeige aus dem Fehler-Output) wurde
+  ebenfalls übernommen, als der oben beschriebene Node **LLM-Fehler
+  normalisieren**, der bereits an den zentralen Fehlerpfad **Fehler
+  anzeigen** angeschlossen ist, robust sowohl den String- als auch den
+  Objekt-Shape des Fehler-Outputs verarbeitet, und nur noch auf den
+  Fehler-Output des künftigen Chain-/Agent-Nodes wartet.
 
-## Import & run
-
-1. Open your n8n instance.
-2. Go to **Workflows** → **Add workflow** → **Import from File** (or use the
-   "⋮" menu → **Import from File** on an existing workflow).
-3. Select [`hello-world-workflow.json`](./hello-world-workflow.json) from
-   this directory.
-4. Open the imported workflow and click **Execute workflow**.
-5. Open the **Set Hello World** node's output panel — the `message` field
-   contains the text `Hello World`, confirming the workflow ran
-   successfully.
-
-Alternatively, with the [n8n CLI](https://docs.n8n.io/hosting/cli-commands/)
-available:
-
-```bash
-n8n import:workflow --input=n8n/hello-world-workflow.json
-```
-
-# Question & Answer workflow (Ollama)
-
-> **Status:** abgelöst als fachlicher Einstiegspunkt durch den Hauptworkflow
-> `AI Sporting Director` (siehe oben). Die Ollama-Konfiguration in dieser
-> Datei bleibt als Referenz für die spätere Agentenstory erhalten.
-
-A workflow that provides a browser-accessible form where a user can enter a
-freely formulated question and immediately receive an answer generated by
-the local Ollama model, as the first building block for the later
-interaction with the scouting agent. The question is not restricted to the
-football scouting use case.
-
-## What it does
-
-1. **Frage stellen** (Form Trigger) — publishes a form with a required,
-   multi-line field labelled `Frage`. Because the field is required, the
-   form cannot be submitted (and no model request is made) while it is
-   empty.
-2. **Antwort von Ollama generieren** (Basic LLM Chain) — sends the
-   submitted question as the prompt to the connected language model and
-   waits for the generated answer. On failure (e.g. Ollama not reachable,
-   model not found) it routes to its error output instead of producing a
-   misleading answer.
-3. **Ollama Modell (Qwen3.8:latest)** (Ollama Chat Model) — the language
-   model used by the chain above. It is configured for the model
-   `Qwen3.8:latest` with thinking enabled, and uses the existing n8n
-   credential `[cimt] Ollama`.
-4. **Antwort anzeigen** (Form / completion) — shown on success; displays the
-   generated answer to the user in the browser.
-5. **Fehler anzeigen** (Form / completion) — shown when the Ollama request
-   fails; displays an understandable error message instead of a model
-   answer.
-
-The exported JSON contains no credentials or secrets — only a reference to
-the existing credential name `[cimt] Ollama`. Connection details are neither
-duplicated nor hard-coded.
-
-## Import & run
-
-1. Open your n8n instance.
-2. Go to **Workflows** → **Add workflow** → **Import from File** (or use the
-   "⋮" menu → **Import from File** on an existing workflow).
-3. Select [`question-answer-workflow.json`](./question-answer-workflow.json)
-   from this directory.
-4. Open the **Ollama Modell (Qwen3.8:latest)** node and, under
-   **Credential to connect with**, select the existing `[cimt] Ollama`
-   credential (the import cannot resolve the credential automatically
-   because credential IDs are instance-specific).
-5. Confirm the model field is set to `Qwen3.8:latest` and that **Options →
-   Think** (thinking mode) is enabled; adjust the option name/label if your
-   n8n version exposes it differently.
-6. Activate the workflow (toggle **Active** in the top right) so the form is
-   reachable at its production URL, or use **Test workflow** to obtain a
-   test URL for manual testing.
-
-Alternatively, with the [n8n CLI](https://docs.n8n.io/hosting/cli-commands/)
-available:
-
-```bash
-n8n import:workflow --input=n8n/question-answer-workflow.json
-```
-
-## Manual test case
-
-1. Activate the workflow and open the form's URL in a browser (via **Test
-   workflow** for a test run, or the production URL once activated).
-2. Enter a simple question into the **Frage** field, e.g. `Was ist die
-   Hauptstadt von Frankreich?`.
-3. Submit the form.
-4. **Expected result:** after a short processing time the browser shows an
-   answer page with a text generated by the local model that answers the
-   question (e.g. mentioning "Paris"). In the n8n **Executions** list the
-   run is successful, and the **Ollama Modell (Qwen3.8:latest)** node shows
-   the generated text in its output.
-5. To verify the error path, temporarily stop the local Ollama service (or
-   point the credential at an unreachable URL) and submit a question again.
-   **Expected result:** the browser shows the friendly error page from
-   **Fehler anzeigen** instead of a fabricated answer.
+`ai-sporting-director.json` ist damit die einzige n8n-Workflow-Datei in
+diesem Repository.
