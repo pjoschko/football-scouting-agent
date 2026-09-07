@@ -1,0 +1,56 @@
+{
+  "name": "Hello World",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "02709af3-83b0-448f-b811-f3caffd33d25",
+      "name": "When clicking ‘Execute workflow’",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f141ff9e-1156-4050-aa5d-de19579fccec",
+              "name": "message",
+              "value": "Hello World",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b40bf606-20b1-40d3-b87e-357f82a264b7",
+      "name": "Set Hello World",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Set Hello World",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}
