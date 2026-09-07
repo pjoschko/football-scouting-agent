@@ -109,29 +109,47 @@ const fr = positive.json;
 assert.strictEqual(fr.teamDiagnosis.simulated, false);
 assert.strictEqual(fr.teamDiagnosis.dataAvailable, true);
 assert.match(fr.teamDiagnosis.mainProblem, /[Dd]efensiv/, 'HSV sollte laut CSV-Daten ein Defensivproblem diagnostiziert bekommen');
+assert.strictEqual(fr.teamDiagnosis.diagnosisCategory, 'defensive', 'diagnosisCategory sollte die Defensivdiagnose maschinenlesbar widerspiegeln');
 assert.strictEqual(fr.playerSearch.simulated, false);
 assert.ok(fr.playerSearch.shortlist.length > 0 && fr.playerSearch.shortlist.length <= 5);
 assert.ok(fr.playerSearch.shortlist.every((c) => c.name), 'jeder Shortlist-Kandidat braucht einen Namen');
 assert.ok(!fr.playerSearch.shortlist.some((c) => c.name.toLowerCase().includes('hamburger')), 'Kandidaten sollten nicht aus dem eigenen Kader stammen');
+// Konsistenz Diagnose -> gesuchte Position/Kandidat (P1-Finding aus dem Review):
+// bei einem Defensivproblem darf die Bedarfsermittlung nicht trotzdem einen
+// Stuermer suchen. playerRanking bleibt im Item erhalten (Execute-Workflow-
+// Nodes mergen ihr Ergebnis per {...item}), daher hier direkt pruefbar.
+const DEFENSIVE_POSITIONS = ['Innenverteidiger', 'Linksverteidiger', 'Rechtsverteidiger', 'Defensives Mittelfeld'];
+assert.ok(DEFENSIVE_POSITIONS.includes(fr.playerProfile.position), `Bei einem Defensivproblem sollte eine defensive Position gesucht werden, nicht '${fr.playerProfile.position}'`);
+assert.strictEqual(fr.playerRanking.position, fr.playerProfile.position, 'Player-Ranking sollte tatsaechlich mit der aus der Diagnose abgeleiteten Position angefragt werden');
+assert.strictEqual(fr.playerRanking.positionFallbackApplied, false, 'die gesuchte Position sollte im Kader-Pool vorkommen und keinen Fallback benoetigen');
+assert.ok(fr.playerRanking.ranking.every((p) => p.position === fr.playerProfile.position), 'alle gerankten Kandidaten sollten tatsaechlich die gesuchte (defensive) Position spielen');
 // candidateProfile: recommendation.candidate stammt aus playerSearch.shortlist, die
 // wiederum aus players.csv erzeugt wurde -> playerProfileLookup muss ihn finden.
 assert.ok(fr.recommendation.candidateProfile, 'Empfehlung sollte um ein echtes CSV-Profil angereichert sein');
 assert.strictEqual(fr.recommendation.candidateProfile.name, fr.recommendation.candidate);
+assert.strictEqual(fr.recommendation.candidateProfile.position, fr.playerProfile.position, 'die empfohlene Person sollte tatsaechlich auf der aus der Defensivdiagnose gesuchten Position spielen');
 assert.ok(fr.formattedResult.includes('CSV-Profil'));
 assert.ok(fr.formattedResult.includes('Teamdiagnose') && fr.formattedResult.includes('Empfehlung'));
-console.log('OK: kompletter Positivpfad, Teamdiagnose=Defensivproblem, Kandidat ausserhalb des eigenen Kaders, Empfehlung inkl. CSV-Profil.');
+console.log('OK: kompletter Positivpfad, Teamdiagnose=Defensivproblem, gesuchte Position ist defensiv, Kandidat ausserhalb des eigenen Kaders und tatsaechlich auf dieser Position, Empfehlung inkl. CSV-Profil.');
 
 console.log('\n=== Positiver Testfall: Bayern (starke Form, kein Defensiv-/Offensivproblem) ===');
 const bayern = runPipeline({ ...baseHsvInput(), club: 'FC Bayern München', objective: 'Kader fuer naechste Saison pruefen.' });
 assert.strictEqual(bayern.completed, true);
 assert.match(bayern.json.teamDiagnosis.mainProblem, /[Kk]ein eindeutiger/, 'Bayern sollte laut CSV-Daten kein Struktur-Problem attestiert bekommen');
-console.log('OK: Bayern-Diagnose ohne einseitiges Struktur-Problem.');
+assert.strictEqual(bayern.json.teamDiagnosis.diagnosisCategory, 'neutral');
+assert.strictEqual(bayern.json.recommendation.candidateProfile.position, bayern.json.playerProfile.position, 'auch ohne einseitige Diagnose sollte der empfohlene Kandidat auf der tatsaechlich gesuchten Position spielen');
+console.log('OK: Bayern-Diagnose ohne einseitiges Struktur-Problem, Positionskonsistenz bleibt gewahrt.');
 
 console.log('\n=== Positiver Testfall: Leverkusen (Offensivproblem) ===');
 const lev = runPipeline({ ...baseHsvInput(), club: 'Bayer 04 Leverkusen', objective: 'Warum treffen wir so selten?' });
 assert.strictEqual(lev.completed, true);
 assert.match(lev.json.teamDiagnosis.mainProblem, /[Oo]ffensiv/);
-console.log('OK: Leverkusen-Diagnose = Offensivproblem.');
+assert.strictEqual(lev.json.teamDiagnosis.diagnosisCategory, 'offensive');
+const ATTACKING_POSITIONS = ['Offensives Mittelfeld', 'Linksaußen', 'Mittelstürmer'];
+assert.ok(ATTACKING_POSITIONS.includes(lev.json.playerProfile.position), `Bei einem Offensivproblem sollte eine offensive Position gesucht werden, nicht '${lev.json.playerProfile.position}'`);
+assert.ok(lev.json.playerRanking.ranking.every((p) => p.position === lev.json.playerProfile.position), 'alle gerankten Kandidaten sollten tatsaechlich die gesuchte (offensive) Position spielen');
+assert.strictEqual(lev.json.recommendation.candidateProfile.position, lev.json.playerProfile.position, 'die empfohlene Person sollte tatsaechlich auf der aus der Offensivdiagnose gesuchten Position spielen');
+console.log('OK: Leverkusen-Diagnose = Offensivproblem, gesuchte Position ist offensiv und Kandidat spielt tatsaechlich dort.');
 
 console.log('\n=== Negativtestfall: unbekannter Verein (Formular-Bypass) ===');
 const unknown = runPipeline({ ...baseHsvInput(), club: 'SV Unbekannt 1900', objective: 'Testfall' });

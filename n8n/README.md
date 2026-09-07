@@ -83,7 +83,10 @@ zur nächsten Stufe.
    `dataAvailable`); ohne CSV-Daten für den Verein wird das Fehlen der
    Datengrundlage selbst zum (weiterhin schema-gültigen) Ergebnis statt
    etwas zu erfinden. Es wird weiterhin keine echte Qlik-Analyse oder
-   Websuche behauptet.
+   Websuche behauptet. Zusätzlich liefert `diagnosisCategory` (`'defensive'`
+   | `'offensive'` | `'neutral'` | `'no_data'`) dieselbe Einschätzung
+   maschinenlesbar, damit **Spielerprofil erzeugen** die Bedarfsermittlung
+   tatsächlich an diese echte Diagnose koppeln kann.
 7. **Teamdiagnose prüfen** (Code) — unverändert: prüft, dass
    `evidence`/`hypotheses` nicht leere Arrays sind, `mainProblem` ein
    nichtleerer String ist und `uncertainties` ein Array ist; setzt
@@ -91,13 +94,18 @@ zur nächsten Stufe.
 8. **Teamdiagnose gültig?** (IF) — **falsch** → **Fehler anzeigen**; **wahr**
    → **Spielerprofil erzeugen**.
 9. **Spielerprofil erzeugen** (Code) — weiterhin simulierte Bedarfsermittlung
-   (`playerProfile.simulated: true`, kein echter AI-Agent-Schritt), liefert
-   aber jetzt eine tatsächlich im Kader vorkommende `position` (deterministisch
-   über einen generischen Hash aus `club`+`objective` ausgewählt, kein
-   Sonderfall für einen bestimmten Verein oder eine bestimmte Position) sowie
-   `weightedCriteria` mit Kriteriennamen, die **Player-Ranking** erkennt
-   (`goals`, `assists`, `rating`, `appearances`, `age`); dazu `role`,
-   `reasoning` (referenziert `teamDiagnosis.mainProblem`) und `constraints`.
+   (`playerProfile.simulated: true`, kein echter AI-Agent-Schritt), wählt die
+   `position` aber nicht mehr unabhängig von der echten CSV-Teamdiagnose:
+   `teamDiagnosis.diagnosisCategory` grenzt den Positionspool ein
+   (Defensivproblem → defensive Position, Offensivproblem → offensive
+   Position; nur bei `neutral`/`no_data` wird aus allen Positionen gewählt).
+   Innerhalb dieses Pools entscheidet weiterhin ein einfacher, generischer
+   Hash aus `club`+`objective` (kein Sonderfall für einen bestimmten Verein
+   oder eine bestimmte Position), welche der tatsächlich im Kader
+   vorkommenden Positionen gesucht wird; dazu `weightedCriteria` mit
+   Kriteriennamen, die **Player-Ranking** erkennt (`goals`, `assists`,
+   `rating`, `appearances`, `age`), `role`, `reasoning` (referenziert
+   `teamDiagnosis.mainProblem`) und `constraints`.
 10. **Spielerprofil prüfen** (Code) — unverändert: prüft alle Pflichtfelder
     inkl. dass jedes `weightedCriteria`-Element ein `criterion` und ein
     numerisches `weight` hat.
@@ -214,7 +222,12 @@ selbst liegen versioniert in [`n8n/data/`](./data/README.md)
 (`matches.csv`, `players.csv`) für dieselben fünf Vereine wie im
 `Verein`-Dropdown. Kein Tool erfindet Werte für unbekannte Vereine, Spieler
 oder Positionen — stattdessen wird das explizit ausgewiesen (`dataAvailable:
-false`, `found: false` bzw. `positionFallbackApplied: true`).
+false`, `found: false` bzw. `positionFallbackApplied: true`). Dasselbe gilt
+für einzelne fehlende/ungültige numerische CSV-Zellen (leerer Wert,
+nicht-numerischer Text): sie werden validiert, statt per `Number(...)`
+stillschweigend zu `0` bzw. `NaN` zu werden, und fließen explizit markiert
+(`invalidMatches`, `dataError`, `excludedInvalidData`/`invalidFields`, siehe
+unten) nicht in Aggregation oder Ranking-Score ein.
 
 1. **Teamperformance**
    ([`analytics-team-performance-subworkflow.json`](./analytics-team-performance-subworkflow.json)) —
@@ -222,12 +235,18 @@ false`, `found: false` bzw. `positionFallbackApplied: true`).
    `matches.csv` zu `teamPerformance`: `matchesAnalyzed`, `wins`/`draws`/`losses`,
    `goalsFor`/`goalsAgainst`/`goalDifference`, `points`, `avgGoalsFor`/
    `avgGoalsAgainst`, `form` (neuestes Spiel zuerst). Unbekannter Verein →
-   `dataAvailable: false` statt erfundener Werte.
+   `dataAvailable: false` statt erfundener Werte; Spiele mit fehlenden/
+   ungültigen Tordaten werden gezählt (`invalidMatches`) und von der
+   Aggregation ausgeschlossen statt als `0` eingerechnet zu werden (bei
+   ausschließlich ungültigen Zeilen ebenfalls `dataAvailable: false`).
 2. **Team-Matches**
    ([`analytics-team-matches-subworkflow.json`](./analytics-team-matches-subworkflow.json)) —
    Input `{ club, matchLimit? }` (Default 10). Liefert `teamMatches.matches`:
    je Spiel `date`, `opponent`, `homeAway`, `goalsFor`, `goalsAgainst`,
-   `result`, `competition`.
+   `result`, `competition`, `dataError`. Ein Spiel mit fehlenden/ungültigen
+   Tordaten bleibt in der Liste, hat aber `goalsFor`/`goalsAgainst`/`result:
+   null` und `dataError: true` statt erfundener Werte (`invalidMatches`
+   zählt sie zusätzlich auf Ebene von `teamMatches`).
 3. **Player-Ranking**
    ([`analytics-player-ranking-subworkflow.json`](./analytics-player-ranking-subworkflow.json)) —
    Input `{ rankingClub?, rankingExcludeClub?, position?, criteria?: [{
@@ -243,14 +262,23 @@ false`, `found: false` bzw. `positionFallbackApplied: true`).
    Unbekannte Kriterien werden nicht ignoriert-und-verschwiegen, sondern in
    `ignoredCriteria` aufgeführt; eine nicht im Pool vorkommende Position
    führt — explizit über `positionFallbackApplied: true` markiert — zum
-   Rückfall auf den ungefilterten Pool statt zu erfundenen Kandidaten.
+   Rückfall auf den ungefilterten Pool statt zu erfundenen Kandidaten. Ein
+   Spieler-Datensatz mit fehlendem/ungültigem numerischem Pflichtfeld (z. B.
+   leeres `age`) wird komplett aus dem Ranking-Pool ausgeschlossen statt mit
+   `0`/`NaN` in den Score einzufließen — sonst könnte z. B. ein fehlendes
+   `age` (niedriger = besser) den Score künstlich verbessern; die Anzahl
+   solcher ausgeschlossenen Datensätze steht in `excludedInvalidData`.
    Liefert `playerRanking.ranking` (bis `limit`, Default 5) mit `name`,
    `club`, `position`, `age`, `score`, `stats`.
 4. **Player-Profil**
    ([`analytics-player-profile-subworkflow.json`](./analytics-player-profile-subworkflow.json)) —
    Input `{ playerName }`. Liefert `playerProfileLookup` mit `found` und
    `profile` (alle Spalten aus `players.csv`) bzw. `found: false` und
-   `profile: null` für einen unbekannten Namen. Heißt bewusst
+   `profile: null` für einen unbekannten Namen. Einzelne fehlende/ungültige
+   numerische Felder im gefundenen Datensatz bleiben in `profile` explizit
+   `null` (statt `0`/`NaN`) und werden namentlich in `invalidFields`
+   aufgeführt; `profile.dataError: true` markiert einen unvollständigen
+   Datensatz. Heißt bewusst
    `playerProfileLookup`, nicht `playerProfile` — Letzteres bezeichnet im
    Hauptworkflow bereits das simulierte Bedarfsprofil (Anforderung an den
    gesuchten Spielertyp), beide Verträge bleiben dadurch unabhängig
@@ -347,7 +375,12 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    Defensivproblem (mehr Gegentore als eigene Tore in den letzten sechs
    CSV-Spielen) und für Leverkusen ein Offensivproblem, der empfohlene
    Kandidat stammt aus einem anderen Verein als dem angefragten und
-   `recommendation.candidateProfile` enthält dessen echtes CSV-Profil.
+   `recommendation.candidateProfile` enthält dessen echtes CSV-Profil. Für
+   HSV/Leverkusen wird zusätzlich geprüft, dass die aus `diagnosisCategory`
+   abgeleitete `playerProfile.position` tatsächlich zur Diagnose passt
+   (defensiv bzw. offensiv) und dass sowohl alle gerankten Kandidaten als
+   auch der empfohlene Kandidat wirklich auf dieser Position spielen — die
+   CSV-Diagnose beeinflusst die Transfermaßnahme damit nachweisbar.
    Siehe [`n8n/data/README.md`](./data/README.md) für das Skript selbst.
    Nicht ausgeführt: das eigentliche Rendern der Formular-/Completion-Seiten
    und der n8n-**Executions**-Eintrag selbst, da dafür eine laufende
@@ -359,9 +392,12 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
 `node n8n/data/verify-analytics.js` prüft die vier CSV-Analytics-Subworkflows
 isoliert gegen `matches.csv`/`players.csv` (Positionsfilter, `rankingClub`/
 `rankingExcludeClub`, sowie dass ein unbekannter Verein, Spieler oder eine
-unbekannte Position explizit ausgewiesen statt erfunden wird — siehe
-[`n8n/data/README.md`](./data/README.md) für die vollständige Liste der
-Prüfungen). **Ausgeführt:** alle zwölf Prüfungen sind grün.
+unbekannte Position explizit ausgewiesen statt erfunden wird), dazu
+Negativtests mit leeren/ungültigen CSV-Zellen (fehlende Tordaten, fehlendes
+`age`/ungültiges `rating` einzelner Spieler) gegen eigens dafür eingesetzte
+Test-CSVs — siehe [`n8n/data/README.md`](./data/README.md) für die
+vollständige Liste der Prüfungen. **Ausgeführt:** alle 25 Prüfungen sind
+grün.
 
 ### Negative Testfälle (ein Gate pro Stufe)
 

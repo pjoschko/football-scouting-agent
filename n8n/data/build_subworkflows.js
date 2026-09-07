@@ -17,6 +17,20 @@ const PARSE_CSV_SNIPPET = `function parseCsv(text) {
   });
 }`;
 
+// Validiert eine einzelne numerische CSV-Zelle, statt sie blind per Number(...)
+// zu uebernehmen: Number('') waere 0, Number(undefined) waere NaN - beides
+// wuerde eine fehlende/kaputte Zelle als echten Messwert in Aggregation und
+// Ranking einfliessen lassen. Fehlende/ungueltige Werte werden stattdessen als
+// null zurueckgegeben, sodass der Aufrufer sie explizit als Datenfehler
+// behandeln kann, statt sie zu erfinden.
+const NUMERIC_HELPERS_SNIPPET = `function parseRequiredNumber(value) {
+  if (value === undefined || value === null) return null;
+  const trimmed = String(value).trim();
+  if (trimmed === '') return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? n : null;
+}`;
+
 function subworkflow({ id, name, triggerId, codeId, jsCode, position = [460, 300] }) {
   return {
     id,
@@ -62,6 +76,8 @@ const teamPerformanceCode = `const MATCHES_CSV = \`${MATCHES_CSV.trim()}\`;
 
 ${PARSE_CSV_SNIPPET}
 
+${NUMERIC_HELPERS_SNIPPET}
+
 // CSV-Analytics-Adapter (temporaerer Ersatz fuer Qlik MCP, siehe n8n/README.md).
 // Tool-Vertrag: Input { club }, Output { ...item, teamPerformance }. Der eingebettete
 // MATCHES_CSV-String ist eine zeichengleiche Kopie von n8n/data/matches.csv
@@ -83,31 +99,56 @@ if (rows.length === 0) {
 } else {
   let wins = 0, draws = 0, losses = 0, goalsFor = 0, goalsAgainst = 0;
   const form = [];
+  // Zeilen mit fehlenden/ungueltigen Tordaten (leere Zelle, nicht-numerischer Wert)
+  // gehen NICHT als 0 oder NaN in die Bilanz ein, sondern werden gezaehlt und
+  // von der Aggregation ausgeschlossen.
+  let invalidMatches = 0;
   rows.forEach((r) => {
-    const gf = Number(r.goalsFor), ga = Number(r.goalsAgainst);
+    const gf = parseRequiredNumber(r.goalsFor);
+    const ga = parseRequiredNumber(r.goalsAgainst);
+    if (gf === null || ga === null) {
+      invalidMatches++;
+      return;
+    }
     goalsFor += gf; goalsAgainst += ga;
     let outcome;
     if (gf > ga) { wins++; outcome = 'W'; } else if (gf === ga) { draws++; outcome = 'D'; } else { losses++; outcome = 'L'; }
     form.push(outcome);
   });
-  const matchesAnalyzed = rows.length;
-  teamPerformance = {
-    club,
-    source: 'csv',
-    dataAvailable: true,
-    matchesAnalyzed,
-    wins,
-    draws,
-    losses,
-    goalsFor,
-    goalsAgainst,
-    goalDifference: goalsFor - goalsAgainst,
-    points: wins * 3 + draws,
-    avgGoalsFor: Math.round((goalsFor / matchesAnalyzed) * 100) / 100,
-    avgGoalsAgainst: Math.round((goalsAgainst / matchesAnalyzed) * 100) / 100,
-    // Form ist in derselben Reihenfolge wie matches.csv fuer diesen Verein sortiert: neuestes Spiel zuerst.
-    form
-  };
+  const matchesAnalyzed = wins + draws + losses;
+
+  if (matchesAnalyzed === 0) {
+    teamPerformance = {
+      club,
+      source: 'csv',
+      dataAvailable: false,
+      matchesAnalyzed: 0,
+      invalidMatches,
+      note: \`Fuer Verein '\${club}' liegen \${rows.length} CSV-Match-Zeile(n) vor, aber alle mit fehlenden/ungueltigen Tordaten (n8n/data/matches.csv) - es werden keine Ersatzwerte erfunden.\`
+    };
+  } else {
+    teamPerformance = {
+      club,
+      source: 'csv',
+      dataAvailable: true,
+      matchesAnalyzed,
+      invalidMatches,
+      wins,
+      draws,
+      losses,
+      goalsFor,
+      goalsAgainst,
+      goalDifference: goalsFor - goalsAgainst,
+      points: wins * 3 + draws,
+      avgGoalsFor: Math.round((goalsFor / matchesAnalyzed) * 100) / 100,
+      avgGoalsAgainst: Math.round((goalsAgainst / matchesAnalyzed) * 100) / 100,
+      // Form ist in derselben Reihenfolge wie matches.csv fuer diesen Verein sortiert: neuestes Spiel zuerst.
+      form,
+      note: invalidMatches > 0
+        ? \`\${invalidMatches} von \${rows.length} CSV-Match-Zeile(n) fuer '\${club}' hatten fehlende/ungueltige Tordaten und wurden von der Aggregation ausgeschlossen (n8n/data/matches.csv).\`
+        : undefined
+    };
+  }
 }
 
 return [{ json: { ...item, teamPerformance } }];`;
@@ -127,6 +168,8 @@ const teamMatchesCode = `const MATCHES_CSV = \`${MATCHES_CSV.trim()}\`;
 
 ${PARSE_CSV_SNIPPET}
 
+${NUMERIC_HELPERS_SNIPPET}
+
 // CSV-Analytics-Adapter (temporaerer Ersatz fuer Qlik MCP, siehe n8n/README.md).
 // Tool-Vertrag: Input { club, matchLimit? }, Output { ...item, teamMatches }.
 // Der eingebettete MATCHES_CSV-String ist eine zeichengleiche Kopie von
@@ -135,19 +178,28 @@ const item = $input.item.json;
 const club = (item.club || '').toString().trim();
 const limit = Number.isFinite(item.matchLimit) && item.matchLimit > 0 ? Math.floor(item.matchLimit) : 10;
 
+// Ein Spiel mit fehlenden/ungueltigen Tordaten wird nicht stillschweigend als
+// 0:0 (oder NaN) ausgegeben, sondern bleibt in der Liste (nichts wird
+// ausgeblendet), aber goalsFor/goalsAgainst/result sind explizit null und
+// dataError markiert die Zeile.
+let invalidMatches = 0;
 const matches = parseCsv(MATCHES_CSV)
   .filter((r) => r.club === club)
   .slice(0, limit)
   .map((r) => {
-    const gf = Number(r.goalsFor), ga = Number(r.goalsAgainst);
+    const gf = parseRequiredNumber(r.goalsFor);
+    const ga = parseRequiredNumber(r.goalsAgainst);
+    const dataError = gf === null || ga === null;
+    if (dataError) invalidMatches++;
     return {
       date: r.date,
       opponent: r.opponent,
       homeAway: r.homeAway,
       goalsFor: gf,
       goalsAgainst: ga,
-      result: gf > ga ? 'W' : (gf === ga ? 'D' : 'L'),
-      competition: r.competition
+      result: dataError ? null : (gf > ga ? 'W' : (gf === ga ? 'D' : 'L')),
+      competition: r.competition,
+      dataError
     };
   });
 
@@ -156,9 +208,14 @@ const teamMatches = {
   source: 'csv',
   dataAvailable: matches.length > 0,
   count: matches.length,
+  invalidMatches,
   // Sortiert wie n8n/data/matches.csv: neuestes Spiel zuerst.
   matches,
-  note: matches.length === 0 ? \`Keine CSV-Match-Daten fuer Verein '\${club}' vorhanden (n8n/data/matches.csv).\` : undefined
+  note: matches.length === 0
+    ? \`Keine CSV-Match-Daten fuer Verein '\${club}' vorhanden (n8n/data/matches.csv).\`
+    : (invalidMatches > 0
+      ? \`\${invalidMatches} von \${matches.length} zurueckgegebenen Spiel(en) hatten fehlende/ungueltige Tordaten (dataError:true, n8n/data/matches.csv).\`
+      : undefined)
 };
 
 return [{ json: { ...item, teamMatches } }];`;
@@ -177,6 +234,8 @@ writeWorkflow('analytics-team-matches-subworkflow.json', subworkflow({
 const playerRankingCode = `const PLAYERS_CSV = \`${PLAYERS_CSV.trim()}\`;
 
 ${PARSE_CSV_SNIPPET}
+
+${NUMERIC_HELPERS_SNIPPET}
 
 // CSV-Analytics-Adapter (temporaerer Ersatz fuer Qlik MCP, siehe n8n/README.md).
 // Tool-Vertrag: Input { rankingClub?, rankingExcludeClub?, position?, criteria?:
@@ -216,23 +275,36 @@ const excludeClub = (item.rankingExcludeClub || '').toString().trim() || null;
 const position = (item.position || '').toString().trim() || null;
 const effectiveLimit = Number.isFinite(item.limit) && item.limit > 0 ? Math.floor(item.limit) : 5;
 
-const allRows = parseCsv(PLAYERS_CSV).map((r) => ({
-  ...r,
-  age: Number(r.age),
-  marketValueMEUR: Number(r.marketValueMEUR),
-  appearances: Number(r.appearances),
-  goals: Number(r.goals),
-  assists: Number(r.assists),
-  minutesPlayed: Number(r.minutesPlayed),
-  yellowCards: Number(r.yellowCards),
-  redCards: Number(r.redCards),
-  rating: Number(r.rating)
-}));
+// Pflichtfelder werden vor der Aggregation validiert: eine Zeile mit
+// fehlender/ungueltiger numerischer Zelle (z. B. leeres age) wird komplett aus
+// dem Ranking-Pool ausgeschlossen statt mit Number('')===0 oder Number(undefined)
+// ===NaN in den Score einzufliessen - sonst koennte ein fehlendes age (niedriger
+// = besser) den Score sogar kuenstlich verbessern.
+const NUMERIC_PLAYER_FIELDS = ['age', 'marketValueMEUR', 'appearances', 'goals', 'assists', 'minutesPlayed', 'yellowCards', 'redCards', 'rating'];
+const parsedRows = parseCsv(PLAYERS_CSV).map((r) => {
+  const numeric = {};
+  let hasInvalidData = false;
+  NUMERIC_PLAYER_FIELDS.forEach((field) => {
+    const value = parseRequiredNumber(r[field]);
+    if (value === null) hasInvalidData = true;
+    numeric[field] = value;
+  });
+  return { ...r, ...numeric, hasInvalidData };
+});
+const allRows = parsedRows.filter((r) => !r.hasInvalidData);
+const invalidRows = parsedRows.filter((r) => r.hasInvalidData);
 
 let pool = allRows.slice();
 if (club) pool = pool.filter((r) => r.club === club);
 if (excludeClub) pool = pool.filter((r) => r.club !== excludeClub);
 const clubPoolSize = pool.length;
+
+// Wie viele der wegen ungueltiger Daten ausgeschlossenen Zeilen ueberhaupt zur
+// aktuellen Anfrage (club/excludeClub) gepasst haetten - rein informativ, damit
+// der Datenfehler nicht stillschweigend verschwindet.
+const excludedInvalidData = invalidRows.filter((r) =>
+  (!club || r.club === club) && (!excludeClub || r.club !== excludeClub)
+).length;
 
 // Unbekannte/nicht vorhandene Position: es wird kein Kandidat erfunden. Statt
 // eines leeren Ergebnisses wird - explizit vermerkt ueber positionFallbackApplied -
@@ -257,11 +329,14 @@ if (pool.length === 0) {
     poolSize: 0,
     clubPoolSize,
     positionFallbackApplied: false,
+    excludedInvalidData,
     ignoredCriteria: [],
     ranking: [],
-    note: club
-      ? \`Keine CSV-Spielerdaten fuer Verein '\${club}' vorhanden (n8n/data/players.csv).\`
-      : \`Keine CSV-Spielerdaten fuer Position '\${position}' vorhanden (n8n/data/players.csv).\`
+    note: excludedInvalidData > 0
+      ? \`Alle \${excludedInvalidData} zur Anfrage passenden CSV-Spielerdatensaetze hatten fehlende/ungueltige numerische Werte und wurden ausgeschlossen (n8n/data/players.csv).\`
+      : (club
+        ? \`Keine CSV-Spielerdaten fuer Verein '\${club}' vorhanden (n8n/data/players.csv).\`
+        : \`Keine CSV-Spielerdaten fuer Position '\${position}' vorhanden (n8n/data/players.csv).\`)
   };
   return [{ json: { ...item, playerRanking } }];
 }
@@ -322,9 +397,13 @@ const playerRanking = {
   poolSize: pool.length,
   clubPoolSize,
   positionFallbackApplied,
+  excludedInvalidData,
   ignoredCriteria,
   criteriaUsed: effectiveCriteria,
-  ranking: scored.slice(0, effectiveLimit)
+  ranking: scored.slice(0, effectiveLimit),
+  note: excludedInvalidData > 0
+    ? \`\${excludedInvalidData} CSV-Spielerdatensaetze hatten fehlende/ungueltige numerische Werte und wurden von der Rangliste ausgeschlossen (n8n/data/players.csv).\`
+    : undefined
 };
 
 return [{ json: { ...item, playerRanking } }];`;
@@ -344,6 +423,8 @@ const playerProfileCode = `const PLAYERS_CSV = \`${PLAYERS_CSV.trim()}\`;
 
 ${PARSE_CSV_SNIPPET}
 
+${NUMERIC_HELPERS_SNIPPET}
+
 // CSV-Analytics-Adapter (temporaerer Ersatz fuer Qlik MCP, siehe n8n/README.md).
 // Tool-Vertrag: Input { playerName }, Output { ...item, playerProfileLookup }.
 // Der eingebettete PLAYERS_CSV-String ist eine zeichengleiche Kopie von
@@ -355,27 +436,38 @@ const item = $input.item.json;
 const requestedName = (item.playerName || '').toString().trim();
 const match = parseCsv(PLAYERS_CSV).find((r) => r.name === requestedName);
 
-const profile = match ? {
-  name: match.name,
-  club: match.club,
-  position: match.position,
-  age: Number(match.age),
-  marketValueMEUR: Number(match.marketValueMEUR),
-  appearances: Number(match.appearances),
-  goals: Number(match.goals),
-  assists: Number(match.assists),
-  minutesPlayed: Number(match.minutesPlayed),
-  yellowCards: Number(match.yellowCards),
-  redCards: Number(match.redCards),
-  rating: Number(match.rating)
-} : null;
+// Fehlende/ungueltige numerische Zellen werden pro Feld erkannt und bleiben
+// null (statt Number('')===0 oder Number(undefined)===NaN) - invalidFields
+// weist die betroffenen Felder explizit aus, statt einen Messwert zu erfinden.
+const NUMERIC_PLAYER_FIELDS = ['age', 'marketValueMEUR', 'appearances', 'goals', 'assists', 'minutesPlayed', 'yellowCards', 'redCards', 'rating'];
+const invalidFields = [];
+const profile = match ? (() => {
+  const numeric = {};
+  NUMERIC_PLAYER_FIELDS.forEach((field) => {
+    const value = parseRequiredNumber(match[field]);
+    if (value === null) invalidFields.push(field);
+    numeric[field] = value;
+  });
+  return {
+    name: match.name,
+    club: match.club,
+    position: match.position,
+    ...numeric,
+    dataError: invalidFields.length > 0
+  };
+})() : null;
 
 const playerProfileLookup = {
   source: 'csv',
   found: !!match,
   requestedName,
   profile,
-  note: match ? undefined : \`Kein CSV-Datensatz fuer Spieler '\${requestedName}' vorhanden (n8n/data/players.csv).\`
+  invalidFields: match ? invalidFields : [],
+  note: !match
+    ? \`Kein CSV-Datensatz fuer Spieler '\${requestedName}' vorhanden (n8n/data/players.csv).\`
+    : (invalidFields.length > 0
+      ? \`CSV-Datensatz fuer '\${requestedName}' hat fehlende/ungueltige numerische Werte in: \${invalidFields.join(', ')} (n8n/data/players.csv) - diese Felder sind als null markiert statt erfunden.\`
+      : undefined)
 };
 
 return [{ json: { ...item, playerProfileLookup } }];`;
