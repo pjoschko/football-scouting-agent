@@ -433,7 +433,7 @@
         "source": "database",
         "workflowId": {
           "__rl": true,
-          "value": "REPLACE_WITH_LOCAL_WORKFLOW_ID",
+          "value": "802fdb6b-4c0a-413f-952d-250c91ddc476",
           "mode": "list",
           "cachedResultName": "Recherche (Dummy)"
         },
@@ -448,7 +448,7 @@
         180
       ],
       "notesInFlow": false,
-      "notes": "Ruft den technischen Subworkflow n8n/recherche-subworkflow.json auf (einzige erlaubte Ausnahme vom Grundsatz 'kein neuer Hauptworkflow'). Beide Workflows muessen importiert sein; der Platzhalter REPLACE_WITH_LOCAL_WORKFLOW_ID ist danach auf die tatsaechliche Workflow-ID des importierten Subworkflows zu setzen (analog zu REPLACE_WITH_LOCAL_CREDENTIAL_ID beim Ollama-Node)."
+      "notes": "Ruft den technischen Subworkflow n8n/recherche-subworkflow.json auf (einzige erlaubte Ausnahme vom Grundsatz 'kein neuer Hauptworkflow'). Referenziert dessen feste Top-Level-ID 802fdb6b-4c0a-413f-952d-250c91ddc476; n8n uebernimmt diese ID beim Import (import:workflow) unveraendert, sodass beide Workflows nach dem Import ohne manuelle Anpassung verbunden sind."
     },
     {
       "parameters": {

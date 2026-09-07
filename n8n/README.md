@@ -22,11 +22,10 @@ sichtbar als Simulation markierter Dummy.
 Credentials werden ausschließlich referenziert (`[cimt] Ollama` am Node
 **Ollama Modell (Qwen3.8:latest)**, mit dem Platzhalter-Wert
 `REPLACE_WITH_LOCAL_CREDENTIAL_ID` statt einer echten Credential-ID), nie
-exportiert oder dupliziert. Ebenso wird die Workflow-ID des Recherche-
-Subworkflows nur als Platzhalter `REPLACE_WITH_LOCAL_WORKFLOW_ID` referenziert
-(siehe unten) und muss nach dem Import beider Workflows manuell auf die
-tatsächliche, instanzspezifische ID gesetzt werden. Es gelangt kein echtes
-Secret nach Git.
+exportiert oder dupliziert. Der Recherche-Subworkflow wird dagegen über seine
+feste Top-Level-ID `802fdb6b-4c0a-413f-952d-250c91ddc476` referenziert (siehe
+unten); n8n übernimmt diese ID beim Import unverändert, sodass keine manuelle
+Anpassung nötig ist. Es gelangt kein echtes Secret nach Git.
 
 ## Zielablauf
 
@@ -155,12 +154,11 @@ eigenständiger n8n-Workflow mit zwei Nodes:
    ausdrücklich als Platzhalter gekennzeichnet.
 
 Import-Reihenfolge: **zuerst** `recherche-subworkflow.json` importieren,
-**danach** `ai-sporting-director.json`. Nach dem Import beider Workflows muss
-am Node **Recherche durchführen** im Hauptworkflow der Platzhalter
-`REPLACE_WITH_LOCAL_WORKFLOW_ID` im Feld **Workflow** durch die tatsächliche,
-von der n8n-Instanz vergebene ID des importierten Subworkflows ersetzt werden
-(instanzspezifisch, daher kein fester Wert im Repository — analog zur
-Credential-ID am Ollama-Node).
+**danach** `ai-sporting-director.json`. Der Node **Recherche durchführen** im
+Hauptworkflow referenziert bereits die feste Top-Level-ID
+`802fdb6b-4c0a-413f-952d-250c91ddc476` des Subworkflows; n8n übernimmt
+vorhandene Workflow-IDs beim Import (`import:workflow`) per Upsert, sodass
+beide Workflows nach dem Import ohne manuelle Anpassung verbunden sind.
 
 ## Import & run
 
@@ -168,10 +166,10 @@ Credential-ID am Ollama-Node).
 2. Import [`recherche-subworkflow.json`](./recherche-subworkflow.json) first
    (**Workflows** → **Add workflow** → **Import from File**).
 3. Import [`ai-sporting-director.json`](./ai-sporting-director.json) the
-   same way, then open its **Recherche durchführen** node and replace the
-   `REPLACE_WITH_LOCAL_WORKFLOW_ID` placeholder with the imported
-   subworkflow's actual ID (and, on the **Ollama Modell (Qwen3.8:latest)**
-   node, select the local `[cimt] Ollama` credential).
+   same way — its **Recherche durchführen** node already references the
+   subworkflow's fixed ID, so no manual edit is needed there (on the
+   **Ollama Modell (Qwen3.8:latest)** node, select the local `[cimt] Ollama`
+   credential).
 4. Use **Test workflow** to obtain a test-mode form URL for manual testing,
    or activate the workflow (toggle **Active** in the top right) to make the
    form reachable at its production URL shown on the **AI Sporting Director
