@@ -54,19 +54,19 @@
             {
               "id": "e5f6a7b8-b5b5-4e6f-8a7b-8c9d0e1f2a3b",
               "name": "club",
-              "value": "={{ $json['Verein'].trim() }}",
+              "value": "={{ ($json['Verein'] || '').toString().trim() }}",
               "type": "string"
             },
             {
               "id": "f6a7b8c9-c6c6-4f7a-9b8c-9d0e1f2a3b4c",
               "name": "objective",
-              "value": "={{ $json['Was soll der Sporting Director untersuchen?'].trim() }}",
+              "value": "={{ ($json['Was soll der Sporting Director untersuchen?'] || '').toString().trim() }}",
               "type": "string"
             },
             {
               "id": "a7b8c9d0-d7d7-4a8b-8c9d-0e1f2a3b4c5d",
               "name": "additionalContext",
-              "value": "={{ ($json['Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?'] || '').trim() }}",
+              "value": "={{ ($json['Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?'] || '').toString().trim() }}",
               "type": "string"
             },
             {
