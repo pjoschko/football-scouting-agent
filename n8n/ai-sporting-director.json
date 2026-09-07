@@ -13,11 +13,21 @@
               "fieldType": "dropdown",
               "fieldOptions": {
                 "values": [
-                  { "option": "Hamburger SV" },
-                  { "option": "FC Bayern München" },
-                  { "option": "Borussia Dortmund" },
-                  { "option": "RB Leipzig" },
-                  { "option": "Bayer 04 Leverkusen" }
+                  {
+                    "option": "Hamburger SV"
+                  },
+                  {
+                    "option": "FC Bayern München"
+                  },
+                  {
+                    "option": "Borussia Dortmund"
+                  },
+                  {
+                    "option": "RB Leipzig"
+                  },
+                  {
+                    "option": "Bayer 04 Leverkusen"
+                  }
                 ]
               },
               "defaultValue": "Hamburger SV",
@@ -44,7 +54,10 @@
       "name": "AI Sporting Director beauftragen",
       "type": "n8n-nodes-base.formTrigger",
       "typeVersion": 2.2,
-      "position": [240, 300],
+      "position": [
+        240,
+        300
+      ],
       "webhookId": "d4e5f6a7-a4a4-4d5e-9f6a-7b8c9d0e1f2a"
     },
     {
@@ -90,7 +103,10 @@
       "name": "Auftrag normalisieren",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [460, 300]
+      "position": [
+        460,
+        300
+      ]
     },
     {
       "parameters": {
@@ -106,13 +122,21 @@
               "id": "d4e5f6a7-cond-1",
               "leftValue": "={{ $json.club }}",
               "rightValue": "",
-              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
             },
             {
               "id": "d4e5f6a7-cond-2",
               "leftValue": "={{ $json.objective }}",
               "rightValue": "",
-              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
             }
           ],
           "combinator": "and"
@@ -123,7 +147,10 @@
       "name": "Eingabe validieren",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [680, 300]
+      "position": [
+        680,
+        300
+      ]
     },
     {
       "parameters": {
@@ -145,67 +172,26 @@
       "name": "Validierungsfehler formulieren",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [900, 500]
-    },
-    {
-      "parameters": {
-        "jsCode": "const item = $input.item.json;\n\n// Deterministischer Dummy: simuliert die spätere Agentenantwort, ohne echte\n// Qlik-Analyse, Websuche oder ein LLM zu verwenden. Der Dummy erfüllt bereits\n// den Ausgabevertrag (diagnosis/requiredProfile/shortlist/recommendation),\n// damit die Struktur später ohne Änderungen an Formular, Validierung oder\n// Ergebnisdarstellung durch den echten AI Agent befüllt werden kann.\nconst agentResponse = {\n  simulated: true,\n  diagnosis: {\n    summary: `Simulierte Analyse für ${item.club}: ${item.objective}`,\n    evidence: [\n      'Dummy-Datenpunkt 1 (keine echte Qlik-Analyse durchgeführt)',\n      'Dummy-Datenpunkt 2 (keine echte Websuche durchgeführt)'\n    ],\n    hypotheses: [\n      'Simulierte Hypothese A zur sportlichen Situation',\n      'Simulierte Hypothese B zur sportlichen Situation'\n    ],\n    uncertainties: [\n      'Es wurden keine echten Daten verwendet, die Ausgabe ist rein simuliert.'\n    ]\n  },\n  requiredProfile: {\n    position: 'Simulierte Position',\n    role: 'Simulierte taktische Rolle',\n    criteria: ['Simuliertes Kriterium 1', 'Simuliertes Kriterium 2']\n  },\n  shortlist: [\n    { name: 'Dummy-Spieler A', note: 'Platzhalter, keine echte Kandidat:innen-Recherche' },\n    { name: 'Dummy-Spieler B', note: 'Platzhalter, keine echte Kandidat:innen-Recherche' }\n  ],\n  recommendation: {\n    candidate: 'Dummy-Spieler A',\n    reasoning: 'Simulierte Begründung ohne echte Analyse oder Recherche.',\n    risks: ['Simuliertes Risiko, das bei einer echten Analyse zu prüfen wäre'],\n    nextStep: 'Nächster Schritt: den Dummy durch den echten AI Agent ersetzen.'\n  }\n};\n\nreturn [{ json: { ...item, agentResponse } }];"
-      },
-      "id": "f6a7b8c9-3344-4c3d-8e4f-5a6b7c8d9e0f",
-      "name": "Dummy-Antwort erzeugen",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [900, 180]
-    },
-    {
-      "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst response = item.agentResponse;\nconst errors = [];\n\nif (!response || typeof response !== 'object') {\n  errors.push(\"agentResponse fehlt oder ist kein Objekt.\");\n} else {\n  const d = response.diagnosis;\n  if (!d || typeof d.summary !== 'string' || !d.summary) errors.push('diagnosis.summary fehlt.');\n  if (!d || !Array.isArray(d.evidence)) errors.push('diagnosis.evidence fehlt oder ist kein Array.');\n  if (!d || !Array.isArray(d.hypotheses)) errors.push('diagnosis.hypotheses fehlt oder ist kein Array.');\n  if (!d || !Array.isArray(d.uncertainties)) errors.push('diagnosis.uncertainties fehlt oder ist kein Array.');\n\n  const p = response.requiredProfile;\n  if (!p || !p.position) errors.push('requiredProfile.position fehlt.');\n  if (!p || !p.role) errors.push('requiredProfile.role fehlt.');\n  if (!p || !Array.isArray(p.criteria)) errors.push('requiredProfile.criteria fehlt oder ist kein Array.');\n\n  if (!Array.isArray(response.shortlist)) errors.push('shortlist fehlt oder ist kein Array.');\n\n  const r = response.recommendation;\n  if (!r || !r.candidate) errors.push('recommendation.candidate fehlt.');\n  if (!r || !r.reasoning) errors.push('recommendation.reasoning fehlt.');\n  if (!r || !Array.isArray(r.risks)) errors.push('recommendation.risks fehlt oder ist kein Array.');\n  if (!r || !r.nextStep) errors.push('recommendation.nextStep fehlt.');\n}\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die Agentenantwort ist ungültig und wird nicht als fachliche Empfehlung angezeigt.\\n\\n' + errors.join('\\n')\n  }\n}];"
-      },
-      "id": "a7b8c9d0-4455-4d4e-9f5a-6b7c8d9e0f1a",
-      "name": "Ausgabe prüfen",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1120, 180]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "b8c9d0e1-cond-1",
-              "leftValue": "={{ $json.valid }}",
-              "rightValue": true,
-              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "b8c9d0e1-5566-4e5f-8a6b-7c8d9e0f1a2b",
-      "name": "Ausgabe gültig?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [1340, 180]
+      "position": [
+        900,
+        500
+      ]
     },
     {
       "parameters": {
         "operation": "completion",
         "completionTitle": "Ergebnis (Simulation)",
-        "completionMessage": "={{ 'Verein: ' + $json.club + '\\nAuftrag: ' + $json.objective + ($json.additionalContext ? ('\\nZusätzlicher Kontext: ' + $json.additionalContext) : '') + '\\n\\n⚠ Hinweis: Dies ist eine simulierte Antwort (Dummy), keine echte Analyse.\\n\\nDiagnose: ' + $json.agentResponse.diagnosis.summary + '\\n\\nEmpfehlung: ' + $json.agentResponse.recommendation.candidate + ' – ' + $json.agentResponse.recommendation.reasoning + '\\nNächster Schritt: ' + $json.agentResponse.recommendation.nextStep }}",
+        "completionMessage": "={{ $json.formattedResult }}",
         "options": {}
       },
       "id": "c9d0e1f2-6677-4f6a-9b7c-8d9e0f1a2b3c",
       "name": "Ergebnis anzeigen",
       "type": "n8n-nodes-base.form",
       "typeVersion": 1,
-      "position": [1560, 80]
+      "position": [
+        3940,
+        80
+      ]
     },
     {
       "parameters": {
@@ -218,7 +204,10 @@
       "name": "Fehler anzeigen",
       "type": "n8n-nodes-base.form",
       "typeVersion": 1,
-      "position": [1560, 460]
+      "position": [
+        2400,
+        900
+      ]
     },
     {
       "parameters": {
@@ -231,7 +220,10 @@
       "name": "Ollama Modell (Qwen3.8:latest)",
       "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
-      "position": [900, 700],
+      "position": [
+        900,
+        700
+      ],
       "notesInFlow": false,
       "notes": "Vorbereitet für die spätere Story, die 'Dummy-Antwort erzeugen' durch den echten AI Agent ersetzt. Aus question-answer-workflow.json übernommen (Modell, Thinking, Credential-Referenz). Noch nicht verbunden — siehe n8n/README.md.",
       "credentials": {
@@ -249,52 +241,608 @@
       "name": "LLM-Fehler normalisieren",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1120, 700],
+      "position": [
+        1120,
+        700
+      ],
       "notesInFlow": false,
       "notes": "Normalisiert den Fehler-Output eines künftigen Chain-/Agent-Nodes (onError: continueErrorOutput) in eine verständliche errorMessage und leitet ihn in den bestehenden zentralen Fehlerpfad (Fehler anzeigen). In n8n 2.35.7 liefert die Basic LLM Chain bei continueErrorOutput $json.error als String (json: { error: error.message }), nicht als Objekt mit .message — der Code behandelt daher robust sowohl den realen String-Shape als auch einen möglichen Objekt-Shape ($json.error.message). Noch ohne eingehende Verbindung, da der Chain-/Agent-Node erst in einer späteren Story hinzugefügt wird — siehe n8n/README.md."
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\n// Deterministischer Dummy fuer die erste fachliche Stufe. Es wird explizit\n// keine echte Qlik-Analyse oder Websuche durchgefuehrt.\nconst teamDiagnosis = {\n  simulated: true,\n  evidence: [\n    `Dummy-Datenpunkt 1 zu ${item.club} (keine echte Qlik-Analyse durchgefuehrt)`,\n    `Dummy-Datenpunkt 2 zu ${item.club} (keine echte Websuche durchgefuehrt)`\n  ],\n  hypotheses: [\n    'Simulierte Hypothese A zur sportlichen Situation',\n    'Simulierte Hypothese B zur sportlichen Situation'\n  ],\n  mainProblem: `Simuliertes Hauptproblem fuer ${item.club}: ${item.objective}`,\n  uncertainties: [\n    'Es wurden keine echten Daten verwendet, die Diagnose ist rein simuliert.'\n  ]\n};\n\nreturn [{ json: { ...item, teamDiagnosis } }];"
+      },
+      "id": "01a30ee2-dddd-43d2-b255-e00438585476",
+      "name": "Teamdiagnose erzeugen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst d = item.teamDiagnosis;\nconst errors = [];\n\nif (!d || typeof d !== 'object') {\n  errors.push('teamDiagnosis fehlt oder ist kein Objekt.');\n} else {\n  if (!Array.isArray(d.evidence) || d.evidence.length === 0) errors.push('teamDiagnosis.evidence fehlt oder ist leer.');\n  if (!Array.isArray(d.hypotheses) || d.hypotheses.length === 0) errors.push('teamDiagnosis.hypotheses fehlt oder ist leer.');\n  if (typeof d.mainProblem !== 'string' || !d.mainProblem.trim()) errors.push('teamDiagnosis.mainProblem fehlt.');\n  if (!Array.isArray(d.uncertainties)) errors.push('teamDiagnosis.uncertainties fehlt oder ist kein Array.');\n}\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die Teamdiagnose ist ungueltig und wird nicht als fachliche Grundlage verwendet.\\n\\n' + errors.join('\\n')\n  }\n}];"
+      },
+      "id": "231819af-8957-4a69-881e-6e5ce2187a12",
+      "name": "Teamdiagnose pruefen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1090,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c840e66b-7a1a-4e65-9035-610224978b89",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f27b2a0c-36c4-437e-ae8e-f292a7b932e4",
+      "name": "Teamdiagnose gueltig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\nconst playerProfile = {\n  simulated: true,\n  position: 'Simulierte Position',\n  role: 'Simulierte taktische Rolle',\n  reasoning: `Simulierte Begruendung auf Basis des Hauptproblems: ${item.teamDiagnosis.mainProblem}`,\n  weightedCriteria: [\n    { criterion: 'Simuliertes Kriterium 1', weight: 0.6 },\n    { criterion: 'Simuliertes Kriterium 2', weight: 0.4 }\n  ],\n  constraints: [\n    'Simulierter Constraint: Budgetobergrenze (Platzhalter)',\n    'Simulierter Constraint: Altersgrenze (Platzhalter)'\n  ]\n};\n\nreturn [{ json: { ...item, playerProfile } }];"
+      },
+      "id": "48e551aa-6b98-4a3b-9f03-0727790e2fd7",
+      "name": "Spielerprofil erzeugen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1470,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst p = item.playerProfile;\nconst errors = [];\n\nif (!p || typeof p !== 'object') {\n  errors.push('playerProfile fehlt oder ist kein Objekt.');\n} else {\n  if (!p.position) errors.push('playerProfile.position fehlt.');\n  if (!p.role) errors.push('playerProfile.role fehlt.');\n  if (!p.reasoning) errors.push('playerProfile.reasoning fehlt.');\n  if (!Array.isArray(p.weightedCriteria) || p.weightedCriteria.length === 0) {\n    errors.push('playerProfile.weightedCriteria fehlt oder ist leer.');\n  } else if (p.weightedCriteria.some((c) => !c.criterion || typeof c.weight !== 'number')) {\n    errors.push('playerProfile.weightedCriteria enthaelt einen Eintrag ohne criterion oder numerisches weight.');\n  }\n  if (!Array.isArray(p.constraints)) errors.push('playerProfile.constraints fehlt oder ist kein Array.');\n}\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Das Spielerprofil ist ungueltig und wird nicht fuer die Spielersuche verwendet.\\n\\n' + errors.join('\\n')\n  }\n}];"
+      },
+      "id": "1cee025d-cb16-4445-b444-48448f704373",
+      "name": "Spielerprofil pruefen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1660,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "60eff2d7-5cf3-4d35-b832-0097e9e85f25",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "321f10d7-61aa-4a6c-b7fb-f6712379d515",
+      "name": "Spielerprofil gueltig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1850,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\nconst candidateNames = ['Dummy-Spieler A', 'Dummy-Spieler B', 'Dummy-Spieler C'];\n\nconst shortlist = candidateNames.map((name, idx) => ({\n  name,\n  score: Math.round((0.9 - idx * 0.1) * 100) / 100,\n  strengths: [`Simulierte Staerke ${idx + 1}a`, `Simulierte Staerke ${idx + 1}b`],\n  weaknesses: [`Simulierte Schwaeche ${idx + 1}`],\n  evidence: [`Simulierter Beleg zu ${name} (keine echte Recherche)`]\n}));\n\nconst playerSearch = {\n  simulated: true,\n  longlistSize: 12,\n  shortlist\n};\n\nreturn [{ json: { ...item, playerSearch } }];"
+      },
+      "id": "084953e2-07d9-4a9d-8c5d-abd484c45c63",
+      "name": "Spielersuche durchfuehren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2040,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst s = item.playerSearch;\nconst errors = [];\n\nif (!s || typeof s !== 'object') {\n  errors.push('playerSearch fehlt oder ist kein Objekt.');\n} else {\n  if (typeof s.longlistSize !== 'number' || s.longlistSize <= 0) errors.push('playerSearch.longlistSize fehlt oder ist ungueltig.');\n  if (!Array.isArray(s.shortlist) || s.shortlist.length === 0) {\n    errors.push('playerSearch.shortlist fehlt oder ist leer.');\n  } else if (s.shortlist.length > 5) {\n    errors.push('playerSearch.shortlist enthaelt mehr als fuenf Kandidaten.');\n  } else if (s.shortlist.some((c) => !c.name || typeof c.score !== 'number' || !Array.isArray(c.strengths) || !Array.isArray(c.weaknesses) || !Array.isArray(c.evidence))) {\n    errors.push('playerSearch.shortlist enthaelt einen Kandidaten ohne name, score, strengths, weaknesses oder evidence.');\n  }\n}\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die Spielersuche ist ungueltig und wird nicht fuer die weitere Recherche verwendet.\\n\\n' + errors.join('\\n')\n  }\n}];"
+      },
+      "id": "1359e982-2383-4123-8b80-b17ee9611d8a",
+      "name": "Spielersuche pruefen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2230,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c495744e-4a83-400a-ade8-5aa428c60361",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "006028a3-60d5-44e9-8def-58e87032b8d8",
+      "name": "Spielersuche gueltig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_LOCAL_WORKFLOW_ID",
+          "mode": "list",
+          "cachedResultName": "Recherche (Dummy)"
+        },
+        "options": {}
+      },
+      "id": "935367ba-dd5d-4930-8ea9-5fb23ff9a874",
+      "name": "Recherche durchfuehren",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2610,
+        180
+      ],
+      "notesInFlow": false,
+      "notes": "Ruft den technischen Subworkflow n8n/recherche-subworkflow.json auf (einzige erlaubte Ausnahme vom Grundsatz 'kein neuer Hauptworkflow'). Beide Workflows muessen importiert sein; der Platzhalter REPLACE_WITH_LOCAL_WORKFLOW_ID ist danach auf die tatsaechliche Workflow-ID des importierten Subworkflows zu setzen (analog zu REPLACE_WITH_LOCAL_CREDENTIAL_ID beim Ollama-Node)."
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst research = item.research;\nconst shortlistNames = (item.playerSearch && Array.isArray(item.playerSearch.shortlist))\n  ? item.playerSearch.shortlist.map((c) => c.name)\n  : [];\nconst errors = [];\n\nif (!Array.isArray(research) || research.length === 0) {\n  errors.push('research fehlt oder ist leer.');\n} else {\n  if (research.length !== shortlistNames.length) {\n    errors.push('research deckt nicht jeden Kandidaten aus der Shortlist ab.');\n  }\n  research.forEach((r, idx) => {\n    if (!r.candidate || !shortlistNames.includes(r.candidate)) errors.push(`research[${idx}].candidate fehlt oder ist nicht Teil der Shortlist.`);\n    if (!r.club) errors.push(`research[${idx}].club (Verein) fehlt.`);\n    if (!r.contract) errors.push(`research[${idx}].contract (Vertrag) fehlt.`);\n    if (!r.marketValue) errors.push(`research[${idx}].marketValue (Marktwert) fehlt.`);\n    if (!r.injuries) errors.push(`research[${idx}].injuries (Verletzungen) fehlt.`);\n    if (!Array.isArray(r.news) || r.news.length === 0) errors.push(`research[${idx}].news (Meldungen) fehlt oder ist leer.`);\n    if (!r.source) errors.push(`research[${idx}].source (Dummy-Quelle) fehlt.`);\n    if (!r.timestamp) errors.push(`research[${idx}].timestamp (Zeitpunkt) fehlt.`);\n    if (typeof r.confidence !== 'number') errors.push(`research[${idx}].confidence (Konfidenz) fehlt oder ist keine Zahl.`);\n  });\n}\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die Recherche ist ungueltig und wird nicht fuer die Empfehlung verwendet.\\n\\n' + errors.join('\\n')\n  }\n}];"
+      },
+      "id": "1afa764e-232e-40fd-b760-fabc4644e349",
+      "name": "Recherche pruefen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1aac50d4-1e63-4cbe-880a-61459db3b797",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "86d2cd32-fb53-4ec8-8445-5ef79a9cecab",
+      "name": "Recherche gueltig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2990,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst shortlist = item.playerSearch.shortlist;\nconst best = [...shortlist].sort((a, b) => b.score - a.score)[0];\nconst alternatives = shortlist.filter((c) => c.name !== best.name).map((c) => c.name);\n\nconst recommendation = {\n  simulated: true,\n  candidate: best.name,\n  alternatives,\n  reasoning: `Simulierte Begruendung: ${best.name} hat in der simulierten Spielersuche den hoechsten Score (${best.score}).`,\n  risks: [\n    'Simuliertes Risiko, das bei einer echten Analyse zu pruefen waere',\n    'Simuliertes Risiko aus der noch unvollstaendigen echten Recherche'\n  ],\n  uncertainties: [\n    'Empfehlung basiert vollstaendig auf simulierten Daten, keine echte Qlik-/Web-Recherche.'\n  ],\n  nextStep: 'Naechster Schritt: die Dummy-Stufen schrittweise durch die echte AI-, Qlik- und Web-Anbindung ersetzen.'\n};\n\nreturn [{ json: { ...item, recommendation } }];"
+      },
+      "id": "3b16c55f-b9b3-402c-986d-39a9273a96d6",
+      "name": "Empfehlung erzeugen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3180,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst errors = [];\n\nconst d = item.teamDiagnosis;\nif (!d || !d.mainProblem) errors.push('teamDiagnosis.mainProblem fehlt in der finalen Pruefung.');\n\nconst p = item.playerProfile;\nif (!p || !p.position || !p.role) errors.push('playerProfile.position/role fehlt in der finalen Pruefung.');\n\nconst s = item.playerSearch;\nconst shortlistNames = (s && Array.isArray(s.shortlist)) ? s.shortlist.map((c) => c.name) : [];\nif (!s || shortlistNames.length === 0) errors.push('playerSearch.shortlist fehlt in der finalen Pruefung.');\n\nconst research = item.research;\nif (!Array.isArray(research) || research.length === 0) errors.push('research fehlt in der finalen Pruefung.');\n\nconst r = item.recommendation;\nif (!r || !r.candidate) {\n  errors.push('recommendation.candidate fehlt in der finalen Pruefung.');\n} else if (!shortlistNames.includes(r.candidate)) {\n  errors.push('recommendation.candidate stammt nicht aus der validierten Shortlist.');\n}\nif (!r || !r.reasoning) errors.push('recommendation.reasoning fehlt in der finalen Pruefung.');\nif (!r || !r.nextStep) errors.push('recommendation.nextStep fehlt in der finalen Pruefung.');\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die finale Validierung ist fehlgeschlagen, es wird keine fachliche Empfehlung angezeigt.\\n\\n' + errors.join('\\n')\n  }\n}];"
+      },
+      "id": "eadba09a-500d-463c-a41c-32450750710e",
+      "name": "Final Validation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3370,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3fbae35f-932a-483e-b7f0-57074e39a01c",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f3b1e405-9784-44f3-bf75-be17ae5f6256",
+      "name": "Final Validation gueltig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3560,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst d = item.teamDiagnosis;\nconst p = item.playerProfile;\nconst s = item.playerSearch;\nconst research = item.research || [];\nconst r = item.recommendation;\n\nconst section = (title, lines) => `— ${title} —\\n${lines.join('\\n')}`;\n\nconst researchLines = research.map((x) => `${x.candidate}: ${x.club}, ${x.contract}, ${x.marketValue}, ${x.injuries} (Quelle: ${x.source}, ${x.timestamp}, Konfidenz ${x.confidence})`);\n\nconst formattedResult = [\n  `Verein: ${item.club}`,\n  `Auftrag: ${item.objective}`,\n  item.additionalContext ? `Zusaetzlicher Kontext: ${item.additionalContext}` : null,\n  '',\n  '⚠ Hinweis: Alle folgenden Abschnitte sind simulierte Dummy-Ergebnisse, keine echte Analyse.',\n  '',\n  section('Teamdiagnose', [`Hauptproblem: ${d.mainProblem}`, ...d.hypotheses.map((h) => `Hypothese: ${h}`)]),\n  '',\n  section('Spielerprofil', [`Position: ${p.position}`, `Rolle: ${p.role}`, `Begruendung: ${p.reasoning}`]),\n  '',\n  section('Spielersuche', [`Longlist-Groesse: ${s.longlistSize}`, ...s.shortlist.map((c) => `${c.name} (Score ${c.score})`)]),\n  '',\n  section('Recherche', researchLines),\n  '',\n  section('Empfehlung', [`Bevorzugter Kandidat: ${r.candidate}`, `Begruendung: ${r.reasoning}`, `Naechster Schritt: ${r.nextStep}`])\n].filter((line) => line !== null).join('\\n');\n\nreturn [{ json: { ...item, formattedResult } }];"
+      },
+      "id": "d916f616-e4b5-4778-bfb9-062631952b76",
+      "name": "Ergebnisseiten aufbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3750,
+        80
+      ]
     }
   ],
   "connections": {
     "AI Sporting Director beauftragen": {
       "main": [
-        [{ "node": "Auftrag normalisieren", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Auftrag normalisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Auftrag normalisieren": {
       "main": [
-        [{ "node": "Eingabe validieren", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Eingabe validieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Eingabe validieren": {
       "main": [
-        [{ "node": "Dummy-Antwort erzeugen", "type": "main", "index": 0 }],
-        [{ "node": "Validierungsfehler formulieren", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Teamdiagnose erzeugen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validierungsfehler formulieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Validierungsfehler formulieren": {
       "main": [
-        [{ "node": "Fehler anzeigen", "type": "main", "index": 0 }]
-      ]
-    },
-    "Dummy-Antwort erzeugen": {
-      "main": [
-        [{ "node": "Ausgabe prüfen", "type": "main", "index": 0 }]
-      ]
-    },
-    "Ausgabe prüfen": {
-      "main": [
-        [{ "node": "Ausgabe gültig?", "type": "main", "index": 0 }]
-      ]
-    },
-    "Ausgabe gültig?": {
-      "main": [
-        [{ "node": "Ergebnis anzeigen", "type": "main", "index": 0 }],
-        [{ "node": "Fehler anzeigen", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Fehler anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "LLM-Fehler normalisieren": {
       "main": [
-        [{ "node": "Fehler anzeigen", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Fehler anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teamdiagnose erzeugen": {
+      "main": [
+        [
+          {
+            "node": "Teamdiagnose pruefen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teamdiagnose pruefen": {
+      "main": [
+        [
+          {
+            "node": "Teamdiagnose gueltig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teamdiagnose gueltig?": {
+      "main": [
+        [
+          {
+            "node": "Spielerprofil erzeugen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielerprofil erzeugen": {
+      "main": [
+        [
+          {
+            "node": "Spielerprofil pruefen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielerprofil pruefen": {
+      "main": [
+        [
+          {
+            "node": "Spielerprofil gueltig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielerprofil gueltig?": {
+      "main": [
+        [
+          {
+            "node": "Spielersuche durchfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielersuche durchfuehren": {
+      "main": [
+        [
+          {
+            "node": "Spielersuche pruefen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielersuche pruefen": {
+      "main": [
+        [
+          {
+            "node": "Spielersuche gueltig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielersuche gueltig?": {
+      "main": [
+        [
+          {
+            "node": "Recherche durchfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recherche durchfuehren": {
+      "main": [
+        [
+          {
+            "node": "Recherche pruefen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recherche pruefen": {
+      "main": [
+        [
+          {
+            "node": "Recherche gueltig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recherche gueltig?": {
+      "main": [
+        [
+          {
+            "node": "Empfehlung erzeugen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Empfehlung erzeugen": {
+      "main": [
+        [
+          {
+            "node": "Final Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Validation": {
+      "main": [
+        [
+          {
+            "node": "Final Validation gueltig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Validation gueltig?": {
+      "main": [
+        [
+          {
+            "node": "Ergebnisseiten aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ergebnisseiten aufbereiten": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },

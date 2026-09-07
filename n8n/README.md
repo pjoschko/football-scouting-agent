@@ -3,115 +3,169 @@
 Der kanonische Hauptworkflow für dieses Projekt heißt **`AI Sporting Director`**
 und ist versioniert in [`ai-sporting-director.json`](./ai-sporting-director.json).
 Jede weitere Story erweitert diesen bestehenden Workflow in-place. Es wird kein
-neuer paralleler Hauptworkflow angelegt, außer eine Story verlangt ausdrücklich
-einen technischen Subworkflow.
+neuer paralleler Hauptworkflow angelegt. Die einzige erlaubte Ausnahme ist die
+Recherche-Stufe, die als technischer Subworkflow
+[`recherche-subworkflow.json`](./recherche-subworkflow.json) implementiert ist
+und über einen **Execute Workflow**-Node aus dem Hauptworkflow aufgerufen wird
+(siehe [Recherche-Subworkflow](#recherche-subworkflow) unten).
 
-Der Workflow entstand durch Konsolidierung der bisher separat entwickelten
-n8n-Workflows dieses Repositories. Die beiden früheren Altworkflow-Dateien
-(ein Hello-World-Workflow und ein Frage-Antwort-Workflow) sind vollständig
-gegen den Hauptworkflow geprüft und aufgelöst worden und wurden danach aus
-dem Repository entfernt (siehe [Migration der
-Altworkflows](#migration-der-altworkflows) unten); `ai-sporting-director.json`
-ist jetzt die einzige n8n-Workflow-Datei in diesem Repository:
-
-- Das Startformular (Verein/Objective/Kontext) stammt aus Story 33, jetzt Teil
-  des Hauptworkflows.
-- Normalisierung, Validierung, die Dummy-Agentenantwort und die
-  Ergebnis-/Fehleranzeige setzen die noch offene Story 34 direkt im
-  Hauptworkflow um (bisher gab es dafür keinen eigenen Workflow).
-- Die Ollama-Konfiguration aus Story 32 (vormals im Frage-Antwort-Altworkflow)
-  ist als eigener, noch nicht verbundener Node **Ollama Modell
-  (Qwen3.8:latest)** in den Hauptworkflow übernommen.
-  Sie bleibt die Grundlage für die spätere Story, in der der Dummy durch den
-  echten AI Agent ersetzt wird — sie ersetzt den Dummy in diesem Workflow
-  noch nicht.
+Dieser Stand erweitert den bisherigen Hauptworkflow (Startformular →
+normalisieren → validieren → eine einzelne Dummy-Antwort → Ausgabe prüfen →
+Ergebnis/Fehler anzeigen) um alle fachlichen Stufen des Sporting-Director-
+Ablaufs, jede mit einem eigenen, klar als Simulation gekennzeichneten
+Dummy-Ergebnis und einem eigenen Gate (Schema-/Mindestbedingungsprüfung), das
+bei ungültigem Ergebnis den bestehenden zentralen Fehlerpfad (**Fehler
+anzeigen**) wiederverwendet. Es gibt noch keinen echten AI Agent, LLM-Schritt,
+Qlik-/MCP-Zugriff oder echte Websuche — jede Stufe ist ein deterministischer,
+sichtbar als Simulation markierter Dummy.
 
 Credentials werden ausschließlich referenziert (`[cimt] Ollama` am Node
 **Ollama Modell (Qwen3.8:latest)**, mit dem Platzhalter-Wert
 `REPLACE_WITH_LOCAL_CREDENTIAL_ID` statt einer echten Credential-ID), nie
-exportiert oder dupliziert. Es gelangt kein echtes Secret nach Git.
+exportiert oder dupliziert. Ebenso wird die Workflow-ID des Recherche-
+Subworkflows nur als Platzhalter `REPLACE_WITH_LOCAL_WORKFLOW_ID` referenziert
+(siehe unten) und muss nach dem Import beider Workflows manuell auf die
+tatsächliche, instanzspezifische ID gesetzt werden. Es gelangt kein echtes
+Secret nach Git.
 
 ## Zielablauf
 
 ```
-Startformular → normalisieren → validieren → Dummy-Antwort → Ausgabe prüfen → Ergebnis oder Fehler anzeigen
+Formular → Teamdiagnose → Gate → Spielerprofil → Gate → Spielersuche → Gate
+        → Recherche → Gate → Empfehlung → Final Validation → Anzeige
 ```
+
+Jede Stufe folgt demselben Muster aus dem bisherigen Workflow (**Dummy-Antwort
+erzeugen** → **Ausgabe prüfen** → **Ausgabe gültig?**), nur je fachlicher
+Stufe wiederholt: `<Stufe> erzeugen`/`durchführen` (Code oder Execute
+Workflow) → `<Stufe> prüfen` (Code, setzt `valid`/`errorMessage`) →
+`<Stufe> gültig?` (IF) → bei `false` **Fehler anzeigen**, bei `true` weiter
+zur nächsten Stufe.
 
 ## Nodes
 
-1. **AI Sporting Director beauftragen** (Form Trigger) — unverändert aus
-   Story 33: Formular mit `Verein` (Dropdown, `Hamburger SV` vorausgewählt),
-   `Was soll der Sporting Director untersuchen?` (Pflichtfeld) und optionalem
-   `Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?`.
-2. **Auftrag normalisieren** (Set) — normalisiert die Formularausgabe zu
-   `club`, `objective`, `additionalContext` (jeweils getrimmt) sowie neu
-   `requestId` und `requestedAt` (ISO-Zeitstempel).
-3. **Eingabe validieren** (IF) — lehnt fehlende oder nur aus Leerzeichen
-   bestehende Werte für `club`/`objective` ab.
-   - **falsch** → **Validierungsfehler formulieren** (Set) setzt eine
-     verständliche `errorMessage` → **Fehler anzeigen**.
-   - **wahr** → weiter zu **Dummy-Antwort erzeugen**.
-4. **Dummy-Antwort erzeugen** (Code) — deterministischer, klar als Simulation
-   gekennzeichneter Dummy (`agentResponse.simulated: true`), der bereits dem
-   späteren Agentenvertrag entspricht: `diagnosis` (summary, evidence,
-   hypotheses, uncertainties), `requiredProfile` (position, role, criteria),
-   `shortlist`, `recommendation` (candidate, reasoning, risks, nextStep). Der
-   Dummy behauptet an keiner Stelle, eine echte Qlik-Analyse oder Websuche
-   durchgeführt zu haben.
-5. **Ausgabe prüfen** (Code) — prüft die Pflichtstruktur der Agentenantwort
-   und setzt `valid` sowie ggf. `errorMessage`.
-6. **Ausgabe gültig?** (IF)
-   - **wahr** → **Ergebnis anzeigen** (Form, Completion) zeigt Verein,
-     Auftrag, den simulierten Diagnose-Text und die Empfehlung inkl.
-     Hinweis, dass es sich um eine Simulation handelt.
-   - **falsch** → **Fehler anzeigen** (Form, Completion) — derselbe Node wie
-     im Validierungsfehlerpfad — zeigt die `errorMessage` an; ein ungültiges
-     Ergebnis wird nie als fachliche Empfehlung dargestellt.
-7. **Ollama Modell (Qwen3.8:latest)** (Ollama Chat Model, aus dem
-   Frage-Antwort-Altworkflow übernommen) — liegt vorbereitet, aber
-   bewusst noch **ohne Verbindung** im Workflow: Modell `Qwen3.8:latest`,
-   Option **Think** aktiviert, Credential-Referenz `[cimt] Ollama` (nur der
-   Name wird referenziert; die Credential-ID ist der unveränderte Platzhalter
-   `REPLACE_WITH_LOCAL_CREDENTIAL_ID`, keine echte ID oder ein Secret). Der
-   Node dokumentiert seinen Zweck über eine Notiz direkt am Node.
-8. **LLM-Fehler normalisieren** (Code) — bereits jetzt im Hauptworkflow
-   vorhanden und mit **Fehler anzeigen** verbunden, damit der zentrale
-   Fehlerpfad die Fehlerbehandlung aus dem Frage-Antwort-Altworkflow ohne
-   weitere Implementierung übernehmen kann: der Node liest den Fehler-Output
-   eines Chain-/Agent-Nodes bei `onError: continueErrorOutput` robust sowohl
-   als String (`$json.error` — das reale Format, das n8n 2.35.7s **Basic LLM
-   Chain** liefert) als auch als Objekt (`$json.error.message`) und schreibt
-   daraus dieselbe verständliche Ollama-Fehlermeldung wie zuvor im
-   Frage-Antwort-Altworkflow in `errorMessage`. Er hat noch **keine
-   eingehende Verbindung**, da der Chain-/Agent-Node, dessen Fehler-Output
-   ihn speist, erst in der künftigen Story hinzukommt, die den Dummy
-   ersetzt.
+1. **AI Sporting Director beauftragen** (Form Trigger) — unverändert:
+   Formular mit `Verein` (Dropdown, `Hamburger SV` vorausgewählt), `Was soll
+   der Sporting Director untersuchen?` (Pflichtfeld) und optionalem `Gibt es
+   zusätzliche Rahmenbedingungen oder Beobachtungen?`.
+2. **Auftrag normalisieren** (Set) — unverändert: normalisiert die
+   Formularausgabe zu `club`, `objective`, `additionalContext`, `requestId`,
+   `requestedAt`.
+3. **Eingabe validieren** (IF) — unverändert: lehnt fehlende oder nur aus
+   Leerzeichen bestehende Werte für `club`/`objective` ab.
+   - **falsch** → **Validierungsfehler formulieren** (Set, unverändert) →
+     **Fehler anzeigen**.
+   - **wahr** → weiter zu **Teamdiagnose erzeugen**.
+4. **Teamdiagnose erzeugen** (Code) — Dummy mit `evidence`, `hypotheses`,
+   `mainProblem` (Hauptproblem) und `uncertainties`, alle klar als Simulation
+   markiert (`teamDiagnosis.simulated: true`), ohne eine echte Qlik-Analyse
+   oder Websuche zu behaupten.
+5. **Teamdiagnose prüfen** (Code) — prüft, dass `evidence`/`hypotheses` nicht
+   leere Arrays sind, `mainProblem` ein nichtleerer String ist und
+   `uncertainties` ein Array ist; setzt `valid`/`errorMessage`.
+6. **Teamdiagnose gültig?** (IF) — **falsch** → **Fehler anzeigen**; **wahr**
+   → **Spielerprofil erzeugen**.
+7. **Spielerprofil erzeugen** (Code) — Dummy mit `position`, `role`,
+   `reasoning` (Begründung, referenziert `teamDiagnosis.mainProblem`),
+   `weightedCriteria` (gewichtete Kriterien, je `criterion`/`weight`) und
+   `constraints`.
+8. **Spielerprofil prüfen** (Code) — prüft alle Pflichtfelder inkl. dass
+   jedes `weightedCriteria`-Element ein `criterion` und ein numerisches
+   `weight` hat.
+9. **Spielerprofil gültig?** (IF) — **falsch** → **Fehler anzeigen**;
+   **wahr** → **Spielersuche durchführen**.
+10. **Spielersuche durchführen** (Code) — Dummy mit `longlistSize` und einer
+    `shortlist` von bis zu fünf Kandidaten, je mit `score`, `strengths`,
+    `weaknesses`, `evidence`.
+11. **Spielersuche prüfen** (Code) — prüft `longlistSize > 0`, `shortlist`
+    nichtleer und **höchstens fünf** Kandidaten, sowie dass jeder Kandidat
+    alle Pflichtfelder hat.
+12. **Spielersuche gültig?** (IF) — **falsch** → **Fehler anzeigen**;
+    **wahr** → **Recherche durchführen**.
+13. **Recherche durchführen** (Execute Workflow) — ruft den technischen
+    Subworkflow [`recherche-subworkflow.json`](./recherche-subworkflow.json)
+    auf und übergibt das aktuelle Item (inkl. `playerSearch.shortlist`)
+    unverändert weiter (`Passthrough`). Der Subworkflow liefert je Kandidat
+    aus der Shortlist `club` (Verein), `contract` (Vertrag), `marketValue`
+    (Marktwert), `injuries` (Verletzungen) und `news` (Meldungen), jeweils
+    mit `source` (Dummy-Quelle), `timestamp` (Zeitpunkt) und `confidence`
+    (Konfidenz) — siehe [Recherche-Subworkflow](#recherche-subworkflow).
+14. **Recherche prüfen** (Code) — prüft, dass `research` genau einen Eintrag
+    je Shortlist-Kandidat enthält und jeder Eintrag alle Pflichtfelder hat.
+15. **Recherche gültig?** (IF) — **falsch** → **Fehler anzeigen**; **wahr**
+    → **Empfehlung erzeugen**.
+16. **Empfehlung erzeugen** (Code) — wählt den Kandidaten mit dem höchsten
+    `score` aus `playerSearch.shortlist` als bevorzugten Kandidaten (damit
+    stammt er per Konstruktion aus der validierten Shortlist), die übrigen
+    Shortlist-Namen werden `alternatives`; dazu `reasoning`, `risks`,
+    `uncertainties`, `nextStep`.
+17. **Final Validation** (Code) — prüft alle vorherigen Stufenergebnisse
+    noch einmal im Zusammenhang (u. a. dass `recommendation.candidate`
+    tatsächlich Teil der validierten `playerSearch.shortlist` ist) — analog
+    zur bisherigen **Ausgabe prüfen**, jetzt über den gesamten Ablauf.
+18. **Final Validation gültig?** (IF) — **falsch** → **Fehler anzeigen**;
+    **wahr** → **Ergebnisseiten aufbereiten**.
+19. **Ergebnisseiten aufbereiten** (Code) — baut `formattedResult`: einen
+    Text, der Teamdiagnose, Spielerprofil, Spielersuche, Recherche und
+    Empfehlung als klar getrennte Abschnitte darstellt, mit einem
+    einleitenden Simulationshinweis.
+20. **Ergebnis anzeigen** (Form, Completion) — zeigt `formattedResult` an;
+    dieselbe Node wie zuvor, jetzt mit dem mehrteiligen Text statt einer
+    einzelnen Diagnose-/Empfehlungszeile.
+21. **Fehler anzeigen** (Form, Completion) — unverändert der eine zentrale
+    Fehlerpfad für **alle** Gates (Validierung, Teamdiagnose, Spielerprofil,
+    Spielersuche, Recherche, Final Validation): zeigt `errorMessage` an; ein
+    ungültiges Ergebnis wird nie als fachliche Empfehlung dargestellt.
+22. **Ollama Modell (Qwen3.8:latest)** (Ollama Chat Model) — unverändert,
+    weiterhin **ohne Verbindung**: Grundlage für die künftige Story, die
+    einen echten AI-Agent-Node einführt.
+23. **LLM-Fehler normalisieren** (Code) — unverändert, weiterhin ohne
+    eingehende Verbindung, bereits mit **Fehler anzeigen** verbunden für die
+    künftige Story.
 
-Die Struktur erlaubt, `Dummy-Antwort erzeugen` später durch den echten AI
-Agent zu ersetzen, ohne Formular, Normalisierung, Validierung,
-Ausgabe-Prüfung, Ergebnisdarstellung oder Fehler-Routing neu bauen zu
-müssen:
+Die Struktur erlaubt, jede `<Stufe> erzeugen`/`durchführen`-Node später durch
+echte Logik (AI Agent, Qlik/MCP, Websuche) zu ersetzen, ohne die
+`<Stufe> prüfen`/`<Stufe> gültig?`-Gates, das Formular, die Normalisierung,
+die Validierung oder die Ergebnisdarstellung neu bauen zu müssen — die
+Datenverträge (`teamDiagnosis`, `playerProfile`, `playerSearch`, `research`,
+`recommendation`) bleiben dabei stabil, solange ein Ersatz dieselben Felder
+liefert.
 
-- Ein künftiger Chain-/Agent-Node verbindet sich mit **Ollama Modell
-  (Qwen3.8:latest)** als Sprachmodell (`ai_languageModel`-Input), genau wie
-  zuvor im Frage-Antwort-Altworkflow.
-- Für kontrolliertes Fehler-Routing aktiviert dieser künftige Node
-  `onError: continueErrorOutput` (wie zuvor **Antwort von Ollama
-  generieren**) und verbindet seinen Fehler-Output (zweiter `main`-Output)
-  mit dem bereits vorhandenen Node **LLM-Fehler normalisieren**. Dieser
-  schreibt die verständliche Fehlermeldung in `errorMessage` und leitet sie
-  an denselben zentralen Fehlerpfad weiter, der bereits für Validierungs-
-  und Ausgabefehler existiert: **Fehler anzeigen** zeigt jede
-  `errorMessage` unabhängig von ihrer Ursache verständlich an, ohne dass ein
-  eigener Ollama-spezifischer Fehler-Node nötig ist.
+## Recherche-Subworkflow
+
+[`recherche-subworkflow.json`](./recherche-subworkflow.json) ist ein
+eigenständiger n8n-Workflow mit zwei Nodes:
+
+1. **Wenn von anderem Workflow aufgerufen** (Execute Workflow Trigger,
+   `inputSource: passthrough`) — nimmt das vom Hauptworkflow übergebene Item
+   unverändert entgegen.
+2. **Recherche-Dummy je Kandidat erzeugen** (Code) — liest
+   `playerSearch.shortlist` aus dem übergebenen Item und erzeugt je
+   Kandidat einen deterministischen Dummy-Rechercheeintrag (`club`,
+   `contract`, `marketValue`, `injuries`, `news`, dazu `source` (immer
+   `"Dummy-Quelle (keine echte Web-/Qlik-Recherche)"`), `timestamp` und
+   `confidence`). Es wird an keiner Stelle eine echte Qlik-Analyse oder
+   Websuche behauptet oder simuliert vorgetäuscht — jeder Wert ist
+   ausdrücklich als Platzhalter gekennzeichnet.
+
+Import-Reihenfolge: **zuerst** `recherche-subworkflow.json` importieren,
+**danach** `ai-sporting-director.json`. Nach dem Import beider Workflows muss
+am Node **Recherche durchführen** im Hauptworkflow der Platzhalter
+`REPLACE_WITH_LOCAL_WORKFLOW_ID` im Feld **Workflow** durch die tatsächliche,
+von der n8n-Instanz vergebene ID des importierten Subworkflows ersetzt werden
+(instanzspezifisch, daher kein fester Wert im Repository — analog zur
+Credential-ID am Ollama-Node).
 
 ## Import & run
 
 1. Open your n8n instance.
-2. Go to **Workflows** → **Add workflow** → **Import from File** (or use the
-   "⋮" menu → **Import from File** on an existing workflow).
-3. Select [`ai-sporting-director.json`](./ai-sporting-director.json) from
-   this directory.
+2. Import [`recherche-subworkflow.json`](./recherche-subworkflow.json) first
+   (**Workflows** → **Add workflow** → **Import from File**).
+3. Import [`ai-sporting-director.json`](./ai-sporting-director.json) the
+   same way, then open its **Recherche durchführen** node and replace the
+   `REPLACE_WITH_LOCAL_WORKFLOW_ID` placeholder with the imported
+   subworkflow's actual ID (and, on the **Ollama Modell (Qwen3.8:latest)**
+   node, select the local `[cimt] Ollama` credential).
 4. Use **Test workflow** to obtain a test-mode form URL for manual testing,
    or activate the workflow (toggle **Active** in the top right) to make the
    form reachable at its production URL shown on the **AI Sporting Director
@@ -121,89 +175,102 @@ Alternatively, with the [n8n CLI](https://docs.n8n.io/hosting/cli-commands/)
 available:
 
 ```bash
+n8n import:workflow --input=n8n/recherche-subworkflow.json
 n8n import:workflow --input=n8n/ai-sporting-director.json
 ```
 
 ## End-to-End-Test über das HSV-Formular
 
-### Positiver Testfall
+### Positiver Testfall (alle Stufen)
 
-1. Open the form's test or production URL in a browser.
-   **Expected result:** `Verein` shows `Hamburger SV` preselected, and
-   `Was soll der Sporting Director untersuchen?` already contains the
-   example text about the Hamburger SV's sporting problems.
-2. Click `Analyse starten` without changing anything (optionally fill in
-   `Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?`).
-   **Expected result:** the browser shows the **Ergebnis anzeigen** page
-   with the club, the objective, an explicit note that the answer is a
-   simulation, a diagnosis summary and a recommended dummy candidate with
-   reasoning and next step. In the n8n **Executions** list the run is
-   successful; **Auftrag normalisieren** shows `club`, `objective`,
-   `additionalContext`, `requestId` and `requestedAt`; **Ausgabe prüfen**
-   shows `valid: true`.
+1. Open the form's test or production URL in a browser. **Expected result:**
+   `Verein` shows `Hamburger SV` preselected, and `Was soll der Sporting
+   Director untersuchen?` already contains the example text about the
+   Hamburger SV's sporting problems.
+2. Click `Analyse starten` without changing anything. **Expected result:**
+   the browser shows the **Ergebnis anzeigen** page with five clearly
+   separated sections — Teamdiagnose, Spielerprofil, Spielersuche,
+   Recherche, Empfehlung — each explicitly marked as a simulation, and the
+   recommended candidate is one of the three shortlisted dummy players. In
+   the n8n **Executions** list the run is successful and passes all six
+   gates (**Teamdiagnose gültig?**, **Spielerprofil gültig?**, **Spielersuche
+   gültig?**, **Recherche gültig?**, **Final Validation gültig?**, plus
+   **Eingabe validieren**).
+   **Ausgeführt (Logiksimulation):** Alle `Code`-Nodes des Hauptworkflows und
+   des Subworkflows wurden außerhalb von n8n mit Node.js gegen die
+   HSV-Beispieldaten (`club: "Hamburger SV"`, das voreingestellte
+   `objective`) ausgeführt, inklusive des Aufrufs des Recherche-Subworkflows
+   mit dem vom Hauptworkflow durchgereichten Item. Ergebnis: alle fünf Gates
+   melden `valid: true`, `formattedResult` enthält alle fünf Abschnitte, und
+   `recommendation.candidate` (`Dummy-Spieler A`, höchster `score`) ist
+   Teil von `playerSearch.shortlist`. Nicht ausgeführt: das eigentliche
+   Rendern der Formular-/Completion-Seiten und der n8n-**Executions**-Eintrag
+   selbst, da dafür eine laufende n8n-Weboberfläche nötig ist — offen für die
+   nächste Person (oder Session) mit interaktivem Zugriff auf eine
+   importierte Instanz.
 
-### Negativer Testfall (Validierung)
+### Negative Testfälle (ein Gate pro Stufe)
 
-1. Open the form again and clear `Was soll der Sporting Director
-   untersuchen?` (or fill it with only spaces), then click
-   `Analyse starten`.
-   **Expected result:** the n8n form itself blocks empty required fields;
-   to also exercise the workflow's own validation node, submit the form via
-   a direct HTTP request that bypasses the browser's required-field check
-   (e.g. with `curl`), or temporarily remove `requiredField` in a test copy.
-   **Expected result in that case:** **Eingabe validieren** routes to
-   **Validierungsfehler formulieren** and the browser/response shows the
-   **Fehler anzeigen** page with a message asking to fill in `Verein` and
-   the objective — no dummy diagnosis or recommendation is shown.
+Für jedes der folgenden Gates gilt dasselbe Muster: in einer Testkopie des
+Workflows wird die vorausgehende `erzeugen`/`durchführen`-Node so verändert,
+dass ein Pflichtfeld fehlt oder eine Mindestbedingung verletzt ist, danach
+wird der positive Testfall erneut ausgeführt.
 
-### Negativer Testfall (Ausgabeprüfung)
+1. **Teamdiagnose gültig?** — `teamDiagnosis.mainProblem` entfernen.
+   **Erwartet:** **Teamdiagnose prüfen** setzt `valid: false`, die Anzeige
+   zeigt die Fehlermeldung "Die Teamdiagnose ist ungültig …" statt einer
+   Diagnose.
+2. **Spielerprofil gültig?** — `playerProfile.reasoning` entfernen.
+   **Erwartet:** Fehlermeldung "Das Spielerprofil ist ungültig …".
+3. **Spielersuche gültig?** — `playerSearch.shortlist` auf ein leeres Array
+   setzen. **Erwartet:** Fehlermeldung "Die Spielersuche ist ungültig …".
+4. **Recherche gültig?** — im Recherche-Subworkflow `research` auf ein
+   leeres Array setzen (bzw. die Longlist/Shortlist so verändern, dass keine
+   Recherche-Einträge entstehen). **Erwartet:** Fehlermeldung "Die Recherche
+   ist ungültig …".
+5. **Final Validation gültig?** — in **Empfehlung erzeugen**
+   `recommendation.candidate` auf einen Namen setzen, der nicht Teil der
+   Shortlist ist. **Erwartet:** Fehlermeldung "Die finale Validierung ist
+   fehlgeschlagen …" (fängt damit auch einen Fehler ab, der die einzelnen
+   Stufen-Gates unbeschädigt durchlaufen hat).
 
-1. In a test copy of the workflow, temporarily edit **Dummy-Antwort
-   erzeugen** so the returned `agentResponse` is missing a required field
-   (e.g. remove `recommendation.nextStep`), then run the positive test case
-   again.
-   **Expected result:** **Ausgabe prüfen** sets `valid: false`, **Ausgabe
-   gültig?** routes to **Fehler anzeigen**, and the browser shows the error
-   page listing the missing field instead of an incomplete recommendation.
+**Ausgeführt (Logiksimulation):** Alle fünf Fälle wurden wie oben beschrieben
+mit Node.js gegen die HSV-Beispieldaten durchgespielt (jeweils ein einzelnes
+Feld/Array gezielt entfernt bzw. geleert, alle anderen Stufen unverändert
+gelassen). In jedem Fall meldete genau das erwartete Gate `valid: false` mit
+der oben genannten Fehlermeldung, alle nachfolgenden Stufen wurden nicht mehr
+ausgeführt, und keiner der Fälle erreichte **Ergebnis anzeigen**. Nicht
+ausgeführt: das manuelle Editieren der Nodes und Beobachten der
+**Executions**-Liste in einer laufenden n8n-Instanz — offen für die nächste
+Person (oder Session) mit interaktivem Zugriff.
+
+### Negativer Testfall (Validierung des Startformulars)
+
+Unverändert gegenüber dem bisherigen Workflow: leeres/nur aus Leerzeichen
+bestehendes `objective` per direktem HTTP-Request (z. B. `curl`) einreichen.
+**Erwartet:** **Eingabe validieren** routet zu **Validierungsfehler
+formulieren** → **Fehler anzeigen** mit der Meldung, `Verein` und die
+Zielsetzung auszufüllen — keine Dummy-Diagnose oder -Empfehlung wird
+angezeigt.
 
 ### Regressionstest: Hauptworkflow funktioniert allein (Importtest)
 
-1. In a clean n8n instance (or after removing every other workflow),
-   import only [`ai-sporting-director.json`](./ai-sporting-director.json) —
-   the two legacy workflow files that used to live in this directory no
-   longer exist in this repository, so there is nothing left to import
-   alongside it.
-   **Expected result:** the import succeeds without asking to resolve any
-   other workflow or file; the workflow opens with all 11 nodes described
-   above, including the unconnected **Ollama Modell (Qwen3.8:latest)** and
-   **LLM-Fehler normalisieren** nodes.
-   **Executed:** run via the n8n CLI (`n8n import:workflow
-   --input=n8n/ai-sporting-director.json`, n8n 2.35.7) against a fresh
-   SQLite-backed n8n instance. The command reported "Successfully imported
-   1 workflow." and a direct query of the resulting `workflow_entity` row
-   confirms exactly 11 nodes with the names listed above — including
-   **Ollama Modell (Qwen3.8:latest)** and **LLM-Fehler normalisieren**.
-   Because the workflow file previously had no top-level `id`, this CLI
-   version rejected the import with `SQLITE_CONSTRAINT: NOT NULL constraint
-   failed: workflow_entity.id`; a stable `id` was added to
-   `ai-sporting-director.json` to fix this (this affected the file on
-   `main` before this change too — it was not specific to the nodes added
-   here), after which the import above succeeded.
-2. Repeat the positive test case and both negative test cases above against
-   this single imported workflow.
-   **Expected result:** all three behave exactly as described — the HSV
-   start form remains the only functional entry point, and the dummy,
-   validation and error paths are all unaffected by the added Ollama and
-   error-normalization nodes.
-   **Not executed:** these three require submitting the form and reading
-   the **Executions** list of a running n8n web UI, which the CLI import
-   above does not exercise; still open for the next person (or session)
-   with interactive access to the imported instance.
-3. Outside of n8n itself, `n8n/ai-sporting-director.json` was additionally
-   checked to be well-formed JSON with unique node names/ids, connections
-   that only reference existing nodes, exactly one form trigger, and no
-   credential value other than the `REPLACE_WITH_LOCAL_CREDENTIAL_ID`
-   placeholder.
+Der Hauptworkflow bleibt die einzige n8n-Workflow-Datei, die die HSV-Formular-
+Story trägt; einzige neue Datei ist der technische Recherche-Subworkflow.
+Beim Import (`n8n import:workflow --input=n8n/ai-sporting-director.json`,
+gefolgt von `n8n/recherche-subworkflow.json`, oder in umgekehrter Reihenfolge
+wie oben empfohlen) öffnet sich der Hauptworkflow mit allen 24 hier
+beschriebenen Nodes, inklusive der weiterhin unverbundenen **Ollama Modell
+(Qwen3.8:latest)**- und **LLM-Fehler normalisieren**-Nodes; der
+Subworkflow öffnet sich mit seinen zwei Nodes.
+`n8n/ai-sporting-director.json` und `n8n/recherche-subworkflow.json` wurden
+außerhalb von n8n als wohlgeformtes JSON mit eindeutigen Node-Namen/-IDs,
+Connections, die ausschließlich existierende Nodes referenzieren, jeweils
+genau einem erwarteten Trigger-Node (Form Trigger bzw. Execute Workflow
+Trigger) und ohne Klartext-Credential- oder -Workflow-ID (außer den beiden
+dokumentierten Platzhaltern) geprüft.
+**Nicht ausgeführt:** der tatsächliche Import in eine laufende n8n-Instanz —
+offen für die nächste Person (oder Session) mit interaktivem Zugriff.
 
 ### Regressionstest: vorbereiteter Ollama-Node
 
@@ -251,7 +318,8 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
 
 Die beiden früheren Altworkflow-Dateien in diesem Verzeichnis (ein
 Hello-World-Workflow und ein Frage-Antwort-Workflow) wurden gegen die obige
-Analyse geprüft und danach aus dem Repository entfernt:
+Analyse geprüft und aus dem Repository entfernt, bevor die Dummy-Pipeline
+dieser Story hinzukam:
 
 - **Der Hello-World-Altworkflow** enthielt nur einen Manual Trigger und ein
   statisches `Hello World`-Feld. Keine seiner Fähigkeiten wurde benötigt;
@@ -263,14 +331,12 @@ Analyse geprüft und danach aus dem Repository entfernt:
   `Qwen3.8:latest`, aktiviertes Thinking, Credential-Referenz `[cimt]
   Ollama` ohne echte ID oder Secret) wurde 1:1 als der oben beschriebene
   Node **Ollama Modell (Qwen3.8:latest)** in `ai-sporting-director.json`
-  übernommen, bevor die Datei gelöscht wurde. Das kontrollierte
-  Fehler-Routing dieses Altworkflows (`onError: continueErrorOutput` am
-  Chain-Node, verständliche Fehleranzeige aus dem Fehler-Output) wurde
-  ebenfalls übernommen, als der oben beschriebene Node **LLM-Fehler
-  normalisieren**, der bereits an den zentralen Fehlerpfad **Fehler
-  anzeigen** angeschlossen ist, robust sowohl den String- als auch den
-  Objekt-Shape des Fehler-Outputs verarbeitet, und nur noch auf den
-  Fehler-Output des künftigen Chain-/Agent-Nodes wartet.
+  übernommen. Das kontrollierte Fehler-Routing dieses Altworkflows
+  (`onError: continueErrorOutput` am Chain-Node, verständliche Fehleranzeige
+  aus dem Fehler-Output) wurde ebenfalls übernommen, als der oben
+  beschriebene Node **LLM-Fehler normalisieren**, der bereits an den
+  zentralen Fehlerpfad **Fehler anzeigen** angeschlossen ist.
 
-`ai-sporting-director.json` ist damit die einzige n8n-Workflow-Datei in
-diesem Repository.
+`ai-sporting-director.json` ist damit weiterhin der einzige Hauptworkflow in
+diesem Repository; `recherche-subworkflow.json` ist die einzige erlaubte
+Ausnahme davon, als technischer, nicht-fachlicher Subworkflow.
