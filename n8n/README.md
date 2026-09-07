@@ -1,3 +1,150 @@
+# AI Sporting Director (kanonischer Hauptworkflow)
+
+Der kanonische Hauptworkflow für dieses Projekt heißt **`AI Sporting Director`**
+und ist versioniert in [`ai-sporting-director.json`](./ai-sporting-director.json).
+Jede weitere Story erweitert diesen bestehenden Workflow in-place. Es wird kein
+neuer paralleler Hauptworkflow angelegt, außer eine Story verlangt ausdrücklich
+einen technischen Subworkflow.
+
+Der Workflow entstand durch Konsolidierung der bisher separat entwickelten
+n8n-Workflows dieses Repositories:
+
+- Das Startformular (Verein/Objective/Kontext) stammt aus Story 33
+  ([`ai-sporting-director-start-form.json`](#abgel%C3%B6ste-workflows), jetzt Teil
+  des Hauptworkflows).
+- Normalisierung, Validierung, die Dummy-Agentenantwort und die
+  Ergebnis-/Fehleranzeige setzen die noch offene Story 34 direkt im
+  Hauptworkflow um (bisher gab es dafür keinen eigenen Workflow).
+- Die Ollama-Konfiguration aus Story 32
+  ([`question-answer-workflow.json`](#abgel%C3%B6ste-workflows)) bleibt
+  wiederverwendbar für die spätere Story, in der der Dummy durch den echten
+  AI Agent ersetzt wird — sie ersetzt den Dummy in diesem Workflow noch nicht.
+
+Credentials werden ausschließlich referenziert (`[cimt] Ollama` in der
+abgelösten Q&A-Workflow-Datei), nie exportiert oder dupliziert.
+
+## Zielablauf
+
+```
+Startformular → normalisieren → validieren → Dummy-Antwort → Ausgabe prüfen → Ergebnis oder Fehler anzeigen
+```
+
+## Nodes
+
+1. **AI Sporting Director beauftragen** (Form Trigger) — unverändert aus
+   Story 33: Formular mit `Verein` (Dropdown, `Hamburger SV` vorausgewählt),
+   `Was soll der Sporting Director untersuchen?` (Pflichtfeld) und optionalem
+   `Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?`.
+2. **Auftrag normalisieren** (Set) — normalisiert die Formularausgabe zu
+   `club`, `objective`, `additionalContext` (jeweils getrimmt) sowie neu
+   `requestId` und `requestedAt` (ISO-Zeitstempel).
+3. **Eingabe validieren** (IF) — lehnt fehlende oder nur aus Leerzeichen
+   bestehende Werte für `club`/`objective` ab.
+   - **falsch** → **Validierungsfehler formulieren** (Set) setzt eine
+     verständliche `errorMessage` → **Fehler anzeigen**.
+   - **wahr** → weiter zu **Dummy-Antwort erzeugen**.
+4. **Dummy-Antwort erzeugen** (Code) — deterministischer, klar als Simulation
+   gekennzeichneter Dummy (`agentResponse.simulated: true`), der bereits dem
+   späteren Agentenvertrag entspricht: `diagnosis` (summary, evidence,
+   hypotheses, uncertainties), `requiredProfile` (position, role, criteria),
+   `shortlist`, `recommendation` (candidate, reasoning, risks, nextStep). Der
+   Dummy behauptet an keiner Stelle, eine echte Qlik-Analyse oder Websuche
+   durchgeführt zu haben.
+5. **Ausgabe prüfen** (Code) — prüft die Pflichtstruktur der Agentenantwort
+   und setzt `valid` sowie ggf. `errorMessage`.
+6. **Ausgabe gültig?** (IF)
+   - **wahr** → **Ergebnis anzeigen** (Form, Completion) zeigt Verein,
+     Auftrag, den simulierten Diagnose-Text und die Empfehlung inkl.
+     Hinweis, dass es sich um eine Simulation handelt.
+   - **falsch** → **Fehler anzeigen** (Form, Completion) — derselbe Node wie
+     im Validierungsfehlerpfad — zeigt die `errorMessage` an; ein ungültiges
+     Ergebnis wird nie als fachliche Empfehlung dargestellt.
+
+Die Struktur erlaubt, `Dummy-Antwort erzeugen` später durch den echten AI
+Agent (z. B. unter Wiederverwendung von `[cimt] Ollama` / `Qwen3.8:latest`)
+zu ersetzen, ohne Formular, Normalisierung, Validierung, Ausgabe-Prüfung oder
+Ergebnisdarstellung neu bauen zu müssen.
+
+## Import & run
+
+1. Open your n8n instance.
+2. Go to **Workflows** → **Add workflow** → **Import from File** (or use the
+   "⋮" menu → **Import from File** on an existing workflow).
+3. Select [`ai-sporting-director.json`](./ai-sporting-director.json) from
+   this directory.
+4. Use **Test workflow** to obtain a test-mode form URL for manual testing,
+   or activate the workflow (toggle **Active** in the top right) to make the
+   form reachable at its production URL shown on the **AI Sporting Director
+   beauftragen** node.
+
+Alternatively, with the [n8n CLI](https://docs.n8n.io/hosting/cli-commands/)
+available:
+
+```bash
+n8n import:workflow --input=n8n/ai-sporting-director.json
+```
+
+## End-to-End-Test über das HSV-Formular
+
+### Positiver Testfall
+
+1. Open the form's test or production URL in a browser.
+   **Expected result:** `Verein` shows `Hamburger SV` preselected, and
+   `Was soll der Sporting Director untersuchen?` already contains the
+   example text about the Hamburger SV's sporting problems.
+2. Click `Analyse starten` without changing anything (optionally fill in
+   `Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?`).
+   **Expected result:** the browser shows the **Ergebnis anzeigen** page
+   with the club, the objective, an explicit note that the answer is a
+   simulation, a diagnosis summary and a recommended dummy candidate with
+   reasoning and next step. In the n8n **Executions** list the run is
+   successful; **Auftrag normalisieren** shows `club`, `objective`,
+   `additionalContext`, `requestId` and `requestedAt`; **Ausgabe prüfen**
+   shows `valid: true`.
+
+### Negativer Testfall (Validierung)
+
+1. Open the form again and clear `Was soll der Sporting Director
+   untersuchen?` (or fill it with only spaces), then click
+   `Analyse starten`.
+   **Expected result:** the n8n form itself blocks empty required fields;
+   to also exercise the workflow's own validation node, submit the form via
+   a direct HTTP request that bypasses the browser's required-field check
+   (e.g. with `curl`), or temporarily remove `requiredField` in a test copy.
+   **Expected result in that case:** **Eingabe validieren** routes to
+   **Validierungsfehler formulieren** and the browser/response shows the
+   **Fehler anzeigen** page with a message asking to fill in `Verein` and
+   the objective — no dummy diagnosis or recommendation is shown.
+
+### Negativer Testfall (Ausgabeprüfung)
+
+1. In a test copy of the workflow, temporarily edit **Dummy-Antwort
+   erzeugen** so the returned `agentResponse` is missing a required field
+   (e.g. remove `recommendation.nextStep`), then run the positive test case
+   again.
+   **Expected result:** **Ausgabe prüfen** sets `valid: false`, **Ausgabe
+   gültig?** routes to **Fehler anzeigen**, and the browser shows the error
+   page listing the missing field instead of an incomplete recommendation.
+
+## Abgelöste Workflows
+
+Diese Workflows wurden bereits verglichen und sind durch den Hauptworkflow
+`AI Sporting Director` als Einstiegspunkt abgelöst. Sie werden **nicht**
+gelöscht, da ihre Konfiguration noch benötigt bzw. als Referenz sinnvoll ist:
+
+- **`hello-world-workflow.json`** — minimaler Nachweis, dass die n8n-Umgebung
+  grundsätzlich funktioniert (Story ~1). Für die weitere Entwicklung nicht
+  mehr erforderlich, bleibt als Referenz erhalten.
+- **`question-answer-workflow.json`** — generisches Frage/Antwort-Formular
+  mit echter Ollama-Anbindung (Story 32). Als fachlicher Einstiegspunkt durch
+  `AI Sporting Director beauftragen` abgelöst. Die darin enthaltene
+  Ollama-Konfiguration (`Ollama Modell (Qwen3.8:latest)`-Node mit dem
+  referenzierten Credential `[cimt] Ollama`) bleibt die Grundlage für die
+  spätere Story, die **Dummy-Antwort erzeugen** im Hauptworkflow durch den
+  echten AI Agent ersetzt.
+
+---
+
 # n8n Hello World Workflow
 
 A minimal n8n workflow that proves the n8n environment for this project is
@@ -33,6 +180,10 @@ n8n import:workflow --input=n8n/hello-world-workflow.json
 ```
 
 # Question & Answer workflow (Ollama)
+
+> **Status:** abgelöst als fachlicher Einstiegspunkt durch den Hauptworkflow
+> `AI Sporting Director` (siehe oben). Die Ollama-Konfiguration in dieser
+> Datei bleibt als Referenz für die spätere Agentenstory erhalten.
 
 A workflow that provides a browser-accessible form where a user can enter a
 freely formulated question and immediately receive an answer generated by
@@ -106,83 +257,3 @@ n8n import:workflow --input=n8n/question-answer-workflow.json
    point the credential at an unreachable URL) and submit a question again.
    **Expected result:** the browser shows the friendly error page from
    **Fehler anzeigen** instead of a fabricated answer.
-
-# AI Sporting Director – Startformular
-
-A browser-accessible form through which a user commissions the AI Sporting
-Director with an open sporting objective for a chosen club, plus optional
-context — without prescribing a diagnosis, a player profile, transfer
-candidates or a root cause. It is meant to replace the generic
-question-and-answer form above as the entry point of the later scouting
-workflow, while other clubs can be added to the dropdown without any
-structural change to what follows.
-
-## What it does
-
-1. **AI Sporting Director beauftragen** (Form Trigger) — publishes a form
-   titled `AI Sporting Director` with three fields:
-   - `Verein` (required, dropdown): lists several Bundesliga clubs with
-     `Hamburger SV` first, so it is preselected. Further clubs can be added
-     to this list without changing any other node.
-   - `Was soll der Sporting Director untersuchen?` (required, multi-line):
-     prefilled with an example objective about the Hamburger SV that can be
-     submitted as-is for a demo, but remains freely editable.
-   - `Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?` (optional,
-     multi-line): no prefilled value.
-   The submit button is labelled `Analyse starten`. Because `Verein` and the
-   objective field are required, the form cannot be submitted (and no
-   analysis is started) while either is empty.
-2. **Auftrag strukturieren** (Set / Edit Fields) — maps the German-labelled
-   form output onto the structured keys `club`, `objective` and
-   `additionalContext` that the follow-up workflow consumes. When the
-   optional context field is left empty, `additionalContext` is an empty
-   string rather than a missing field.
-3. **Auftrag bestätigen** (Form / completion) — shows the user a
-   confirmation of the club, objective and (if given) additional context
-   that were captured. No Qlik/MCP query, diagnosis, player search or
-   recommendation happens here — that is deliberately out of scope for this
-   form.
-
-The exported JSON contains no credentials or secrets.
-
-## Import & run
-
-1. Open your n8n instance.
-2. Go to **Workflows** → **Add workflow** → **Import from File** (or use the
-   "⋮" menu → **Import from File** on an existing workflow).
-3. Select
-   [`ai-sporting-director-start-form.json`](./ai-sporting-director-start-form.json)
-   from this directory.
-4. Use **Test workflow** to obtain a test-mode form URL for manual testing,
-   or activate the workflow (toggle **Active** in the top right) to make the
-   form reachable at its production URL shown on the **AI Sporting Director
-   beauftragen** node.
-
-Alternatively, with the [n8n CLI](https://docs.n8n.io/hosting/cli-commands/)
-available:
-
-```bash
-n8n import:workflow --input=n8n/ai-sporting-director-start-form.json
-```
-
-## Manual test case
-
-1. Open the form's test or production URL in a browser.
-   **Expected result:** `Verein` shows `Hamburger SV` preselected, and
-   `Was soll der Sporting Director untersuchen?` already contains the
-   example text about the Hamburger SV's sporting problems.
-2. Clear the `Was soll der Sporting Director untersuchen?` field and click
-   `Analyse starten`.
-   **Expected result:** the form does not submit and marks the field as
-   required.
-3. Restore the example text (or enter your own), optionally fill in
-   `Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?`, and click
-   `Analyse starten`.
-   **Expected result:** the browser shows the confirmation page from
-   **Auftrag bestätigen** with the chosen club, the entered objective and,
-   if provided, the additional context. In the n8n **Executions** list the
-   run is successful, and the **Auftrag strukturieren** node's output shows
-   `club`, `objective` and `additionalContext` as separate fields.
-4. Repeat step 3 without filling in the optional context field.
-   **Expected result:** the execution still succeeds and
-   `additionalContext` is an empty string rather than missing.

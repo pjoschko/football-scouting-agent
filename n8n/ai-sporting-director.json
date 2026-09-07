@@ -1,0 +1,269 @@
+{
+  "name": "AI Sporting Director",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "AI Sporting Director",
+        "formDescription": "Beauftragen Sie den AI Sporting Director mit einer offenen sportlichen Zielsetzung. Diagnose, Spielerprofile, Kandidaten oder eine Problemursache werden hier bewusst nicht abgefragt.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Verein",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  { "option": "Hamburger SV" },
+                  { "option": "FC Bayern München" },
+                  { "option": "Borussia Dortmund" },
+                  { "option": "RB Leipzig" },
+                  { "option": "Bayer 04 Leverkusen" }
+                ]
+              },
+              "defaultValue": "Hamburger SV",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Was soll der Sporting Director untersuchen?",
+              "fieldType": "textarea",
+              "defaultValue": "Beim Hamburger SV läuft es sportlich nicht besonders gut. Analysiere, wo die größten Probleme liegen, und schlage vor, was wir auf dem Transfermarkt tun sollten.",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?",
+              "fieldType": "textarea",
+              "requiredField": false
+            }
+          ]
+        },
+        "options": {
+          "buttonLabel": "Analyse starten"
+        }
+      },
+      "id": "a1b2c3d4-f1a2-4a2b-8c3d-4e5f6a7b8c9d",
+      "name": "AI Sporting Director beauftragen",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [240, 300],
+      "webhookId": "d4e5f6a7-a4a4-4d5e-9f6a-7b8c9d0e1f2a"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e5f6a7b8-b5b5-4e6f-8a7b-8c9d0e1f2a3b",
+              "name": "club",
+              "value": "={{ ($json['Verein'] || '').toString().trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "f6a7b8c9-c6c6-4f7a-9b8c-9d0e1f2a3b4c",
+              "name": "objective",
+              "value": "={{ ($json['Was soll der Sporting Director untersuchen?'] || '').toString().trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "a7b8c9d0-d7d7-4a8b-8c9d-0e1f2a3b4c5d",
+              "name": "additionalContext",
+              "value": "={{ ($json['Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?'] || '').toString().trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "11223344-aaaa-4bbb-8ccc-1234567890ab",
+              "name": "requestId",
+              "value": "={{ $now.toMillis() + '-' + Math.random().toString(36).slice(2, 8) }}",
+              "type": "string"
+            },
+            {
+              "id": "22334455-bbbb-4ccc-8ddd-234567890abc",
+              "name": "requestedAt",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2c3d4e5-e8e8-4b3c-9d4e-5f6a7b8c9d0e",
+      "name": "Auftrag normalisieren",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d4e5f6a7-cond-1",
+              "leftValue": "={{ $json.club }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            },
+            {
+              "id": "d4e5f6a7-cond-2",
+              "leftValue": "={{ $json.objective }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d4e5f6a7-1122-4a1b-8c2d-3e4f5a6b7c8d",
+      "name": "Eingabe validieren",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e5f6a7b8-err-1",
+              "name": "errorMessage",
+              "value": "Bitte füllen Sie 'Verein' und 'Was soll der Sporting Director untersuchen?' aus, bevor Sie fortfahren.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e5f6a7b8-2233-4b2c-9d3e-4f5a6b7c8d9e",
+      "name": "Validierungsfehler formulieren",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\n// Deterministischer Dummy: simuliert die spätere Agentenantwort, ohne echte\n// Qlik-Analyse, Websuche oder ein LLM zu verwenden. Der Dummy erfüllt bereits\n// den Ausgabevertrag (diagnosis/requiredProfile/shortlist/recommendation),\n// damit die Struktur später ohne Änderungen an Formular, Validierung oder\n// Ergebnisdarstellung durch den echten AI Agent befüllt werden kann.\nconst agentResponse = {\n  simulated: true,\n  diagnosis: {\n    summary: `Simulierte Analyse für ${item.club}: ${item.objective}`,\n    evidence: [\n      'Dummy-Datenpunkt 1 (keine echte Qlik-Analyse durchgeführt)',\n      'Dummy-Datenpunkt 2 (keine echte Websuche durchgeführt)'\n    ],\n    hypotheses: [\n      'Simulierte Hypothese A zur sportlichen Situation',\n      'Simulierte Hypothese B zur sportlichen Situation'\n    ],\n    uncertainties: [\n      'Es wurden keine echten Daten verwendet, die Ausgabe ist rein simuliert.'\n    ]\n  },\n  requiredProfile: {\n    position: 'Simulierte Position',\n    role: 'Simulierte taktische Rolle',\n    criteria: ['Simuliertes Kriterium 1', 'Simuliertes Kriterium 2']\n  },\n  shortlist: [\n    { name: 'Dummy-Spieler A', note: 'Platzhalter, keine echte Kandidat:innen-Recherche' },\n    { name: 'Dummy-Spieler B', note: 'Platzhalter, keine echte Kandidat:innen-Recherche' }\n  ],\n  recommendation: {\n    candidate: 'Dummy-Spieler A',\n    reasoning: 'Simulierte Begründung ohne echte Analyse oder Recherche.',\n    risks: ['Simuliertes Risiko, das bei einer echten Analyse zu prüfen wäre'],\n    nextStep: 'Nächster Schritt: den Dummy durch den echten AI Agent ersetzen.'\n  }\n};\n\nreturn [{ json: { ...item, agentResponse } }];"
+      },
+      "id": "f6a7b8c9-3344-4c3d-8e4f-5a6b7c8d9e0f",
+      "name": "Dummy-Antwort erzeugen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst response = item.agentResponse;\nconst errors = [];\n\nif (!response || typeof response !== 'object') {\n  errors.push(\"agentResponse fehlt oder ist kein Objekt.\");\n} else {\n  const d = response.diagnosis;\n  if (!d || typeof d.summary !== 'string' || !d.summary) errors.push('diagnosis.summary fehlt.');\n  if (!d || !Array.isArray(d.evidence)) errors.push('diagnosis.evidence fehlt oder ist kein Array.');\n  if (!d || !Array.isArray(d.hypotheses)) errors.push('diagnosis.hypotheses fehlt oder ist kein Array.');\n  if (!d || !Array.isArray(d.uncertainties)) errors.push('diagnosis.uncertainties fehlt oder ist kein Array.');\n\n  const p = response.requiredProfile;\n  if (!p || !p.position) errors.push('requiredProfile.position fehlt.');\n  if (!p || !p.role) errors.push('requiredProfile.role fehlt.');\n  if (!p || !Array.isArray(p.criteria)) errors.push('requiredProfile.criteria fehlt oder ist kein Array.');\n\n  if (!Array.isArray(response.shortlist)) errors.push('shortlist fehlt oder ist kein Array.');\n\n  const r = response.recommendation;\n  if (!r || !r.candidate) errors.push('recommendation.candidate fehlt.');\n  if (!r || !r.reasoning) errors.push('recommendation.reasoning fehlt.');\n  if (!r || !Array.isArray(r.risks)) errors.push('recommendation.risks fehlt oder ist kein Array.');\n  if (!r || !r.nextStep) errors.push('recommendation.nextStep fehlt.');\n}\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die Agentenantwort ist ungültig und wird nicht als fachliche Empfehlung angezeigt.\\n\\n' + errors.join('\\n')\n  }\n}];"
+      },
+      "id": "a7b8c9d0-4455-4d4e-9f5a-6b7c8d9e0f1a",
+      "name": "Ausgabe prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b8c9d0e1-cond-1",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b8c9d0e1-5566-4e5f-8a6b-7c8d9e0f1a2b",
+      "name": "Ausgabe gültig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 180]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Ergebnis (Simulation)",
+        "completionMessage": "={{ 'Verein: ' + $json.club + '\\nAuftrag: ' + $json.objective + ($json.additionalContext ? ('\\nZusätzlicher Kontext: ' + $json.additionalContext) : '') + '\\n\\n⚠ Hinweis: Dies ist eine simulierte Antwort (Dummy), keine echte Analyse.\\n\\nDiagnose: ' + $json.agentResponse.diagnosis.summary + '\\n\\nEmpfehlung: ' + $json.agentResponse.recommendation.candidate + ' – ' + $json.agentResponse.recommendation.reasoning + '\\nNächster Schritt: ' + $json.agentResponse.recommendation.nextStep }}",
+        "options": {}
+      },
+      "id": "c9d0e1f2-6677-4f6a-9b7c-8d9e0f1a2b3c",
+      "name": "Ergebnis anzeigen",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [1560, 80]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Fehler",
+        "completionMessage": "={{ $json.errorMessage || 'Es ist ein unbekannter Fehler aufgetreten.' }}",
+        "options": {}
+      },
+      "id": "d0e1f2a3-7788-4a7b-8c8d-9e0f1a2b3c4d",
+      "name": "Fehler anzeigen",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [1560, 460]
+    }
+  ],
+  "connections": {
+    "AI Sporting Director beauftragen": {
+      "main": [
+        [{ "node": "Auftrag normalisieren", "type": "main", "index": 0 }]
+      ]
+    },
+    "Auftrag normalisieren": {
+      "main": [
+        [{ "node": "Eingabe validieren", "type": "main", "index": 0 }]
+      ]
+    },
+    "Eingabe validieren": {
+      "main": [
+        [{ "node": "Dummy-Antwort erzeugen", "type": "main", "index": 0 }],
+        [{ "node": "Validierungsfehler formulieren", "type": "main", "index": 0 }]
+      ]
+    },
+    "Validierungsfehler formulieren": {
+      "main": [
+        [{ "node": "Fehler anzeigen", "type": "main", "index": 0 }]
+      ]
+    },
+    "Dummy-Antwort erzeugen": {
+      "main": [
+        [{ "node": "Ausgabe prüfen", "type": "main", "index": 0 }]
+      ]
+    },
+    "Ausgabe prüfen": {
+      "main": [
+        [{ "node": "Ausgabe gültig?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Ausgabe gültig?": {
+      "main": [
+        [{ "node": "Ergebnis anzeigen", "type": "main", "index": 0 }],
+        [{ "node": "Fehler anzeigen", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
