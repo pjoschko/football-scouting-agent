@@ -243,7 +243,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst rawMessage = (item && item.error && item.error.message) ? item.error.message : 'Unbekannter Fehler';\n\nreturn [{\n  json: {\n    ...item,\n    errorMessage: 'Bei der Kommunikation mit dem lokalen Ollama-Modell ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.\\n\\nDetails: ' + rawMessage\n  }\n}];"
+        "jsCode": "const item = $input.item.json;\nconst rawError = item && item.error;\nconst rawMessage = typeof rawError === 'string'\n  ? rawError\n  : (rawError && rawError.message) ? rawError.message : 'Unbekannter Fehler';\n\nreturn [{\n  json: {\n    ...item,\n    errorMessage: 'Bei der Kommunikation mit dem lokalen Ollama-Modell ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.\\n\\nDetails: ' + rawMessage\n  }\n}];"
       },
       "id": "c1d2e3f4-99aa-4b1c-8d2e-3f4a5b6c7d8e",
       "name": "LLM-Fehler normalisieren",
@@ -251,7 +251,7 @@
       "typeVersion": 2,
       "position": [1120, 700],
       "notesInFlow": false,
-      "notes": "Normalisiert den Fehler-Output eines künftigen Chain-/Agent-Nodes (onError: continueErrorOutput, $json.error.message, wie zuvor 'Antwort von Ollama generieren' in question-answer-workflow.json) in eine verständliche errorMessage und leitet ihn in den bestehenden zentralen Fehlerpfad (Fehler anzeigen). Noch ohne eingehende Verbindung, da der Chain-/Agent-Node erst in einer späteren Story hinzugefügt wird — siehe n8n/README.md."
+      "notes": "Normalisiert den Fehler-Output eines künftigen Chain-/Agent-Nodes (onError: continueErrorOutput) in eine verständliche errorMessage und leitet ihn in den bestehenden zentralen Fehlerpfad (Fehler anzeigen). In n8n 2.35.7 liefert die Basic LLM Chain bei continueErrorOutput $json.error als String (json: { error: error.message }), nicht als Objekt mit .message — der Code behandelt daher robust sowohl den realen String-Shape als auch einen möglichen Objekt-Shape ($json.error.message). Noch ohne eingehende Verbindung, da der Chain-/Agent-Node erst in einer späteren Story hinzugefügt wird — siehe n8n/README.md."
     }
   ],
   "connections": {

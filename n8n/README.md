@@ -7,10 +7,10 @@ neuer paralleler Hauptworkflow angelegt, außer eine Story verlangt ausdrücklic
 einen technischen Subworkflow.
 
 Der Workflow entstand durch Konsolidierung der bisher separat entwickelten
-n8n-Workflows dieses Repositories. Die früheren Dateien
-`hello-world-workflow.json` und `question-answer-workflow.json` sind
-vollständig gegen den Hauptworkflow geprüft und aufgelöst worden und wurden
-danach aus dem Repository entfernt (siehe [Migration der
+n8n-Workflows dieses Repositories. Die beiden früheren Altworkflow-Dateien
+(ein Hello-World-Workflow und ein Frage-Antwort-Workflow) sind vollständig
+gegen den Hauptworkflow geprüft und aufgelöst worden und wurden danach aus
+dem Repository entfernt (siehe [Migration der
 Altworkflows](#migration-der-altworkflows) unten); `ai-sporting-director.json`
 ist jetzt die einzige n8n-Workflow-Datei in diesem Repository:
 
@@ -19,9 +19,9 @@ ist jetzt die einzige n8n-Workflow-Datei in diesem Repository:
 - Normalisierung, Validierung, die Dummy-Agentenantwort und die
   Ergebnis-/Fehleranzeige setzen die noch offene Story 34 direkt im
   Hauptworkflow um (bisher gab es dafür keinen eigenen Workflow).
-- Die Ollama-Konfiguration aus Story 32 (vormals
-  `question-answer-workflow.json`) ist als eigener, noch nicht verbundener
-  Node **Ollama Modell (Qwen3.8:latest)** in den Hauptworkflow übernommen.
+- Die Ollama-Konfiguration aus Story 32 (vormals im Frage-Antwort-Altworkflow)
+  ist als eigener, noch nicht verbundener Node **Ollama Modell
+  (Qwen3.8:latest)** in den Hauptworkflow übernommen.
   Sie bleibt die Grundlage für die spätere Story, in der der Dummy durch den
   echten AI Agent ersetzt wird — sie ersetzt den Dummy in diesem Workflow
   noch nicht.
@@ -67,8 +67,8 @@ Startformular → normalisieren → validieren → Dummy-Antwort → Ausgabe pr�
    - **falsch** → **Fehler anzeigen** (Form, Completion) — derselbe Node wie
      im Validierungsfehlerpfad — zeigt die `errorMessage` an; ein ungültiges
      Ergebnis wird nie als fachliche Empfehlung dargestellt.
-7. **Ollama Modell (Qwen3.8:latest)** (Ollama Chat Model, aus
-   `question-answer-workflow.json` übernommen) — liegt vorbereitet, aber
+7. **Ollama Modell (Qwen3.8:latest)** (Ollama Chat Model, aus dem
+   Frage-Antwort-Altworkflow übernommen) — liegt vorbereitet, aber
    bewusst noch **ohne Verbindung** im Workflow: Modell `Qwen3.8:latest`,
    Option **Think** aktiviert, Credential-Referenz `[cimt] Ollama` (nur der
    Name wird referenziert; die Credential-ID ist der unveränderte Platzhalter
@@ -76,15 +76,16 @@ Startformular → normalisieren → validieren → Dummy-Antwort → Ausgabe pr�
    Node dokumentiert seinen Zweck über eine Notiz direkt am Node.
 8. **LLM-Fehler normalisieren** (Code) — bereits jetzt im Hauptworkflow
    vorhanden und mit **Fehler anzeigen** verbunden, damit der zentrale
-   Fehlerpfad die Fehlerbehandlung aus `question-answer-workflow.json` ohne
-   weitere Implementierung übernehmen kann: der Node liest `error.message`
-   (das Format, das ein Chain-/Agent-Node bei `onError:
-   continueErrorOutput` liefert, wie zuvor **Antwort von Ollama
-   generieren**) und schreibt daraus dieselbe verständliche
-   Ollama-Fehlermeldung wie zuvor in `question-answer-workflow.json` in
-   `errorMessage`. Er hat noch **keine eingehende Verbindung**, da der
-   Chain-/Agent-Node, dessen Fehler-Output ihn speist, erst in der
-   künftigen Story hinzukommt, die den Dummy ersetzt.
+   Fehlerpfad die Fehlerbehandlung aus dem Frage-Antwort-Altworkflow ohne
+   weitere Implementierung übernehmen kann: der Node liest den Fehler-Output
+   eines Chain-/Agent-Nodes bei `onError: continueErrorOutput` robust sowohl
+   als String (`$json.error` — das reale Format, das n8n 2.35.7s **Basic LLM
+   Chain** liefert) als auch als Objekt (`$json.error.message`) und schreibt
+   daraus dieselbe verständliche Ollama-Fehlermeldung wie zuvor im
+   Frage-Antwort-Altworkflow in `errorMessage`. Er hat noch **keine
+   eingehende Verbindung**, da der Chain-/Agent-Node, dessen Fehler-Output
+   ihn speist, erst in der künftigen Story hinzukommt, die den Dummy
+   ersetzt.
 
 Die Struktur erlaubt, `Dummy-Antwort erzeugen` später durch den echten AI
 Agent zu ersetzen, ohne Formular, Normalisierung, Validierung,
@@ -93,7 +94,7 @@ müssen:
 
 - Ein künftiger Chain-/Agent-Node verbindet sich mit **Ollama Modell
   (Qwen3.8:latest)** als Sprachmodell (`ai_languageModel`-Input), genau wie
-  zuvor in `question-answer-workflow.json`.
+  zuvor im Frage-Antwort-Altworkflow.
 - Für kontrolliertes Fehler-Routing aktiviert dieser künftige Node
   `onError: continueErrorOutput` (wie zuvor **Antwort von Ollama
   generieren**) und verbindet seinen Fehler-Output (zweiter `main`-Output)
@@ -169,7 +170,7 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
 
 1. In a clean n8n instance (or after removing every other workflow),
    import only [`ai-sporting-director.json`](./ai-sporting-director.json) —
-   `n8n/hello-world-workflow.json` and `n8n/question-answer-workflow.json` no
+   the two legacy workflow files that used to live in this directory no
    longer exist in this repository, so there is nothing left to import
    alongside it.
    **Expected result:** the import succeeds without asking to resolve any
@@ -226,27 +227,36 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    positive and negative test cases above are unaffected by its presence.
 2. Open a test copy of the workflow, temporarily wire a manual trigger into
    **LLM-Fehler normalisieren** and run it once with the input item
-   `{ "error": { "message": "Verbindung zu Ollama fehlgeschlagen (Testfall)" } }`.
+   `{ "error": "Verbindung zu Ollama fehlgeschlagen (Testfall)" }` — the real
+   shape n8n 2.35.7's **Basic LLM Chain** produces on its error output when
+   `onError: continueErrorOutput` is set (`json: { error: error.message }`,
+   i.e. `$json.error` is a **string**, not an object).
    **Expected result:** the node's output contains `errorMessage` with the
    text "Bei der Kommunikation mit dem lokalen Ollama-Modell ist ein Fehler
    aufgetreten. Bitte versuchen Sie es später erneut.\n\nDetails:
    Verbindung zu Ollama fehlgeschlagen (Testfall)", i.e. the same message
-   shape `question-answer-workflow.json` used to show on its **Fehler
-   anzeigen** node.
-3. Repeat step 2 with an input item that has no `error` field.
+   shape the Frage-Antwort-Altworkflow used to show on its error-display
+   node.
+3. Repeat step 2 with the input item
+   `{ "error": { "message": "Verbindung zu Ollama fehlgeschlagen (Testfall)" } }`
+   (object shape, in case a future node ever produces it instead of a
+   string).
+   **Expected result:** the same `errorMessage` text as in step 2 — the node
+   still extracts the message correctly.
+4. Repeat step 2 with an input item that has no `error` field.
    **Expected result:** `errorMessage` falls back to "... Details:
    Unbekannter Fehler" instead of throwing.
 
 ## Migration der Altworkflows
 
-`n8n/hello-world-workflow.json` und `n8n/question-answer-workflow.json`
-wurden gegen die obige Analyse geprüft und danach aus dem Repository
-entfernt:
+Die beiden früheren Altworkflow-Dateien in diesem Verzeichnis (ein
+Hello-World-Workflow und ein Frage-Antwort-Workflow) wurden gegen die obige
+Analyse geprüft und danach aus dem Repository entfernt:
 
-- **`hello-world-workflow.json`** enthielt nur einen Manual Trigger und ein
+- **Der Hello-World-Altworkflow** enthielt nur einen Manual Trigger und ein
   statisches `Hello World`-Feld. Keine seiner Fähigkeiten wurde benötigt;
   die Datei wurde ersatzlos gelöscht.
-- **`question-answer-workflow.json`** enthielt ein generisches
+- **Der Frage-Antwort-Altworkflow** enthielt ein generisches
   Frage/Antwort-Formular mit einer echten Ollama-Anbindung. Das Formular und
   die einfache LLM-Chain sind durch den Hauptworkflow abgelöst und wurden
   nicht übernommen. Die Ollama-Konfiguration selbst (Modell
@@ -255,11 +265,12 @@ entfernt:
   Node **Ollama Modell (Qwen3.8:latest)** in `ai-sporting-director.json`
   übernommen, bevor die Datei gelöscht wurde. Das kontrollierte
   Fehler-Routing dieses Altworkflows (`onError: continueErrorOutput` am
-  Chain-Node, verständliche Fehleranzeige aus `error.message`) wurde
+  Chain-Node, verständliche Fehleranzeige aus dem Fehler-Output) wurde
   ebenfalls übernommen, als der oben beschriebene Node **LLM-Fehler
   normalisieren**, der bereits an den zentralen Fehlerpfad **Fehler
-  anzeigen** angeschlossen ist und nur noch auf den Fehler-Output des
-  künftigen Chain-/Agent-Nodes wartet.
+  anzeigen** angeschlossen ist, robust sowohl den String- als auch den
+  Objekt-Shape des Fehler-Outputs verarbeitet, und nur noch auf den
+  Fehler-Output des künftigen Chain-/Agent-Nodes wartet.
 
 `ai-sporting-director.json` ist damit die einzige n8n-Workflow-Datei in
 diesem Repository.
