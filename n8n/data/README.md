@@ -1,49 +1,49 @@
-# CSV-Referenzdaten für den Analytics-Adapter
+# Originaldaten für den Analytics-Adapter
 
-Diese beiden Dateien sind die kanonische, versionierte Datengrundlage für den
-CSV-Analytics-Adapter (siehe [`n8n/README.md`](../README.md), Abschnitt
-„CSV-Analytics-Adapter“). Sie sind exemplarische, in sich nicht als
-vollständiger Spielplan konsistente Referenzdaten für fünf Vereine
-(Hamburger SV, FC Bayern München, Borussia Dortmund, RB Leipzig, Bayer 04
-Leverkusen — dieselben fünf Vereine wie im `Verein`-Dropdown des
-Hauptworkflows) und dienen ausschließlich als Testgrundlage für den Adapter
-sowie als fachliche Referenz für die spätere Qlik-Umsetzung.
+Die CSV-Daten werden **nicht mehr im Repository gespiegelt und nicht mehr als JavaScript-Strings in n8n-Code-Nodes eingebettet**.
 
-- **`matches.csv`** — je Verein die letzten sechs Spiele, sortiert absteigend
-  nach `date` (neuestes Spiel zuerst). Spalten: `club`, `date`, `opponent`,
-  `homeAway` (`H`/`A`), `goalsFor`, `goalsAgainst`, `competition`.
-- **`players.csv`** — je Verein zehn Spieler (eine Position je
-  Kaderlinie: Torwart, zwei Innenverteidiger, Links-/Rechtsverteidiger,
-  Defensives/Zentrales/Offensives Mittelfeld, Linksaußen, Mittelstürmer).
-  Spalten: `club`, `name`, `position`, `age`, `marketValueMEUR`,
-  `appearances`, `goals`, `assists`, `minutesPlayed`, `yellowCards`,
-  `redCards`, `rating`.
+## Einmaliger Import in n8n
 
-Die vier n8n-Analytics-Subworkflows (`analytics-team-performance-subworkflow.json`,
-`analytics-team-matches-subworkflow.json`, `analytics-player-ranking-subworkflow.json`,
-`analytics-player-profile-subworkflow.json`) lesen **keine** Datei vom
-Dateisystem, sondern enthalten den Inhalt dieser beiden CSV-Dateien als
-eingebetteten String im jeweiligen Code-Node — n8n Code-Nodes haben keinen
-verlässlichen, deployment-unabhängigen Dateisystempfad auf dieses
-Repository.
+1. `n8n/import-scouting-data.json` in n8n importieren.
+2. Den Workflow `Scouting-Daten importieren` öffnen bzw. dessen Formular starten.
+3. Die vollständigen Originaldateien hochladen:
+   - `bundesliga_2025_26_match_analytics.csv`
+   - `players_data-2025_2026-full.csv`
+4. Der Workflow validiert die Dateien und schreibt sie in die persistente n8n Data Table `football_scouting_raw`.
 
-## Tooling in diesem Verzeichnis
+Ein erneuter Import ersetzt den jeweiligen vorhandenen Datensatz (`matches` bzw. `players`). Der eigentliche `AI Sporting Director` benötigt danach keinen Datei-Upload mehr.
 
-- **`build_subworkflows.js`** (`node n8n/data/build_subworkflows.js`) generiert
-  alle vier `n8n/analytics-*-subworkflow.json` neu aus `matches.csv` /
-  `players.csv` und der hier definierten Analytics-Logik. **Nach jeder
-  Änderung an einer der beiden CSV-Dateien oder an der Analytics-Logik selbst
-  muss dieses Skript erneut ausgeführt werden**, damit die eingebetteten
-  Kopien zeichengleich bleiben — das ist die einzige Stelle im Adapter, die
-  synchron gehalten werden muss, und entfällt vollständig, sobald die
-  Subworkflows durch echte Qlik-MCP-Aufrufe ersetzt werden.
-- **`verify-analytics.js`** (`node n8n/data/verify-analytics.js`) führt den in
-  jedem `analytics-*-subworkflow.json` erzeugten Code direkt mit Node.js aus
-  und prüft ihn gegen die beiden CSV-Dateien (u. a. Positionsfilter,
-  `rankingExcludeClub`, und dass unbekannte Vereine/Spieler/Positionen explizit
-  als solche ausgewiesen statt erfunden werden).
-- **`simulate_main_workflow.js`** (`node n8n/data/simulate_main_workflow.js`)
-  führt den kompletten Hauptworkflow (`../ai-sporting-director.json`) inklusive
-  aller vier Analytics-Subworkflows und des Recherche-Subworkflows als
-  Logiksimulation aus — für den HSV-Positivfall sowie für Bayern, Leverkusen
-  und einen unbekannten Verein (Formular-Bypass).
+## Schutz gegen Stichproben
+
+Der Import lehnt die frühere Mini-Datenbasis ausdrücklich ab:
+
+- Match-Daten: mindestens 300 Zeilen und exakt 18 Bundesliga-Vereine; erwartet werden 306 Spiele.
+- Player-Daten: mindestens 2.000 Zeilen; erwartet wird der vollständige Datensatz mit ungefähr 2.433 Spielern.
+- Erforderliche Kernspalten werden vor dem Import geprüft.
+
+## Speicherung
+
+`football_scouting_raw` besitzt bewusst nur wenige technische Spalten:
+
+- `dataset`: `matches` oder `players`
+- `rowNumber`: Position in der Originaldatei
+- `sourceFile`: kanonischer Dateiname
+- `importedAt`: Importzeitpunkt
+- `payload`: vollständige Originalzeile als JSON
+
+Dadurch bleiben auch die rund 267 Player-Spalten vollständig erhalten, ohne das Data-Table-Schema hart an die CSV-Struktur zu koppeln.
+
+## Analytics-Subworkflows
+
+Die bestehenden Subworkflow-IDs und Tool-Verträge bleiben stabil:
+
+- `analytics-team-performance-subworkflow.json`
+- `analytics-team-matches-subworkflow.json`
+- `analytics-player-ranking-subworkflow.json`
+- `analytics-player-profile-subworkflow.json`
+
+Sie lesen die importierten Originalzeilen aus `football_scouting_raw`. Die fachliche Schicht darüber muss daher beim späteren Wechsel zu Qlik MCP nicht neu entworfen werden.
+
+## Nicht mehr verwenden
+
+Die früheren `matches.csv`/`players.csv`, der Generator für eingebettete CSV-Strings und die darauf basierenden Simulationstests waren nur ein fünf Vereine umfassender Prototyp und sind für die Runtime-Datenquelle fachlich ungeeignet.
