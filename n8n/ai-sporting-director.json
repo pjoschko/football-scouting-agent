@@ -189,7 +189,7 @@
       "type": "n8n-nodes-base.form",
       "typeVersion": 1,
       "position": [
-        4890,
+        5840,
         80
       ]
     },
@@ -250,27 +250,131 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst perf = item.teamPerformance;\nconst matches = item.teamMatches;\n\n// Ersetzt den bisherigen Dummy durch eine echte, deterministische Auswertung\n// des CSV-Analytics-Adapters (Team-Performance abrufen / Team-Matches abrufen,\n// siehe n8n/README.md, Abschnitt \"CSV-Analytics-Adapter\"). Es wird explizit\n// keine Qlik-Analyse oder Websuche durchgefuehrt, und fuer einen unbekannten\n// Verein wird nichts erfunden - stattdessen wird das Fehlen der Datengrundlage\n// selbst zum (weiterhin schema-gueltigen) Ergebnis.\n//\n// diagnosisCategory fasst mainProblem maschinenlesbar zusammen\n// ('no_data' | 'defensive' | 'offensive' | 'neutral') - \"Spielerprofil\n// erzeugen\" nutzt sie, damit die simulierte Bedarfsermittlung tatsaechlich an\n// diese echte CSV-Diagnose gekoppelt ist, statt sie zu ignorieren.\nlet teamDiagnosis;\n\nif (!perf || !perf.dataAvailable) {\n  teamDiagnosis = {\n    simulated: false,\n    dataAvailable: false,\n    diagnosisCategory: 'no_data',\n    evidence: [\n      `Keine CSV-Analytics-Daten fuer '${item.club}' vorhanden (n8n/data/matches.csv) - es werden keine Ersatzwerte erfunden.`\n    ],\n    hypotheses: [\n      'Ohne Datengrundlage kann keine belastbare Hypothese zur sportlichen Situation abgeleitet werden.'\n    ],\n    mainProblem: `Fuer '${item.club}' liegen keine CSV-Analytics-Daten vor; auf dieser Datengrundlage ist keine Diagnose moeglich.`,\n    uncertainties: [\n      'Diese Aussage stammt aus dem CSV-Analytics-Adapter (n8n/data/matches.csv), nicht aus einer echten Qlik-Analyse oder Websuche.'\n    ]\n  };\n} else {\n  const diff = perf.avgGoalsAgainst - perf.avgGoalsFor;\n  let mainProblem;\n  let mainHypothesis;\n  let diagnosisCategory;\n  if (diff >= 0.5) {\n    diagnosisCategory = 'defensive';\n    mainProblem = `Primaer defensives Problem: ${item.club} kassiert im Schnitt ${perf.avgGoalsAgainst} Tore pro Spiel gegenueber nur ${perf.avgGoalsFor} erzielten Toren (letzte ${perf.matchesAnalyzed} Spiele, CSV-Analytics).`;\n    mainHypothesis = 'Die Defensive laesst im Schnitt deutlich mehr Tore zu, als die Offensive erzielt.';\n  } else if (perf.avgGoalsFor < 1) {\n    diagnosisCategory = 'offensive';\n    mainProblem = `Primaer offensives Problem: ${item.club} erzielt im Schnitt nur ${perf.avgGoalsFor} Tore pro Spiel (letzte ${perf.matchesAnalyzed} Spiele, CSV-Analytics).`;\n    mainHypothesis = 'Die Offensive erzielt im Schnitt zu wenige Tore, ohne dass die Defensive auffaellig schwaech ist.';\n  } else {\n    diagnosisCategory = 'neutral';\n    mainProblem = `Kein eindeutiger struktureller Schwerpunkt erkennbar: ${item.club} erzielt im Schnitt ${perf.avgGoalsFor} und kassiert ${perf.avgGoalsAgainst} Tore pro Spiel (letzte ${perf.matchesAnalyzed} Spiele, CSV-Analytics); eine vertiefte Einzelspieler- oder Kadertiefenanalyse waere naheliegend.`;\n    mainHypothesis = 'Offensive und Defensive liegen im Datensatz nah beieinander, kein einseitiger Trend erkennbar.';\n  }\n\n  const recentResults = (matches && Array.isArray(matches.matches))\n    ? matches.matches.map((m) => `${m.result} ${m.goalsFor}:${m.goalsAgainst} vs. ${m.opponent} (${m.date})`)\n    : [];\n\n  teamDiagnosis = {\n    simulated: false,\n    dataAvailable: true,\n    diagnosisCategory,\n    evidence: [\n      `Bilanz der letzten ${perf.matchesAnalyzed} Pflichtspiele: ${perf.wins}S/${perf.draws}U/${perf.losses}N, Tore ${perf.goalsFor}:${perf.goalsAgainst}, Punkte ${perf.points} (CSV-Analytics, matches.csv).`,\n      `Form (neuestes Spiel zuerst): ${perf.form.join('-')}.`,\n      ...recentResults\n    ],\n    hypotheses: [\n      mainHypothesis,\n      `Punkteschnitt der letzten ${perf.matchesAnalyzed} Spiele: ${(perf.points / perf.matchesAnalyzed).toFixed(2)} pro Spiel.`\n    ],\n    mainProblem,\n    uncertainties: [\n      `Diese Diagnose basiert auf dem CSV-Analytics-Adapter (n8n/data/matches.csv, letzte ${perf.matchesAnalyzed} Spiele), nicht auf der spaeteren Qlik-Anbindung; erwartbare Tore (xG), Spielkontext (Gegnerstaerke, Ausfaelle) und laengere Zeitraeume fehlen bislang.`\n    ]\n  };\n}\n\nreturn [{ json: { ...item, teamDiagnosis } }];"
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "15ca78f8-cond-1",
+              "leftValue": "={{ $json.teamPerformance.dataAvailable }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
-      "id": "01a30ee2-dddd-43d2-b255-e00438585476",
-      "name": "Teamdiagnose erzeugen",
-      "type": "n8n-nodes-base.code",
+      "id": "15ca78f8-96df-45ce-87d7-a5ecaa484c9c",
+      "name": "Teamdiagnose: Datenverfuegbarkeit pruefen",
+      "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
         1280,
         180
+      ],
+      "notesInFlow": false,
+      "notes": "Entscheidet, ob 'Teamdiagnose LLM' ueberhaupt aufgerufen wird: ohne CSV-Analytics-Daten (teamPerformance.dataAvailable === false) gibt es nichts, was ein LLM interpretieren koennte - dieser Fall bleibt bewusst der deterministische 'Teamdiagnose (keine Daten) erzeugen'-Pfad. Siehe n8n/README.md."
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\n// Wird nur erreicht, wenn teamPerformance.dataAvailable === false (Gate\n// \"Teamdiagnose: Datenverfuegbarkeit pruefen\" davor). Es gibt in diesem Fall\n// nichts, was ein LLM interpretieren koennte - die Ollama-Chain wird bewusst\n// NICHT aufgerufen, das Fehlen der Datengrundlage wird stattdessen selbst zum\n// (weiterhin schema-gueltigen) Ergebnis. Siehe n8n/README.md.\nconst teamDiagnosis = {\n  simulated: false,\n  dataAvailable: false,\n  diagnosisCategory: 'no_data',\n  evidence: [\n    `Keine CSV-Analytics-Daten fuer '${item.club}' vorhanden (n8n/data/matches.csv) - es werden keine Ersatzwerte erfunden.`\n  ],\n  leagueComparison: `Ohne Datengrundlage ist kein Ligavergleich fuer '${item.club}' moeglich.`,\n  hypotheses: [\n    'Ohne Datengrundlage kann keine belastbare Hypothese zur sportlichen Situation abgeleitet werden.'\n  ],\n  counterHypotheses: [],\n  mainProblem: `Fuer '${item.club}' liegen keine CSV-Analytics-Daten vor; auf dieser Datengrundlage ist keine Diagnose moeglich.`,\n  uncertainties: [\n    'Diese Aussage stammt aus dem CSV-Analytics-Adapter (n8n/data/matches.csv), nicht aus einer echten Qlik-Analyse oder Websuche.',\n    'Ohne Datengrundlage konnte kein LLM zur Interpretation herangezogen werden.'\n  ]\n};\n\nreturn [{ json: { ...item, teamDiagnosis } }];"
+      },
+      "id": "61a04ad1-727f-4673-9f6d-08edb34e8f6b",
+      "name": "Teamdiagnose (keine Daten) erzeugen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1470,
+        340
       ]
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst d = item.teamDiagnosis;\nconst errors = [];\n\nif (!d || typeof d !== 'object') {\n  errors.push('teamDiagnosis fehlt oder ist kein Objekt.');\n} else {\n  if (!Array.isArray(d.evidence) || d.evidence.length === 0) errors.push('teamDiagnosis.evidence fehlt oder ist leer.');\n  if (!Array.isArray(d.hypotheses) || d.hypotheses.length === 0) errors.push('teamDiagnosis.hypotheses fehlt oder ist leer.');\n  if (typeof d.mainProblem !== 'string' || !d.mainProblem.trim()) errors.push('teamDiagnosis.mainProblem fehlt.');\n  if (!Array.isArray(d.uncertainties)) errors.push('teamDiagnosis.uncertainties fehlt oder ist kein Array.');\n}\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die Teamdiagnose ist ungueltig und wird nicht als fachliche Grundlage verwendet.\\n\\n' + errors.join('\\n')\n  }\n}];"
+        "jsCode": "const item = $input.item.json;\nconst perf = item.teamPerformance;\nconst matches = item.teamMatches;\n\n// Bereitet die vom LLM zu interpretierenden GEGEBENEN FAKTEN vor: dieselbe\n// deterministische Faktenextraktion aus teamPerformance/teamMatches wie zuvor\n// (CSV-Analytics-Adapter, siehe n8n/README.md), aber OHNE die Interpretation\n// (Hypothesen, Hauptproblem, Ligavergleich, Gegenhypothesen) - die uebernimmt\n// jetzt \"Teamdiagnose LLM\". Diese Trennung stellt sicher, dass die Evidenz\n// ausschliesslich aus echten Kennzahlen besteht (nichts erfunden) und das LLM\n// erkennbar nur interpretiert statt selbst Zahlen zu erzeugen.\nconst recentResults = (matches && Array.isArray(matches.matches))\n  ? matches.matches.map((m) => `${m.result} ${m.goalsFor}:${m.goalsAgainst} vs. ${m.opponent} (${m.date})`)\n  : [];\n\nconst teamDiagnosisEvidence = [\n  `Bilanz der letzten ${perf.matchesAnalyzed} Pflichtspiele: ${perf.wins}S/${perf.draws}U/${perf.losses}N, Tore ${perf.goalsFor}:${perf.goalsAgainst}, Punkte ${perf.points} (CSV-Analytics, matches.csv).`,\n  `Form (neuestes Spiel zuerst): ${perf.form.join('-')}.`,\n  `Punkteschnitt der letzten ${perf.matchesAnalyzed} Spiele: ${(perf.points / perf.matchesAnalyzed).toFixed(2)} pro Spiel.`,\n  `Durchschnittliche Tore pro Spiel: ${perf.avgGoalsFor} erzielt, ${perf.avgGoalsAgainst} kassiert (Tordifferenz ${perf.goalDifference}).`,\n  ...recentResults\n];\n\nreturn [{ json: { ...item, teamDiagnosisEvidence } }];"
+      },
+      "id": "c75d215c-45b2-4e16-a4a9-a086df0d35cf",
+      "name": "Teamdiagnose: Evidenz aufbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1470,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Verein: {{ $json.club }}\nZielsetzung des Auftrags: {{ $json.objective }}\nZusaetzlicher Kontext: {{ $json.additionalContext || '(keiner)' }}\n\nGegebene Fakten aus dem CSV-Analytics-Adapter (bereits real berechnet - NICHT erfinden, nur interpretieren):\n{{ $json.teamDiagnosisEvidence.join('\\n') }}\n\nRohkennzahlen: avgGoalsFor={{ $json.teamPerformance.avgGoalsFor }}, avgGoalsAgainst={{ $json.teamPerformance.avgGoalsAgainst }}, Punkte={{ $json.teamPerformance.points }} aus {{ $json.teamPerformance.matchesAnalyzed }} Spielen.\n\nInterpretiere ausschliesslich auf Basis dieser Fakten (keine erfundenen Zahlen, keine externen Annahmen). Ordne die Lage genau einer von drei Kategorien zu: 'defensive' (mehr Gegentore als eigene Tore / auffaellige Anfaelligkeit), 'offensive' (zu wenige eigene Tore trotz stabilerer Defensive) oder 'neutral' (kein eindeutiger struktureller Schwerpunkt). Liefere zusaetzlich: einen Ligavergleich (wie diese Bilanz typischerweise im Vergleich zur Bundesliga-Konkurrenz einzuordnen ist), Hypothesen zur Ursache, Gegenhypothesen (plausible alternative Erklaerungen, die denselben Fakten ebenfalls nicht widersprechen), das Hauptproblem in einem Satz sowie Unsicherheiten (was diese Diagnose NICHT abdeckt, z. B. fehlende erwartbare Tore/xG, Gegnerstaerke, Verletzungen, kein Kontext zu anderen Vereinen).",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Du bist ein erfahrener Sporting-Director-Analyst. Du interpretierst ausschliesslich die dir gegebenen, bereits real berechneten Kennzahlen aus einem CSV-Analytics-Adapter. Du erfindest keine Zahlen und triffst keine Annahmen ueber Daten, die dir nicht vorliegen - wo Unsicherheit besteht, benennst du sie explizit statt sie zu verschweigen."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "id": "9778a722-d717-4f1c-9bfc-3f08a9bede6b",
+      "name": "Teamdiagnose LLM",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.6,
+      "onError": "continueErrorOutput",
+      "position": [
+        1660,
+        80
+      ],
+      "notesInFlow": false,
+      "notes": "Interpretiert die von 'Teamdiagnose: Evidenz aufbereiten' gelieferten Fakten (teamDiagnosisEvidence, teamPerformance, teamMatches) ueber das Ollama-Modell 'Ollama Modell (Qwen3.8:latest)' (ai_languageModel) und erzwingt die Ausgabestruktur ueber 'Teamdiagnose Output-Schema' (ai_outputParser). onError: continueErrorOutput leitet einen Fehler (z. B. Ollama nicht erreichbar) auf den zweiten Output an 'LLM-Fehler normalisieren' statt den Workflow abzubrechen. Siehe n8n/README.md."
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"required\": [\"diagnosisCategory\", \"leagueComparison\", \"hypotheses\", \"counterHypotheses\", \"mainProblem\", \"uncertainties\"],\n  \"properties\": {\n    \"diagnosisCategory\": { \"type\": \"string\", \"enum\": [\"defensive\", \"offensive\", \"neutral\"] },\n    \"leagueComparison\": { \"type\": \"string\" },\n    \"hypotheses\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n    \"counterHypotheses\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n    \"mainProblem\": { \"type\": \"string\" },\n    \"uncertainties\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } }\n  }\n}"
+      },
+      "id": "ab53e5d3-f5d6-4b12-bb6d-73335a413260",
+      "name": "Teamdiagnose Output-Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        1660,
+        280
+      ],
+      "notesInFlow": false,
+      "notes": "Erzwingt den Datenvertrag der Teamdiagnose-Interpretation (diagnosisCategory-Enum, leagueComparison, hypotheses, counterHypotheses, mainProblem, uncertainties). 'evidence' ist bewusst NICHT Teil dieses Schemas - die Evidenz bleibt deterministisch aus 'Teamdiagnose: Evidenz aufbereiten' und wird in 'Teamdiagnose zusammenfuehren' unveraendert uebernommen, damit Befund (Evidenz) und Interpretation (dieses Schema) nachweisbar getrennt bleiben."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Die Basic LLM Chain liefert bei aktivem Output Parser nur { output: <geparstes\n// Objekt> } als Main-Output zurueck, der Rest des Items (club, objective,\n// teamPerformance, teamMatches, teamDiagnosisEvidence, ...) geht dabei verloren.\n// $('Teamdiagnose: Evidenz aufbereiten') liefert das vollstaendige Item von\n// direkt vor dem Chain-Aufruf zurueck (n8n haelt den Output bereits gelaufener\n// Nodes fuer die Dauer der Execution vor) - siehe n8n/README.md.\nconst parsed = $input.item.json.output;\nconst original = $('Teamdiagnose: Evidenz aufbereiten').item.json;\n\nconst teamDiagnosis = {\n  simulated: false,\n  dataAvailable: true,\n  diagnosisCategory: parsed.diagnosisCategory,\n  // evidence bleibt der deterministisch berechnete Befund, NICHT die\n  // LLM-Ausgabe - Befund und Interpretation bleiben so getrennt.\n  evidence: original.teamDiagnosisEvidence,\n  leagueComparison: parsed.leagueComparison,\n  hypotheses: parsed.hypotheses,\n  counterHypotheses: parsed.counterHypotheses,\n  mainProblem: parsed.mainProblem,\n  uncertainties: parsed.uncertainties\n};\n\nreturn [{ json: { ...original, teamDiagnosis } }];"
+      },
+      "id": "0f828a67-13b9-4df7-9812-14360ce9ec0a",
+      "name": "Teamdiagnose zusammenfuehren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1850,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst d = item.teamDiagnosis;\nconst errors = [];\n\nif (!d || typeof d !== 'object') {\n  errors.push('teamDiagnosis fehlt oder ist kein Objekt.');\n} else {\n  if (!Array.isArray(d.evidence) || d.evidence.length === 0) errors.push('teamDiagnosis.evidence fehlt oder ist leer.');\n  if (typeof d.leagueComparison !== 'string' || !d.leagueComparison.trim()) errors.push('teamDiagnosis.leagueComparison fehlt.');\n  if (!Array.isArray(d.hypotheses) || d.hypotheses.length === 0) errors.push('teamDiagnosis.hypotheses fehlt oder ist leer.');\n  if (!Array.isArray(d.counterHypotheses)) errors.push('teamDiagnosis.counterHypotheses fehlt oder ist kein Array.');\n  if (typeof d.mainProblem !== 'string' || !d.mainProblem.trim()) errors.push('teamDiagnosis.mainProblem fehlt.');\n  if (!Array.isArray(d.uncertainties)) errors.push('teamDiagnosis.uncertainties fehlt oder ist kein Array.');\n}\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die Teamdiagnose ist ungueltig und wird nicht als fachliche Grundlage verwendet.\\n\\n' + errors.join('\\n')\n  }\n}];"
       },
       "id": "231819af-8957-4a69-881e-6e5ce2187a12",
       "name": "Teamdiagnose pruefen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1470,
+        2040,
         180
       ]
     },
@@ -304,33 +408,86 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        1660,
+        2230,
         180
       ]
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\n\n// Es gibt noch keinen echten AI-Agent-Schritt, der aus der Teamdiagnose ein\n// taktisches Anforderungsprofil ableitet - diese Stufe bleibt daher bewusst\n// simuliert (siehe n8n/README.md). Die Position wird aber NICHT mehr\n// vollstaendig unabhaengig von der echten CSV-Teamdiagnose gewaehlt: die\n// diagnosisCategory aus \"Teamdiagnose erzeugen\" (defensive/offensive/neutral/\n// no_data) grenzt den Positionspool sinnvoll ein - Defensivproblem sucht eine\n// defensive Position, Offensivproblem eine offensive Position. Nur wenn die\n// Diagnose keinen eindeutigen Schwerpunkt liefert (neutral/no_data), wird -\n// weiterhin ueber denselben generischen Hash aus club+objective, kein\n// Sonderfall fuer einen bestimmten Verein oder eine bestimmte Position - aus\n// allen Positionen gewaehlt.\nconst DEFENSIVE_POSITIONS = ['Innenverteidiger', 'Linksverteidiger', 'Rechtsverteidiger', 'Defensives Mittelfeld'];\nconst ATTACKING_POSITIONS = ['Offensives Mittelfeld', 'Linksaußen', 'Mittelstürmer'];\nconst ALL_POSITIONS = ['Innenverteidiger', 'Linksverteidiger', 'Rechtsverteidiger', 'Defensives Mittelfeld', 'Zentrales Mittelfeld', 'Offensives Mittelfeld', 'Linksaußen', 'Mittelstürmer'];\nconst ATTACKING_POSITIONS_SET = new Set(ATTACKING_POSITIONS);\nconst DEFENSIVE_POSITIONS_SET = new Set(DEFENSIVE_POSITIONS);\n\nfunction simpleHash(text) {\n  let hash = 0;\n  for (let i = 0; i < text.length; i++) {\n    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;\n  }\n  return hash;\n}\n\nconst diagnosisCategory = (item.teamDiagnosis && item.teamDiagnosis.diagnosisCategory) || 'no_data';\nconst candidatePositions = diagnosisCategory === 'defensive'\n  ? DEFENSIVE_POSITIONS\n  : diagnosisCategory === 'offensive'\n    ? ATTACKING_POSITIONS\n    : ALL_POSITIONS;\n\nconst position = candidatePositions[simpleHash(`${item.club}|${item.objective}`) % candidatePositions.length];\n\n// weightedCriteria verwendet bewusst dieselben Kriteriennamen, die Player-Ranking\n// (n8n/analytics-player-ranking-subworkflow.json) erkennt (goals, assists,\n// rating, appearances, age, minutesPlayed, marketValueMEUR), damit die\n// Bedarfs-Gewichtung tatsaechlich in die CSV-Rangliste einfliesst.\nconst weightedCriteria = ATTACKING_POSITIONS_SET.has(position)\n  ? [{ criterion: 'goals', weight: 0.5 }, { criterion: 'assists', weight: 0.3 }, { criterion: 'rating', weight: 0.2 }]\n  : DEFENSIVE_POSITIONS_SET.has(position)\n    ? [{ criterion: 'rating', weight: 0.5 }, { criterion: 'appearances', weight: 0.3 }, { criterion: 'age', weight: 0.2 }]\n    : [{ criterion: 'rating', weight: 0.4 }, { criterion: 'assists', weight: 0.3 }, { criterion: 'goals', weight: 0.3 }];\n\nconst playerProfile = {\n  simulated: true,\n  position,\n  role: `Simulierte taktische Rolle fuer die Position ${position}`,\n  reasoning: `Simulierte Begruendung auf Basis des Hauptproblems: ${item.teamDiagnosis.mainProblem}`,\n  weightedCriteria,\n  constraints: [\n    'Simulierter Constraint: Budgetobergrenze (Platzhalter)',\n    'Simulierter Constraint: Altersgrenze (Platzhalter)'\n  ]\n};\n\nreturn [{ json: { ...item, playerProfile } }];"
+        "jsCode": "const item = $input.item.json;\n\n// Grenzt den Positionspool generisch anhand der (jetzt LLM-erzeugten)\n// teamDiagnosis.diagnosisCategory ein - kein Sonderfall fuer einen bestimmten\n// Verein oder eine bestimmte Position (siehe n8n/README.md). \"Spielerprofil\n// LLM\" bekommt diesen Pool als verbindliche Vorgabe im Prompt; \"Spielerprofil\n// pruefen\" prueft zusaetzlich deterministisch, dass die vom LLM gewaehlte\n// Position tatsaechlich darin vorkommt (die Parser-Schema-Validierung allein\n// kann das nicht garantieren, da 'position' dort nur als String typisiert ist).\nconst DEFENSIVE_POSITIONS = ['Innenverteidiger', 'Linksverteidiger', 'Rechtsverteidiger', 'Defensives Mittelfeld'];\nconst ATTACKING_POSITIONS = ['Offensives Mittelfeld', 'Linksaußen', 'Mittelstürmer'];\nconst ALL_POSITIONS = ['Innenverteidiger', 'Linksverteidiger', 'Rechtsverteidiger', 'Defensives Mittelfeld', 'Zentrales Mittelfeld', 'Offensives Mittelfeld', 'Linksaußen', 'Mittelstürmer'];\n\nconst diagnosisCategory = (item.teamDiagnosis && item.teamDiagnosis.diagnosisCategory) || 'no_data';\nconst allowedPositions = diagnosisCategory === 'defensive'\n  ? DEFENSIVE_POSITIONS\n  : diagnosisCategory === 'offensive'\n    ? ATTACKING_POSITIONS\n    : ALL_POSITIONS;\n\nreturn [{ json: { ...item, allowedPositions } }];"
       },
-      "id": "48e551aa-6b98-4a3b-9f03-0727790e2fd7",
-      "name": "Spielerprofil erzeugen",
+      "id": "87438518-0835-4cd2-bc4d-730318e014c7",
+      "name": "Spielerprofil: Positionspool ermitteln",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1850,
+        2420,
         180
       ]
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst p = item.playerProfile;\nconst errors = [];\n\nif (!p || typeof p !== 'object') {\n  errors.push('playerProfile fehlt oder ist kein Objekt.');\n} else {\n  if (!p.position) errors.push('playerProfile.position fehlt.');\n  if (!p.role) errors.push('playerProfile.role fehlt.');\n  if (!p.reasoning) errors.push('playerProfile.reasoning fehlt.');\n  if (!Array.isArray(p.weightedCriteria) || p.weightedCriteria.length === 0) {\n    errors.push('playerProfile.weightedCriteria fehlt oder ist leer.');\n  } else if (p.weightedCriteria.some((c) => !c.criterion || typeof c.weight !== 'number')) {\n    errors.push('playerProfile.weightedCriteria enthaelt einen Eintrag ohne criterion oder numerisches weight.');\n  }\n  if (!Array.isArray(p.constraints)) errors.push('playerProfile.constraints fehlt oder ist kein Array.');\n}\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Das Spielerprofil ist ungueltig und wird nicht fuer die Spielersuche verwendet.\\n\\n' + errors.join('\\n')\n  }\n}];"
+        "promptType": "define",
+        "text": "=Verein: {{ $json.club }}\nZielsetzung des Auftrags: {{ $json.objective }}\nZusaetzlicher Kontext: {{ $json.additionalContext || '(keiner)' }}\n\nTeamdiagnose (bereits erstellt):\nHauptproblem: {{ $json.teamDiagnosis.mainProblem }}\nDiagnosekategorie: {{ $json.teamDiagnosis.diagnosisCategory }}\nHypothesen: {{ $json.teamDiagnosis.hypotheses.join('; ') }}\nGegenhypothesen: {{ $json.teamDiagnosis.counterHypotheses.join('; ') || '(keine)' }}\nLigavergleich: {{ $json.teamDiagnosis.leagueComparison }}\nUnsicherheiten: {{ $json.teamDiagnosis.uncertainties.join('; ') }}\n\nErlaubter Positionspool fuer diese Diagnose - waehle 'position' AUSSCHLIESSLICH aus dieser Liste, keine andere Position: {{ $json.allowedPositions.join(', ') }}\n\nLeite aus der Teamdiagnose ein strukturiertes Anforderungsprofil fuer die Spielersuche ab: die gesuchte 'position' (nur aus obiger Liste), eine kurze taktische 'role'-Beschreibung, 'weightedCriteria' (Gewichtung jeweils zwischen 0 und 1) ausschliesslich mit den Kriteriennamen goals, assists, rating, appearances, age, minutesPlayed, marketValueMEUR, 'constraints' (z. B. Budget- oder Altersrahmen, sofern aus dem zusaetzlichen Kontext ableitbar, sonst allgemein gehalten) und eine 'reasoning', die sich explizit auf das Hauptproblem der Teamdiagnose bezieht.",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Du bist ein erfahrener Sporting-Director-Analyst fuer Kaderplanung. Du leitest Anforderungsprofile ausschliesslich aus der dir gegebenen Teamdiagnose ab und haeltst dich strikt an den vorgegebenen Positionspool - du erfindest keine Position ausserhalb dieser Liste."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "id": "906bedd0-a1f4-4ccf-9159-a6722ae7805b",
+      "name": "Spielerprofil LLM",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.6,
+      "onError": "continueErrorOutput",
+      "position": [
+        2610,
+        180
+      ],
+      "notesInFlow": false,
+      "notes": "Leitet aus der (jetzt LLM-erzeugten) Teamdiagnose ein strukturiertes Bedarfsprofil ab, ueber dasselbe Ollama-Modell (ai_languageModel) wie 'Teamdiagnose LLM' und 'Spielerprofil Output-Schema' (ai_outputParser). onError: continueErrorOutput leitet Fehler an 'LLM-Fehler normalisieren'. Siehe n8n/README.md."
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"required\": [\"position\", \"role\", \"weightedCriteria\", \"constraints\", \"reasoning\"],\n  \"properties\": {\n    \"position\": { \"type\": \"string\" },\n    \"role\": { \"type\": \"string\" },\n    \"weightedCriteria\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\"criterion\", \"weight\"],\n        \"properties\": {\n          \"criterion\": { \"type\": \"string\", \"enum\": [\"goals\", \"assists\", \"rating\", \"appearances\", \"age\", \"minutesPlayed\", \"marketValueMEUR\"] },\n          \"weight\": { \"type\": \"number\" }\n        }\n      }\n    },\n    \"constraints\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n    \"reasoning\": { \"type\": \"string\" }\n  }\n}"
+      },
+      "id": "09457f55-f867-4e6a-bae7-483983e8c749",
+      "name": "Spielerprofil Output-Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        2610,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Die Basic LLM Chain liefert bei aktivem Output Parser nur { output: <geparstes\n// Objekt> } als Main-Output zurueck - $('Spielerprofil: Positionspool ermitteln')\n// liefert das vollstaendige Item von direkt vor dem Chain-Aufruf zurueck. Siehe\n// n8n/README.md sowie 'Teamdiagnose zusammenfuehren' fuer denselben Mechanismus.\nconst parsed = $input.item.json.output;\nconst original = $('Spielerprofil: Positionspool ermitteln').item.json;\n\nconst playerProfile = {\n  simulated: false,\n  position: parsed.position,\n  role: parsed.role,\n  weightedCriteria: parsed.weightedCriteria,\n  constraints: parsed.constraints,\n  reasoning: parsed.reasoning\n};\n\nreturn [{ json: { ...original, playerProfile } }];"
+      },
+      "id": "c3cd65d9-e092-4fba-ae2d-b5c6461aa2bf",
+      "name": "Spielerprofil zusammenfuehren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst p = item.playerProfile;\nconst errors = [];\n\nif (!p || typeof p !== 'object') {\n  errors.push('playerProfile fehlt oder ist kein Objekt.');\n} else {\n  if (!p.position) errors.push('playerProfile.position fehlt.');\n  if (!p.role) errors.push('playerProfile.role fehlt.');\n  if (!p.reasoning) errors.push('playerProfile.reasoning fehlt.');\n  if (!Array.isArray(p.weightedCriteria) || p.weightedCriteria.length === 0) {\n    errors.push('playerProfile.weightedCriteria fehlt oder ist leer.');\n  } else if (p.weightedCriteria.some((c) => !c.criterion || typeof c.weight !== 'number')) {\n    errors.push('playerProfile.weightedCriteria enthaelt einen Eintrag ohne criterion oder numerisches weight.');\n  }\n  if (!Array.isArray(p.constraints)) errors.push('playerProfile.constraints fehlt oder ist kein Array.');\n\n  // Generische Konsistenzpruefung (siehe n8n/README.md): das LLM darf keine\n  // Position ausserhalb des durch teamDiagnosis.diagnosisCategory vorgegebenen\n  // Pools waehlen. Die Parser-Schema-Validierung allein kann das nicht\n  // garantieren, da 'position' dort nur als String (nicht als von der Diagnose\n  // abhaengiges Enum) definiert ist - dieselbe Poolzuordnung wie in\n  // \"Spielerprofil: Positionspool ermitteln\", hier erneut dupliziert, da\n  // Code-Nodes keine gemeinsamen Hilfsfunktionen teilen koennen.\n  if (p && p.position) {\n    const DEFENSIVE_POSITIONS = ['Innenverteidiger', 'Linksverteidiger', 'Rechtsverteidiger', 'Defensives Mittelfeld'];\n    const ATTACKING_POSITIONS = ['Offensives Mittelfeld', 'Linksaußen', 'Mittelstürmer'];\n    const ALL_POSITIONS = ['Innenverteidiger', 'Linksverteidiger', 'Rechtsverteidiger', 'Defensives Mittelfeld', 'Zentrales Mittelfeld', 'Offensives Mittelfeld', 'Linksaußen', 'Mittelstürmer'];\n    const diagnosisCategory = (item.teamDiagnosis && item.teamDiagnosis.diagnosisCategory) || 'no_data';\n    const allowedPositions = diagnosisCategory === 'defensive'\n      ? DEFENSIVE_POSITIONS\n      : diagnosisCategory === 'offensive'\n        ? ATTACKING_POSITIONS\n        : ALL_POSITIONS;\n    if (!allowedPositions.includes(p.position)) {\n      errors.push(`playerProfile.position ('${p.position}') passt nicht zur Diagnosekategorie '${diagnosisCategory}' (erlaubt: ${allowedPositions.join(', ')}).`);\n    }\n  }\n}\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Das Spielerprofil ist ungueltig und wird nicht fuer die Spielersuche verwendet.\\n\\n' + errors.join('\\n')\n  }\n}];"
       },
       "id": "1cee025d-cb16-4445-b444-48448f704373",
       "name": "Spielerprofil pruefen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2040,
+        2990,
         180
       ]
     },
@@ -364,7 +521,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2230,
+        3180,
         180
       ]
     },
@@ -377,7 +534,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2610,
+        3560,
         180
       ]
     },
@@ -390,7 +547,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2800,
+        3750,
         180
       ]
     },
@@ -424,7 +581,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2990,
+        3940,
         180
       ]
     },
@@ -444,7 +601,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        3180,
+        4130,
         180
       ],
       "notesInFlow": false,
@@ -459,7 +616,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3370,
+        4320,
         180
       ]
     },
@@ -493,7 +650,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        3560,
+        4510,
         180
       ]
     },
@@ -506,7 +663,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3750,
+        4700,
         180
       ]
     },
@@ -519,7 +676,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4320,
+        5270,
         180
       ]
     },
@@ -553,7 +710,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        4510,
+        5460,
         180
       ]
     },
@@ -566,7 +723,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4700,
+        5650,
         80
       ]
     },
@@ -623,7 +780,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2230,
+        3180,
         80
       ]
     },
@@ -643,7 +800,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        2420,
+        3370,
         180
       ],
       "notesInFlow": false,
@@ -658,7 +815,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3810,
+        4760,
         80
       ]
     },
@@ -678,7 +835,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        3940,
+        4890,
         180
       ],
       "notesInFlow": false,
@@ -693,7 +850,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4130,
+        5080,
         180
       ]
     }
@@ -761,7 +918,76 @@
         ]
       ]
     },
-    "Teamdiagnose erzeugen": {
+    "Teamdiagnose: Datenverfuegbarkeit pruefen": {
+      "main": [
+        [
+          {
+            "node": "Teamdiagnose: Evidenz aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Teamdiagnose (keine Daten) erzeugen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teamdiagnose (keine Daten) erzeugen": {
+      "main": [
+        [
+          {
+            "node": "Teamdiagnose pruefen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teamdiagnose: Evidenz aufbereiten": {
+      "main": [
+        [
+          {
+            "node": "Teamdiagnose LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teamdiagnose LLM": {
+      "main": [
+        [
+          {
+            "node": "Teamdiagnose zusammenfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "LLM-Fehler normalisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teamdiagnose Output-Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Teamdiagnose LLM",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teamdiagnose zusammenfuehren": {
       "main": [
         [
           {
@@ -787,7 +1013,7 @@
       "main": [
         [
           {
-            "node": "Spielerprofil erzeugen",
+            "node": "Spielerprofil: Positionspool ermitteln",
             "type": "main",
             "index": 0
           }
@@ -801,7 +1027,47 @@
         ]
       ]
     },
-    "Spielerprofil erzeugen": {
+    "Spielerprofil: Positionspool ermitteln": {
+      "main": [
+        [
+          {
+            "node": "Spielerprofil LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielerprofil LLM": {
+      "main": [
+        [
+          {
+            "node": "Spielerprofil zusammenfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "LLM-Fehler normalisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielerprofil Output-Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Spielerprofil LLM",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielerprofil zusammenfuehren": {
       "main": [
         [
           {
@@ -987,8 +1253,24 @@
       "main": [
         [
           {
-            "node": "Teamdiagnose erzeugen",
+            "node": "Teamdiagnose: Datenverfuegbarkeit pruefen",
             "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Modell (Qwen3.8:latest)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Teamdiagnose LLM",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Spielerprofil LLM",
+            "type": "ai_languageModel",
             "index": 0
           }
         ]
