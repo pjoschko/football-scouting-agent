@@ -218,6 +218,27 @@
       "type": "n8n-nodes-base.form",
       "typeVersion": 1,
       "position": [1560, 460]
+    },
+    {
+      "parameters": {
+        "model": "Qwen3.8:latest",
+        "options": {
+          "think": true
+        }
+      },
+      "id": "8b2c4d6e-1f3a-4b5c-8d9e-0f1a2b3c4d5e",
+      "name": "Ollama Modell (Qwen3.8:latest)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [900, 700],
+      "notesInFlow": false,
+      "notes": "Vorbereitet für die spätere Story, die 'Dummy-Antwort erzeugen' durch den echten AI Agent ersetzt. Aus question-answer-workflow.json übernommen (Modell, Thinking, Credential-Referenz). Noch nicht verbunden — siehe n8n/README.md.",
+      "credentials": {
+        "ollamaApi": {
+          "id": "REPLACE_WITH_LOCAL_CREDENTIAL_ID",
+          "name": "[cimt] Ollama"
+        }
+      }
     }
   ],
   "connections": {
