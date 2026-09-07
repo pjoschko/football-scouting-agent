@@ -1,0 +1,52 @@
+{
+  "id": "68f47ebf-1e64-41a1-af75-b2afae2c0fbc",
+  "name": "Team-Matches (CSV)",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "f8b9f781-0aec-4d17-b72d-056bd3430447",
+      "name": "Wenn von anderem Workflow aufgerufen",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const MATCHES_CSV = `club,date,opponent,homeAway,goalsFor,goalsAgainst,competition\nHamburger SV,2026-08-30,Union Berlin,A,0,2,Bundesliga\nHamburger SV,2026-08-23,SC Freiburg,H,1,1,Bundesliga\nHamburger SV,2026-08-16,VfL Wolfsburg,A,0,3,Bundesliga\nHamburger SV,2026-08-09,1. FC Köln,H,2,2,Bundesliga\nHamburger SV,2026-08-02,Mainz 05,A,1,2,Bundesliga\nHamburger SV,2026-07-26,Werder Bremen,H,0,1,Bundesliga\nFC Bayern München,2026-08-30,RB Leipzig,H,3,1,Bundesliga\nFC Bayern München,2026-08-23,Bayer 04 Leverkusen,A,2,1,Bundesliga\nFC Bayern München,2026-08-16,Borussia Dortmund,H,4,0,Bundesliga\nFC Bayern München,2026-08-09,VfB Stuttgart,A,3,2,Bundesliga\nFC Bayern München,2026-08-02,Eintracht Frankfurt,H,2,0,Bundesliga\nFC Bayern München,2026-07-26,Borussia Mönchengladbach,A,1,1,Bundesliga\nBorussia Dortmund,2026-08-30,Bayer 04 Leverkusen,H,1,1,Bundesliga\nBorussia Dortmund,2026-08-23,RB Leipzig,A,2,3,Bundesliga\nBorussia Dortmund,2026-08-16,VfB Stuttgart,H,3,0,Bundesliga\nBorussia Dortmund,2026-08-09,Eintracht Frankfurt,A,1,1,Bundesliga\nBorussia Dortmund,2026-08-02,1. FC Union Berlin,H,2,2,Bundesliga\nBorussia Dortmund,2026-07-26,SC Freiburg,A,0,1,Bundesliga\nRB Leipzig,2026-08-30,FC Bayern München,A,1,3,Bundesliga\nRB Leipzig,2026-08-23,Borussia Dortmund,H,3,2,Bundesliga\nRB Leipzig,2026-08-16,Bayer 04 Leverkusen,A,2,2,Bundesliga\nRB Leipzig,2026-08-09,VfL Wolfsburg,H,4,0,Bundesliga\nRB Leipzig,2026-08-02,Mainz 05,A,2,1,Bundesliga\nRB Leipzig,2026-07-26,Werder Bremen,H,3,0,Bundesliga\nBayer 04 Leverkusen,2026-08-30,Borussia Dortmund,A,1,1,Bundesliga\nBayer 04 Leverkusen,2026-08-23,FC Bayern München,H,1,2,Bundesliga\nBayer 04 Leverkusen,2026-08-16,RB Leipzig,H,2,2,Bundesliga\nBayer 04 Leverkusen,2026-08-09,SC Freiburg,A,0,0,Bundesliga\nBayer 04 Leverkusen,2026-08-02,VfB Stuttgart,H,0,1,Bundesliga\nBayer 04 Leverkusen,2026-07-26,1. FC Köln,A,1,0,Bundesliga`;\n\nfunction parseCsv(text) {\n  const lines = text.replace(/\\r\\n/g, '\\n').trim().split('\\n');\n  const headers = lines[0].split(',');\n  return lines.slice(1).map((line) => {\n    const cols = line.split(',');\n    const row = {};\n    headers.forEach((h, i) => { row[h] = cols[i]; });\n    return row;\n  });\n}\n\n// CSV-Analytics-Adapter (temporaerer Ersatz fuer Qlik MCP, siehe n8n/README.md).\n// Tool-Vertrag: Input { club, matchLimit? }, Output { ...item, teamMatches }.\n// Der eingebettete MATCHES_CSV-String ist eine zeichengleiche Kopie von\n// n8n/data/matches.csv (siehe n8n/data/README.md).\nconst item = $input.item.json;\nconst club = (item.club || '').toString().trim();\nconst limit = Number.isFinite(item.matchLimit) && item.matchLimit > 0 ? Math.floor(item.matchLimit) : 10;\n\nconst matches = parseCsv(MATCHES_CSV)\n  .filter((r) => r.club === club)\n  .slice(0, limit)\n  .map((r) => {\n    const gf = Number(r.goalsFor), ga = Number(r.goalsAgainst);\n    return {\n      date: r.date,\n      opponent: r.opponent,\n      homeAway: r.homeAway,\n      goalsFor: gf,\n      goalsAgainst: ga,\n      result: gf > ga ? 'W' : (gf === ga ? 'D' : 'L'),\n      competition: r.competition\n    };\n  });\n\nconst teamMatches = {\n  club,\n  source: 'csv',\n  dataAvailable: matches.length > 0,\n  count: matches.length,\n  // Sortiert wie n8n/data/matches.csv: neuestes Spiel zuerst.\n  matches,\n  note: matches.length === 0 ? `Keine CSV-Match-Daten fuer Verein '${club}' vorhanden (n8n/data/matches.csv).` : undefined\n};\n\nreturn [{ json: { ...item, teamMatches } }];"
+      },
+      "id": "f32f1eb4-0920-405a-be50-9046d9e701fb",
+      "name": "CSV-Analytics ausfuehren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Wenn von anderem Workflow aufgerufen": {
+      "main": [
+        [
+          {
+            "node": "CSV-Analytics ausfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

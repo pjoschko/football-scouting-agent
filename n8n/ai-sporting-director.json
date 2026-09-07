@@ -189,7 +189,7 @@
       "type": "n8n-nodes-base.form",
       "typeVersion": 1,
       "position": [
-        3940,
+        4890,
         80
       ]
     },
@@ -250,14 +250,14 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\n\n// Deterministischer Dummy fuer die erste fachliche Stufe. Es wird explizit\n// keine echte Qlik-Analyse oder Websuche durchgefuehrt.\nconst teamDiagnosis = {\n  simulated: true,\n  evidence: [\n    `Dummy-Datenpunkt 1 zu ${item.club} (keine echte Qlik-Analyse durchgefuehrt)`,\n    `Dummy-Datenpunkt 2 zu ${item.club} (keine echte Websuche durchgefuehrt)`\n  ],\n  hypotheses: [\n    'Simulierte Hypothese A zur sportlichen Situation',\n    'Simulierte Hypothese B zur sportlichen Situation'\n  ],\n  mainProblem: `Simuliertes Hauptproblem fuer ${item.club}: ${item.objective}`,\n  uncertainties: [\n    'Es wurden keine echten Daten verwendet, die Diagnose ist rein simuliert.'\n  ]\n};\n\nreturn [{ json: { ...item, teamDiagnosis } }];"
+        "jsCode": "const item = $input.item.json;\nconst perf = item.teamPerformance;\nconst matches = item.teamMatches;\n\n// Ersetzt den bisherigen Dummy durch eine echte, deterministische Auswertung\n// des CSV-Analytics-Adapters (Team-Performance abrufen / Team-Matches abrufen,\n// siehe n8n/README.md, Abschnitt \"CSV-Analytics-Adapter\"). Es wird explizit\n// keine Qlik-Analyse oder Websuche durchgefuehrt, und fuer einen unbekannten\n// Verein wird nichts erfunden - stattdessen wird das Fehlen der Datengrundlage\n// selbst zum (weiterhin schema-gueltigen) Ergebnis.\nlet teamDiagnosis;\n\nif (!perf || !perf.dataAvailable) {\n  teamDiagnosis = {\n    simulated: false,\n    dataAvailable: false,\n    evidence: [\n      `Keine CSV-Analytics-Daten fuer '${item.club}' vorhanden (n8n/data/matches.csv) - es werden keine Ersatzwerte erfunden.`\n    ],\n    hypotheses: [\n      'Ohne Datengrundlage kann keine belastbare Hypothese zur sportlichen Situation abgeleitet werden.'\n    ],\n    mainProblem: `Fuer '${item.club}' liegen keine CSV-Analytics-Daten vor; auf dieser Datengrundlage ist keine Diagnose moeglich.`,\n    uncertainties: [\n      'Diese Aussage stammt aus dem CSV-Analytics-Adapter (n8n/data/matches.csv), nicht aus einer echten Qlik-Analyse oder Websuche.'\n    ]\n  };\n} else {\n  const diff = perf.avgGoalsAgainst - perf.avgGoalsFor;\n  let mainProblem;\n  let mainHypothesis;\n  if (diff >= 0.5) {\n    mainProblem = `Primaer defensives Problem: ${item.club} kassiert im Schnitt ${perf.avgGoalsAgainst} Tore pro Spiel gegenueber nur ${perf.avgGoalsFor} erzielten Toren (letzte ${perf.matchesAnalyzed} Spiele, CSV-Analytics).`;\n    mainHypothesis = 'Die Defensive laesst im Schnitt deutlich mehr Tore zu, als die Offensive erzielt.';\n  } else if (perf.avgGoalsFor < 1) {\n    mainProblem = `Primaer offensives Problem: ${item.club} erzielt im Schnitt nur ${perf.avgGoalsFor} Tore pro Spiel (letzte ${perf.matchesAnalyzed} Spiele, CSV-Analytics).`;\n    mainHypothesis = 'Die Offensive erzielt im Schnitt zu wenige Tore, ohne dass die Defensive auffaellig schwaech ist.';\n  } else {\n    mainProblem = `Kein eindeutiger struktureller Schwerpunkt erkennbar: ${item.club} erzielt im Schnitt ${perf.avgGoalsFor} und kassiert ${perf.avgGoalsAgainst} Tore pro Spiel (letzte ${perf.matchesAnalyzed} Spiele, CSV-Analytics); eine vertiefte Einzelspieler- oder Kadertiefenanalyse waere naheliegend.`;\n    mainHypothesis = 'Offensive und Defensive liegen im Datensatz nah beieinander, kein einseitiger Trend erkennbar.';\n  }\n\n  const recentResults = (matches && Array.isArray(matches.matches))\n    ? matches.matches.map((m) => `${m.result} ${m.goalsFor}:${m.goalsAgainst} vs. ${m.opponent} (${m.date})`)\n    : [];\n\n  teamDiagnosis = {\n    simulated: false,\n    dataAvailable: true,\n    evidence: [\n      `Bilanz der letzten ${perf.matchesAnalyzed} Pflichtspiele: ${perf.wins}S/${perf.draws}U/${perf.losses}N, Tore ${perf.goalsFor}:${perf.goalsAgainst}, Punkte ${perf.points} (CSV-Analytics, matches.csv).`,\n      `Form (neuestes Spiel zuerst): ${perf.form.join('-')}.`,\n      ...recentResults\n    ],\n    hypotheses: [\n      mainHypothesis,\n      `Punkteschnitt der letzten ${perf.matchesAnalyzed} Spiele: ${(perf.points / perf.matchesAnalyzed).toFixed(2)} pro Spiel.`\n    ],\n    mainProblem,\n    uncertainties: [\n      `Diese Diagnose basiert auf dem CSV-Analytics-Adapter (n8n/data/matches.csv, letzte ${perf.matchesAnalyzed} Spiele), nicht auf der spaeteren Qlik-Anbindung; erwartbare Tore (xG), Spielkontext (Gegnerstaerke, Ausfaelle) und laengere Zeitraeume fehlen bislang.`\n    ]\n  };\n}\n\nreturn [{ json: { ...item, teamDiagnosis } }];\n"
       },
       "id": "01a30ee2-dddd-43d2-b255-e00438585476",
       "name": "Teamdiagnose erzeugen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        900,
+        1280,
         180
       ]
     },
@@ -270,7 +270,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1090,
+        1470,
         180
       ]
     },
@@ -304,20 +304,20 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        1280,
+        1660,
         180
       ]
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\n\nconst playerProfile = {\n  simulated: true,\n  position: 'Simulierte Position',\n  role: 'Simulierte taktische Rolle',\n  reasoning: `Simulierte Begruendung auf Basis des Hauptproblems: ${item.teamDiagnosis.mainProblem}`,\n  weightedCriteria: [\n    { criterion: 'Simuliertes Kriterium 1', weight: 0.6 },\n    { criterion: 'Simuliertes Kriterium 2', weight: 0.4 }\n  ],\n  constraints: [\n    'Simulierter Constraint: Budgetobergrenze (Platzhalter)',\n    'Simulierter Constraint: Altersgrenze (Platzhalter)'\n  ]\n};\n\nreturn [{ json: { ...item, playerProfile } }];"
+        "jsCode": "const item = $input.item.json;\n\n// Es gibt noch keinen echten AI-Agent-Schritt, der aus der Teamdiagnose ein\n// taktisches Anforderungsprofil ableitet - diese Stufe bleibt daher bewusst\n// simuliert (siehe n8n/README.md). Damit die jetzt echte, CSV-basierte\n// Spielersuche (Player-Ranking abrufen) trotzdem mit einer tatsaechlich im\n// Kader vorkommenden Position und mit von ihr erkannten Kriterien arbeiten\n// kann, wird die Position ueber einen einfachen, generischen Hash aus\n// club+objective ausgewaehlt - kein Sonderfall fuer einen bestimmten Verein\n// oder eine bestimmte Position.\nconst POSITIONS = ['Innenverteidiger', 'Linksverteidiger', 'Rechtsverteidiger', 'Defensives Mittelfeld', 'Zentrales Mittelfeld', 'Offensives Mittelfeld', 'Linksaußen', 'Mittelstürmer'];\nconst ATTACKING_POSITIONS = new Set(['Offensives Mittelfeld', 'Linksaußen', 'Mittelstürmer']);\nconst DEFENSIVE_POSITIONS = new Set(['Innenverteidiger', 'Linksverteidiger', 'Rechtsverteidiger']);\n\nfunction simpleHash(text) {\n  let hash = 0;\n  for (let i = 0; i < text.length; i++) {\n    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;\n  }\n  return hash;\n}\n\nconst position = POSITIONS[simpleHash(`${item.club}|${item.objective}`) % POSITIONS.length];\n\n// weightedCriteria verwendet bewusst dieselben Kriteriennamen, die Player-Ranking\n// (n8n/analytics-player-ranking-subworkflow.json) erkennt (goals, assists,\n// rating, appearances, age, minutesPlayed, marketValueMEUR), damit die\n// Bedarfs-Gewichtung tatsaechlich in die CSV-Rangliste einfliesst.\nconst weightedCriteria = ATTACKING_POSITIONS.has(position)\n  ? [{ criterion: 'goals', weight: 0.5 }, { criterion: 'assists', weight: 0.3 }, { criterion: 'rating', weight: 0.2 }]\n  : DEFENSIVE_POSITIONS.has(position)\n    ? [{ criterion: 'rating', weight: 0.5 }, { criterion: 'appearances', weight: 0.3 }, { criterion: 'age', weight: 0.2 }]\n    : [{ criterion: 'rating', weight: 0.4 }, { criterion: 'assists', weight: 0.3 }, { criterion: 'goals', weight: 0.3 }];\n\nconst playerProfile = {\n  simulated: true,\n  position,\n  role: `Simulierte taktische Rolle fuer die Position ${position}`,\n  reasoning: `Simulierte Begruendung auf Basis des Hauptproblems: ${item.teamDiagnosis.mainProblem}`,\n  weightedCriteria,\n  constraints: [\n    'Simulierter Constraint: Budgetobergrenze (Platzhalter)',\n    'Simulierter Constraint: Altersgrenze (Platzhalter)'\n  ]\n};\n\nreturn [{ json: { ...item, playerProfile } }];\n"
       },
       "id": "48e551aa-6b98-4a3b-9f03-0727790e2fd7",
       "name": "Spielerprofil erzeugen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1470,
+        1850,
         180
       ]
     },
@@ -330,7 +330,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1660,
+        2040,
         180
       ]
     },
@@ -364,20 +364,20 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        1850,
+        2230,
         180
       ]
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\n\nconst candidateNames = ['Dummy-Spieler A', 'Dummy-Spieler B', 'Dummy-Spieler C'];\n\nconst shortlist = candidateNames.map((name, idx) => ({\n  name,\n  score: Math.round((0.9 - idx * 0.1) * 100) / 100,\n  strengths: [`Simulierte Staerke ${idx + 1}a`, `Simulierte Staerke ${idx + 1}b`],\n  weaknesses: [`Simulierte Schwaeche ${idx + 1}`],\n  evidence: [`Simulierter Beleg zu ${name} (keine echte Recherche)`]\n}));\n\nconst playerSearch = {\n  simulated: true,\n  longlistSize: 12,\n  shortlist\n};\n\nreturn [{ json: { ...item, playerSearch } }];"
+        "jsCode": "const item = $input.item.json;\nconst ranking = item.playerRanking;\n\n// Ersetzt den bisherigen Dummy durch eine echte Auswertung des CSV-Analytics-\n// Adapters (Player-Ranking abrufen, siehe n8n/README.md, Abschnitt\n// \"CSV-Analytics-Adapter\"). Es werden keine Kandidaten erfunden: liefert der\n// Adapter keine Ranglisten-Eintraege (z. B. weil der komplette Markt - alle\n// Vereine ausser dem eigenen - fuer die Anfrage leer ist), bleibt shortlist\n// leer und das nachfolgende Gate \"Spielersuche gueltig?\" greift.\nif (!ranking || !ranking.dataAvailable || !Array.isArray(ranking.ranking) || ranking.ranking.length === 0) {\n  const playerSearch = {\n    simulated: false,\n    dataAvailable: false,\n    longlistSize: 0,\n    shortlist: []\n  };\n  return [{ json: { ...item, playerSearch } }];\n}\n\nconst pool = ranking.ranking;\nconst statFields = Object.keys(pool[0].stats).filter((f) => f !== 'age');\nconst poolAverage = {};\nstatFields.forEach((field) => {\n  poolAverage[field] = pool.reduce((sum, p) => sum + p.stats[field], 0) / pool.length;\n});\n\nconst shortlist = pool.slice(0, 5).map((candidate) => {\n  const strengths = [];\n  const weaknesses = [];\n  statFields.forEach((field) => {\n    const avg = poolAverage[field];\n    if (candidate.stats[field] > avg) strengths.push(`${field}: ${candidate.stats[field]} (Pool-Schnitt ${avg.toFixed(2)})`);\n    else if (candidate.stats[field] < avg) weaknesses.push(`${field}: ${candidate.stats[field]} (Pool-Schnitt ${avg.toFixed(2)})`);\n  });\n\n  return {\n    name: candidate.name,\n    score: candidate.score,\n    strengths: strengths.length > 0 ? strengths : [`Score ${candidate.score} im CSV-Player-Ranking (${ranking.excludeClub ? 'ohne ' + ranking.excludeClub : ranking.club || 'alle Vereine'}${ranking.position ? ', ' + ranking.position : ''}).`],\n    weaknesses: weaknesses.length > 0 ? weaknesses : ['Keine auffaelligen Schwaechen gegenueber dem betrachteten CSV-Pool.'],\n    evidence: [`CSV-Datenpunkt (players.csv): ${candidate.club}, ${candidate.position}, Alter ${candidate.age}, Rating ${candidate.stats.rating}, ${candidate.stats.goals} Tore, ${candidate.stats.assists} Vorlagen in ${candidate.stats.appearances} Einsaetzen.`]\n  };\n});\n\nconst playerSearch = {\n  simulated: false,\n  dataAvailable: true,\n  longlistSize: ranking.poolSize,\n  shortlist\n};\n\nreturn [{ json: { ...item, playerSearch } }];\n"
       },
       "id": "084953e2-07d9-4a9d-8c5d-abd484c45c63",
       "name": "Spielersuche durchfuehren",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2040,
+        2610,
         180
       ]
     },
@@ -390,7 +390,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2230,
+        2800,
         180
       ]
     },
@@ -424,7 +424,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2420,
+        2990,
         180
       ]
     },
@@ -444,7 +444,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        2610,
+        3180,
         180
       ],
       "notesInFlow": false,
@@ -459,7 +459,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2800,
+        3370,
         180
       ]
     },
@@ -493,7 +493,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2990,
+        3560,
         180
       ]
     },
@@ -506,7 +506,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3180,
+        3750,
         180
       ]
     },
@@ -519,7 +519,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3370,
+        4320,
         180
       ]
     },
@@ -553,21 +553,148 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        3560,
+        4510,
         180
       ]
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst d = item.teamDiagnosis;\nconst p = item.playerProfile;\nconst s = item.playerSearch;\nconst research = item.research || [];\nconst r = item.recommendation;\n\nconst section = (title, lines) => `— ${title} —\\n${lines.join('\\n')}`;\n\nconst researchLines = research.map((x) => `${x.candidate}: ${x.club}, ${x.contract}, ${x.marketValue}, ${x.injuries} (Quelle: ${x.source}, ${x.timestamp}, Konfidenz ${x.confidence})`);\n\nconst formattedResult = [\n  `Verein: ${item.club}`,\n  `Auftrag: ${item.objective}`,\n  item.additionalContext ? `Zusaetzlicher Kontext: ${item.additionalContext}` : null,\n  '',\n  '⚠ Hinweis: Alle folgenden Abschnitte sind simulierte Dummy-Ergebnisse, keine echte Analyse.',\n  '',\n  section('Teamdiagnose', [`Hauptproblem: ${d.mainProblem}`, ...d.hypotheses.map((h) => `Hypothese: ${h}`)]),\n  '',\n  section('Spielerprofil', [`Position: ${p.position}`, `Rolle: ${p.role}`, `Begruendung: ${p.reasoning}`]),\n  '',\n  section('Spielersuche', [`Longlist-Groesse: ${s.longlistSize}`, ...s.shortlist.map((c) => `${c.name} (Score ${c.score})`)]),\n  '',\n  section('Recherche', researchLines),\n  '',\n  section('Empfehlung', [`Bevorzugter Kandidat: ${r.candidate}`, `Begruendung: ${r.reasoning}`, `Naechster Schritt: ${r.nextStep}`])\n].filter((line) => line !== null).join('\\n');\n\nreturn [{ json: { ...item, formattedResult } }];"
+        "jsCode": "const item = $input.item.json;\nconst d = item.teamDiagnosis;\nconst p = item.playerProfile;\nconst s = item.playerSearch;\nconst research = item.research || [];\nconst r = item.recommendation;\n\nconst section = (title, lines) => `— ${title} —\\n${lines.join('\\n')}`;\n\nconst researchLines = research.map((x) => `${x.candidate}: ${x.club}, ${x.contract}, ${x.marketValue}, ${x.injuries} (Quelle: ${x.source}, ${x.timestamp}, Konfidenz ${x.confidence})`);\n\nconst empfehlungLines = [`Bevorzugter Kandidat: ${r.candidate}`, `Begruendung: ${r.reasoning}`, `Naechster Schritt: ${r.nextStep}`];\nif (r.candidateProfile) {\n  const cp = r.candidateProfile;\n  empfehlungLines.push(`CSV-Profil (players.csv): ${cp.club}, ${cp.position}, Alter ${cp.age}, Rating ${cp.rating}, ${cp.goals} Tore, ${cp.assists} Vorlagen in ${cp.appearances} Einsaetzen.`);\n}\n\nconst formattedResult = [\n  `Verein: ${item.club}`,\n  `Auftrag: ${item.objective}`,\n  item.additionalContext ? `Zusaetzlicher Kontext: ${item.additionalContext}` : null,\n  '',\n  '⚠ Hinweis: Teamdiagnose und Spielersuche basieren auf dem CSV-Analytics-Adapter (Referenzdaten, siehe n8n/data/README.md) statt auf einer echten Qlik-Anbindung. Spielerprofil (Bedarfsermittlung) und Recherche sind weiterhin vollstaendig simulierte Dummy-Ergebnisse.',\n  '',\n  section('Teamdiagnose', [`Hauptproblem: ${d.mainProblem}`, ...d.hypotheses.map((h) => `Hypothese: ${h}`)]),\n  '',\n  section('Spielerprofil', [`Position: ${p.position}`, `Rolle: ${p.role}`, `Begruendung: ${p.reasoning}`]),\n  '',\n  section('Spielersuche', [`Longlist-Groesse: ${s.longlistSize}`, ...s.shortlist.map((c) => `${c.name} (Score ${c.score})`)]),\n  '',\n  section('Recherche', researchLines),\n  '',\n  section('Empfehlung', empfehlungLines)\n].filter((line) => line !== null).join('\\n');\n\nreturn [{ json: { ...item, formattedResult } }];\n"
       },
       "id": "d916f616-e4b5-4778-bfb9-062631952b76",
       "name": "Ergebnisseiten aufbereiten",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3750,
+        4700,
         80
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "e7a415a1-6e8b-4f26-a724-3f728588c6b3",
+          "mode": "list",
+          "cachedResultName": "Team-Performance (CSV)"
+        },
+        "options": {}
+      },
+      "id": "320aaa80-817a-4414-aded-288f125ef423",
+      "name": "Team-Performance abrufen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        900,
+        180
+      ],
+      "notesInFlow": false,
+      "notes": "CSV-Analytics-Adapter (temporaerer Ersatz fuer Qlik MCP): ruft n8n/analytics-team-performance-subworkflow.json ueber dessen feste Top-Level-ID auf und reichert das Item um teamPerformance an. Siehe n8n/README.md, Abschnitt \"CSV-Analytics-Adapter\"."
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "68f47ebf-1e64-41a1-af75-b2afae2c0fbc",
+          "mode": "list",
+          "cachedResultName": "Team-Matches (CSV)"
+        },
+        "options": {}
+      },
+      "id": "16f022b1-04a0-44ae-8ac9-20368d75ea71",
+      "name": "Team-Matches abrufen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1090,
+        180
+      ],
+      "notesInFlow": false,
+      "notes": "CSV-Analytics-Adapter (temporaerer Ersatz fuer Qlik MCP): ruft n8n/analytics-team-matches-subworkflow.json ueber dessen feste Top-Level-ID auf und reichert das Item um teamMatches an. Siehe n8n/README.md, Abschnitt \"CSV-Analytics-Adapter\"."
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst p = item.playerProfile;\n\nreturn [{\n  json: {\n    ...item,\n    rankingExcludeClub: item.club,\n    position: p.position,\n    criteria: p.weightedCriteria,\n    limit: 5\n  }\n}];"
+      },
+      "id": "f97d626f-2224-4844-a279-8f791b70151f",
+      "name": "Player-Ranking-Anfrage vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2230,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "5e50b3ea-5e60-436f-b8bd-77957b54355a",
+          "mode": "list",
+          "cachedResultName": "Player-Ranking (CSV)"
+        },
+        "options": {}
+      },
+      "id": "26c50a98-a512-43a7-a0c5-852d30e1c186",
+      "name": "Player-Ranking abrufen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2420,
+        180
+      ],
+      "notesInFlow": false,
+      "notes": "CSV-Analytics-Adapter (temporaerer Ersatz fuer Qlik MCP): ruft n8n/analytics-player-ranking-subworkflow.json ueber dessen feste Top-Level-ID auf. Uebergibt excludeClub statt club, da die Spielersuche ausserhalb des eigenen Kaders sucht (kein Sonderfall fuer einen bestimmten Verein). Reichert das Item um playerRanking an. Siehe n8n/README.md, Abschnitt \"CSV-Analytics-Adapter\"."
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nreturn [{ json: { ...item, playerName: item.recommendation.candidate } }];"
+      },
+      "id": "f37f151f-fdd4-47a3-b9a2-531ab79f0675",
+      "name": "Player-Profil-Anfrage vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3810,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "d6f31473-12f9-40a2-b935-ca998397142e",
+          "mode": "list",
+          "cachedResultName": "Player-Profil (CSV)"
+        },
+        "options": {}
+      },
+      "id": "14a78354-7e5c-41e4-95c9-e48de5613b15",
+      "name": "Player-Profil abrufen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3940,
+        180
+      ],
+      "notesInFlow": false,
+      "notes": "CSV-Analytics-Adapter (temporaerer Ersatz fuer Qlik MCP): ruft n8n/analytics-player-profile-subworkflow.json ueber dessen feste Top-Level-ID auf, um den von \"Empfehlung erzeugen\" gewaehlten Kandidaten nachzuschlagen. Reichert das Item um playerProfileLookup an. Siehe n8n/README.md, Abschnitt \"CSV-Analytics-Adapter\"."
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst lookup = item.playerProfileLookup;\n\nconst recommendation = {\n  ...item.recommendation,\n  candidateProfile: (lookup && lookup.found) ? lookup.profile : null\n};\n\nreturn [{ json: { ...item, recommendation } }];"
+      },
+      "id": "e01e339f-794b-45f5-afa5-1908fca02f26",
+      "name": "Empfehlung anreichern",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4130,
+        180
       ]
     }
   ],
@@ -598,7 +725,7 @@
       "main": [
         [
           {
-            "node": "Teamdiagnose erzeugen",
+            "node": "Team-Performance abrufen",
             "type": "main",
             "index": 0
           }
@@ -700,7 +827,7 @@
       "main": [
         [
           {
-            "node": "Spielersuche durchfuehren",
+            "node": "Player-Ranking-Anfrage vorbereiten",
             "type": "main",
             "index": 0
           }
@@ -798,7 +925,7 @@
       "main": [
         [
           {
-            "node": "Final Validation",
+            "node": "Player-Profil-Anfrage vorbereiten",
             "type": "main",
             "index": 0
           }
@@ -839,6 +966,83 @@
         [
           {
             "node": "Ergebnis anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Team-Performance abrufen": {
+      "main": [
+        [
+          {
+            "node": "Team-Matches abrufen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Team-Matches abrufen": {
+      "main": [
+        [
+          {
+            "node": "Teamdiagnose erzeugen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Player-Ranking-Anfrage vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Player-Ranking abrufen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Player-Ranking abrufen": {
+      "main": [
+        [
+          {
+            "node": "Spielersuche durchfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Player-Profil-Anfrage vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Player-Profil abrufen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Player-Profil abrufen": {
+      "main": [
+        [
+          {
+            "node": "Empfehlung anreichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Empfehlung anreichern": {
+      "main": [
+        [
+          {
+            "node": "Final Validation",
             "type": "main",
             "index": 0
           }

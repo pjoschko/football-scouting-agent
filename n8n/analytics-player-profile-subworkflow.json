@@ -1,0 +1,52 @@
+{
+  "id": "d6f31473-12f9-40a2-b935-ca998397142e",
+  "name": "Player-Profil (CSV)",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "8714a814-f9d9-4782-a122-f77931211430",
+      "name": "Wenn von anderem Workflow aufgerufen",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const PLAYERS_CSV = `club,name,position,age,marketValueMEUR,appearances,goals,assists,minutesPlayed,yellowCards,redCards,rating\nHamburger SV,J. Reimann,Torwart,29,3.0,6,0,0,540,0,0,6.3\nHamburger SV,T. Wagner,Innenverteidiger,27,5.5,6,0,0,540,2,0,6.1\nHamburger SV,D. Sommer,Innenverteidiger,31,3.5,6,0,1,540,3,0,5.9\nHamburger SV,K. Nowak,Linksverteidiger,24,6.0,6,0,1,520,1,0,6.2\nHamburger SV,F. Bauer,Rechtsverteidiger,26,4.5,5,0,0,430,2,1,5.8\nHamburger SV,S. Krause,Defensives Mittelfeld,25,7.0,6,0,2,540,3,0,6.4\nHamburger SV,M. Hoffmann,Zentrales Mittelfeld,23,9.0,6,1,2,520,1,0,6.6\nHamburger SV,L. Schreiber,Offensives Mittelfeld,22,8.0,6,2,1,480,0,0,6.5\nHamburger SV,P. Vogel,Linksaußen,21,6.5,6,1,1,460,1,0,6.3\nHamburger SV,R. Albrecht,Mittelstürmer,28,7.5,6,2,0,500,1,0,6.4\nFC Bayern München,A. Brandt,Torwart,30,18.0,6,0,0,540,0,0,7.4\nFC Bayern München,N. Ziegler,Innenverteidiger,26,45.0,6,1,0,540,1,0,7.6\nFC Bayern München,O. Frei,Innenverteidiger,29,30.0,6,0,0,540,2,0,7.3\nFC Bayern München,H. Berger,Linksverteidiger,24,35.0,6,0,2,540,1,0,7.5\nFC Bayern München,C. Lang,Rechtsverteidiger,27,28.0,6,0,1,540,0,0,7.2\nFC Bayern München,E. Winter,Defensives Mittelfeld,28,40.0,6,1,1,540,2,0,7.7\nFC Bayern München,G. Fuchs,Zentrales Mittelfeld,25,55.0,6,3,4,540,1,0,8.1\nFC Bayern München,B. Schuster,Offensives Mittelfeld,23,60.0,6,4,3,510,0,0,8.2\nFC Bayern München,V. Roth,Linksaußen,22,50.0,6,5,2,520,0,0,8.0\nFC Bayern München,W. Krieger,Mittelstürmer,26,70.0,6,6,2,530,1,0,8.3\nBorussia Dortmund,F. Lindner,Torwart,27,12.0,6,0,0,540,1,0,6.8\nBorussia Dortmund,J. Hartmann,Innenverteidiger,25,22.0,6,0,0,540,2,0,6.9\nBorussia Dortmund,K. Sander,Innenverteidiger,30,15.0,6,0,0,540,3,1,6.5\nBorussia Dortmund,M. Reuter,Linksverteidiger,23,18.0,6,0,2,520,1,0,7.0\nBorussia Dortmund,T. Pohl,Rechtsverteidiger,26,16.0,6,0,1,540,2,0,6.7\nBorussia Dortmund,A. Kranz,Defensives Mittelfeld,24,20.0,6,1,1,540,2,0,7.1\nBorussia Dortmund,S. Weidner,Zentrales Mittelfeld,22,28.0,6,2,3,510,1,0,7.3\nBorussia Dortmund,D. Falk,Offensives Mittelfeld,21,32.0,6,3,2,480,0,0,7.4\nBorussia Dortmund,R. Busch,Linksaußen,24,26.0,6,3,1,500,1,0,7.2\nBorussia Dortmund,L. Brandner,Mittelstürmer,27,24.0,6,4,1,520,1,0,7.3\nRB Leipzig,P. Schindler,Torwart,26,16.0,6,0,0,540,0,0,7.2\nRB Leipzig,M. Voss,Innenverteidiger,25,24.0,6,1,0,540,1,0,7.3\nRB Leipzig,T. Engel,Innenverteidiger,28,18.0,6,0,0,540,2,0,7.0\nRB Leipzig,J. Kluge,Linksverteidiger,23,22.0,6,0,3,540,1,0,7.4\nRB Leipzig,N. Brandt,Rechtsverteidiger,24,20.0,6,0,1,520,1,0,7.1\nRB Leipzig,O. Stark,Defensives Mittelfeld,27,26.0,6,1,2,540,2,0,7.5\nRB Leipzig,F. Lehmann,Zentrales Mittelfeld,22,34.0,6,2,3,530,0,0,7.6\nRB Leipzig,C. Rieger,Offensives Mittelfeld,21,38.0,6,4,3,500,1,0,7.8\nRB Leipzig,B. Kessler,Linksaußen,23,30.0,6,4,2,510,0,0,7.7\nRB Leipzig,H. Winkler,Mittelstürmer,25,36.0,6,5,1,520,1,0,7.9\nBayer 04 Leverkusen,A. Peters,Torwart,29,14.0,6,0,0,540,1,0,6.9\nBayer 04 Leverkusen,S. Bergmann,Innenverteidiger,28,20.0,6,0,0,540,2,0,7.0\nBayer 04 Leverkusen,L. Thiel,Innenverteidiger,31,12.0,6,0,0,540,3,0,6.6\nBayer 04 Leverkusen,D. Wolf,Linksverteidiger,24,16.0,6,0,1,520,1,0,6.8\nBayer 04 Leverkusen,M. Krebs,Rechtsverteidiger,26,14.0,6,0,0,540,2,0,6.5\nBayer 04 Leverkusen,J. Herrmann,Defensives Mittelfeld,27,18.0,6,0,1,540,3,1,6.7\nBayer 04 Leverkusen,R. Kaiser,Zentrales Mittelfeld,25,22.0,6,1,1,510,1,0,6.9\nBayer 04 Leverkusen,T. Gruber,Offensives Mittelfeld,22,19.0,6,1,1,460,1,0,6.6\nBayer 04 Leverkusen,V. Baumann,Linksaußen,23,17.0,6,1,0,440,0,0,6.4\nBayer 04 Leverkusen,K. Adler,Mittelstürmer,29,15.0,6,1,0,470,1,0,6.3`;\n\nfunction parseCsv(text) {\n  const lines = text.replace(/\\r\\n/g, '\\n').trim().split('\\n');\n  const headers = lines[0].split(',');\n  return lines.slice(1).map((line) => {\n    const cols = line.split(',');\n    const row = {};\n    headers.forEach((h, i) => { row[h] = cols[i]; });\n    return row;\n  });\n}\n\n// CSV-Analytics-Adapter (temporaerer Ersatz fuer Qlik MCP, siehe n8n/README.md).\n// Tool-Vertrag: Input { playerName }, Output { ...item, playerProfileLookup }.\n// Der eingebettete PLAYERS_CSV-String ist eine zeichengleiche Kopie von\n// n8n/data/players.csv (siehe n8n/data/README.md). Heisst playerProfileLookup\n// (nicht playerProfile), da playerProfile im Hauptworkflow bereits das\n// Bedarfsprofil (gesuchtes Anforderungsprofil) bezeichnet - beide Vertraege\n// bleiben dadurch unabhaengig voneinander stabil.\nconst item = $input.item.json;\nconst requestedName = (item.playerName || '').toString().trim();\nconst match = parseCsv(PLAYERS_CSV).find((r) => r.name === requestedName);\n\nconst profile = match ? {\n  name: match.name,\n  club: match.club,\n  position: match.position,\n  age: Number(match.age),\n  marketValueMEUR: Number(match.marketValueMEUR),\n  appearances: Number(match.appearances),\n  goals: Number(match.goals),\n  assists: Number(match.assists),\n  minutesPlayed: Number(match.minutesPlayed),\n  yellowCards: Number(match.yellowCards),\n  redCards: Number(match.redCards),\n  rating: Number(match.rating)\n} : null;\n\nconst playerProfileLookup = {\n  source: 'csv',\n  found: !!match,\n  requestedName,\n  profile,\n  note: match ? undefined : `Kein CSV-Datensatz fuer Spieler '${requestedName}' vorhanden (n8n/data/players.csv).`\n};\n\nreturn [{ json: { ...item, playerProfileLookup } }];"
+      },
+      "id": "7ae028b2-6c42-4c8a-84ef-47ceddcef5ea",
+      "name": "CSV-Analytics ausfuehren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Wenn von anderem Workflow aufgerufen": {
+      "main": [
+        [
+          {
+            "node": "CSV-Analytics ausfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
