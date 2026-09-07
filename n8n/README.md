@@ -51,6 +51,9 @@ Formular → [Team-Performance, Team-Matches]
         Teamdiagnose-Evidenz aufbereiten → Teamdiagnose-LLM (Ollama)  |
                  → Teamdiagnose zusammenfuehren -----------------------+
         → Teamdiagnose pruefen → Gate
+        → Teamdiagnose: Datengrundlage ausreichend? --nein--> Fehler anzeigen
+                 |ja
+                 v
         → Spielerprofil-Positionspool ermitteln → Spielerprofil-LLM (Ollama)
         → Spielerprofil zusammenfuehren → Spielerprofil pruefen → Gate
         → [Player-Ranking] → Spielersuche → Gate
@@ -134,17 +137,25 @@ das Gate-Muster danach bleibt aber identisch.
    `hypotheses`, `counterHypotheses`, `mainProblem` und `uncertainties` als
    strukturiertes JSON — ausdrücklich angewiesen, ausschließlich die
    gegebenen Fakten zu interpretieren, nichts zu erfinden und Unsicherheiten
-   zu benennen. `onError: continueErrorOutput` leitet einen Fehler (z. B.
+   zu benennen. Da dem LLM nur die Kennzahlen des betrachteten Vereins
+   vorliegen (keine Liga-Durchschnittswerte, keine Kennzahlen anderer
+   Vereine), ist der Prompt ausdrücklich angewiesen, in `leagueComparison`
+   **keine** Bundesliga-Platzierung/-Durchschnitt/-Vergleichswerte zu
+   erfinden, sondern das Fehlen einer belastbaren Vergleichsgrundlage
+   explizit zu benennen. `onError: continueErrorOutput` leitet einen Fehler (z. B.
    Ollama nicht erreichbar) auf den zweiten Output an **LLM-Fehler
    normalisieren** statt den Workflow abzubrechen.
 10. **Teamdiagnose Output-Schema** (`@n8n/n8n-nodes-langchain.outputParserStructured`)
     — erzwingt (`schemaType: manual`) den unter 9. genannten JSON-Vertrag für
     **Teamdiagnose LLM**; `evidence` ist bewusst **nicht** Teil dieses
     Schemas (siehe 8.).
-11. **Teamdiagnose zusammenführen** (Code) — die Basic LLM Chain liefert bei
-    aktivem Output Parser nur `{ output: <geparstes Objekt> }` als
-    Main-Output, der Rest des Items geht dabei verloren; dieser Node holt das
-    vollständige Item über `$('Teamdiagnose: Evidenz aufbereiten').item.json`
+11. **Teamdiagnose zusammenführen** (Code) — gegen n8n **2.35.7** verifiziert:
+    die Basic LLM Chain (v1.6) setzt bei aktivem Output Parser
+    `shouldUnwrapObjects = true`, wodurch die geparsten Structured-Output-
+    Felder direkt als Node-JSON zurückkommen (`$json.diagnosisCategory` usw.,
+    **nicht** `$json.output.diagnosisCategory`); der Rest des Items geht dabei
+    trotzdem verloren. Dieser Node holt das vollständige Item über
+    `$('Teamdiagnose: Evidenz aufbereiten').item.json`
     zurück und baut `teamDiagnosis` aus dem deterministischen
     `teamDiagnosisEvidence` (→ `evidence`) und der LLM-Interpretation (→
     `diagnosisCategory`, `leagueComparison`, `hypotheses`,
@@ -157,13 +168,27 @@ das Gate-Muster danach bleibt aber identisch.
     jetzt auch, dass `leagueComparison` ein nichtleerer String und
     `counterHypotheses` ein Array ist; setzt `valid`/`errorMessage`.
 13. **Teamdiagnose gültig?** (IF) — **falsch** → **Fehler anzeigen**; **wahr**
-    → **Spielerprofil: Positionspool ermitteln**.
-14. **Spielerprofil: Positionspool ermitteln** (Code) — grenzt den
-    Positionspool generisch anhand von `teamDiagnosis.diagnosisCategory` ein
-    (Defensivproblem → defensive Positionen, Offensivproblem → offensive
-    Positionen, `neutral`/`no_data` → alle Positionen; kein Sonderfall für
-    einen bestimmten Verein oder eine bestimmte Position) und übergibt diesen
-    Pool als `allowedPositions` verbindlich an **Spielerprofil LLM**.
+    → **Teamdiagnose: Datengrundlage prüfen**.
+13a. **Teamdiagnose: Datengrundlage prüfen** (Code) — prüft, ob
+    `teamDiagnosis.diagnosisCategory === 'no_data'`. Ohne diesen Stopp würde
+    **Spielerprofil: Positionspool ermitteln** bei fehlender Datengrundlage
+    auf den ungefilterten Positionspool zurückfallen und die Pipeline bis zur
+    Empfehlung weiterlaufen lassen, obwohl keine belastbare Diagnose vorliegt
+    — das widerspricht der Story-Vorgabe, bei unzureichender Evidenz
+    Unsicherheit auszuweisen bzw. weitere Analytics anzufordern statt sichere
+    Folgeschlüsse zu erfinden. Setzt `valid`/`errorMessage`.
+13b. **Teamdiagnose: Datengrundlage ausreichend?** (IF) — **falsch** (d. h.
+    `diagnosisCategory === 'no_data'`) → **Fehler anzeigen** (die Bedarfs-
+    ermittlung/Spielersuche wird kontrolliert gestoppt); **wahr** →
+    **Spielerprofil: Positionspool ermitteln**.
+14. **Spielerprofil: Positionspool ermitteln** (Code) — wird nur noch mit
+    einer belastbaren Teamdiagnose erreicht (`no_data` stoppt bereits bei
+    13b.) und grenzt den Positionspool generisch anhand von
+    `teamDiagnosis.diagnosisCategory` ein (Defensivproblem → defensive
+    Positionen, Offensivproblem → offensive Positionen, `neutral` → alle
+    Positionen; kein Sonderfall für einen bestimmten Verein oder eine
+    bestimmte Position) und übergibt diesen Pool als `allowedPositions`
+    verbindlich an **Spielerprofil LLM**.
 15. **Spielerprofil LLM** (`@n8n/n8n-nodes-langchain.chainLlm`, Basic LLM
     Chain) — leitet aus der (jetzt LLM-erzeugten) Teamdiagnose sowie
     `club`/`objective`/`additionalContext` ein strukturiertes
@@ -173,13 +198,20 @@ das Gate-Muster danach bleibt aber identisch.
     zu wählen), `role`, `weightedCriteria` (Kriteriennamen, die
     **Player-Ranking** erkennt: `goals`, `assists`, `rating`,
     `appearances`, `age`, `minutesPlayed`, `marketValueMEUR`), `constraints`
-    und `reasoning` (muss sich auf `teamDiagnosis.mainProblem` beziehen).
-    Gleiches `onError: continueErrorOutput` → **LLM-Fehler normalisieren**
-    wie bei **Teamdiagnose LLM**.
+    (Liste strukturierter, tatsächlich filterbarer Objekte `{ field:
+    'age'|'marketValueMEUR', operator: 'max'|'min', value: <Zahl> }` — nur
+    wenn ein konkreter Alters- oder Budget-/Marktwertrahmen aus dem
+    zusätzlichen Kontext ableitbar ist, sonst ein leeres Array statt eines
+    erfundenen Rahmens) und `reasoning` (muss sich auf
+    `teamDiagnosis.mainProblem` beziehen). Gleiches `onError:
+    continueErrorOutput` → **LLM-Fehler normalisieren** wie bei
+    **Teamdiagnose LLM**.
 16. **Spielerprofil Output-Schema** (`@n8n/n8n-nodes-langchain.outputParserStructured`)
     — erzwingt den unter 15. genannten JSON-Vertrag für **Spielerprofil
-    LLM**.
-17. **Spielerprofil zusammenführen** (Code) — holt das vollständige Item über
+    LLM**, inkl. des strukturierten `constraints`-Objektvertrags.
+17. **Spielerprofil zusammenführen** (Code) — gegen n8n **2.35.7** verifiziert
+    (siehe 11.): die geparsten Structured-Output-Felder liegen direkt auf
+    `$json`, nicht unter `$json.output`. Holt das vollständige Item über
     `$('Spielerprofil: Positionspool ermitteln').item.json` zurück (gleicher
     Mechanismus wie bei **Teamdiagnose zusammenführen**) und setzt
     `playerProfile` aus der LLM-Ausgabe zusammen (`playerProfile.simulated:
@@ -194,11 +226,18 @@ das Gate-Muster danach bleibt aber identisch.
     können) — das Parser-Schema allein kann das nicht garantieren, da
     `position` dort nur als String typisiert ist, nicht als von der Diagnose
     abhängiges Enum. Verstößt das LLM dagegen, wird `valid: false` gesetzt.
+    Ebenso geprüft: jedes `constraints`-Element hat ein `field` aus
+    `age`/`marketValueMEUR`, ein `operator` aus `max`/`min` und ein
+    numerisches `value` — nur so kann **Player-Ranking-Anfrage vorbereiten**
+    (20.) die Constraints tatsächlich anwenden statt sie als Dead Data
+    mitzuführen.
 19. **Spielerprofil gültig?** (IF) — **falsch** → **Fehler anzeigen**;
     **wahr** → **Player-Ranking-Anfrage vorbereiten**.
 20. **Player-Ranking-Anfrage vorbereiten** (Code) — übersetzt `playerProfile`
     in den Tool-Vertrag von Player-Ranking: `rankingExcludeClub` = der
     diagnostizierte Verein (Scouting sucht außerhalb des eigenen Kaders),
+    `constraints` = `playerProfile.constraints` (siehe unten, Abschnitt
+    [CSV-Analytics-Adapter](#csv-analytics-adapter), Player-Ranking),
     `position`/`criteria` aus `playerProfile.position`/`weightedCriteria`,
     `limit: 5`.
 21. **Player-Ranking abrufen** (Execute Workflow) — ruft
@@ -206,7 +245,7 @@ das Gate-Muster danach bleibt aber identisch.
     auf (Tool „Player-Ranking“) und reichert das Item um `playerRanking` an.
 22. **Spielersuche durchführen** (Code) — leitet `longlistSize` und eine
     `shortlist` von bis zu fünf Kandidaten (`score`, `strengths`,
-    `weaknesses`, `evidence` jeweils aus echten `players.csv`-Werten
+    `weaknesses`, `evidence` jeweils aus echten, importierten Spielerwerten
     gegenüber dem Pool-Durchschnitt) aus `playerRanking` ab
     (`playerSearch.simulated: false`). Liefert der Adapter keine Kandidaten
     (z. B. weil der komplette Markt für die Anfrage leer ist), bleibt
@@ -243,8 +282,8 @@ das Gate-Muster danach bleibt aber identisch.
 30. **Player-Profil abrufen** (Execute Workflow) — ruft
     [`analytics-player-profile-subworkflow.json`](./analytics-player-profile-subworkflow.json)
     auf (Tool „Player-Profil“) und reichert das Item um `playerProfileLookup`
-    an. Da der Kandidat selbst aus `players.csv` stammt (über Player-Ranking),
-    wird er hier immer gefunden.
+    an. Da der Kandidat selbst aus den importierten Player-Daten stammt (über
+    Player-Ranking), wird er hier immer gefunden.
 31. **Empfehlung anreichern** (Code) — setzt
     `recommendation.candidateProfile` auf `playerProfileLookup.profile` (bzw.
     `null`, falls nicht gefunden), ohne die übrigen `recommendation`-Felder zu
@@ -312,9 +351,11 @@ technische n8n-Subworkflows gekapselt — analog zum
 Hauptworkflow über je einen **Execute Workflow**-Node aufgerufen. Die
 Tool-Verträge (Feldnamen für Ein-/Ausgabe) sind bewusst so gestaltet, wie sie
 später durch echte Qlik-MCP-Tools bedient werden sollen; die Referenzdaten
-selbst liegen versioniert in [`n8n/data/`](./data/README.md)
-(`matches.csv`, `players.csv`) für dieselben fünf Vereine wie im
-`Verein`-Dropdown. Kein Tool erfindet Werte für unbekannte Vereine, Spieler
+selbst liegen persistent in der n8n Data Table `football_scouting_raw` (voller
+Bundesliga-Datensatz, importiert über
+[`import-scouting-data.json`](./import-scouting-data.json), siehe
+[`n8n/data/README.md`](./data/README.md)), nicht mehr als CSV-Dateien im
+Repository. Kein Tool erfindet Werte für unbekannte Vereine, Spieler
 oder Positionen — stattdessen wird das explizit ausgewiesen (`dataAvailable:
 false`, `found: false` bzw. `positionFallbackApplied: true`). Dasselbe gilt
 für einzelne fehlende/ungültige numerische CSV-Zellen (leerer Wert,
@@ -325,8 +366,8 @@ unten) nicht in Aggregation oder Ranking-Score ein.
 
 1. **Teamperformance**
    ([`analytics-team-performance-subworkflow.json`](./analytics-team-performance-subworkflow.json)) —
-   Input `{ club }`. Aggregiert die letzten Spiele des Vereins aus
-   `matches.csv` zu `teamPerformance`: `matchesAnalyzed`, `wins`/`draws`/`losses`,
+   Input `{ club }`. Aggregiert die letzten Spiele des Vereins aus der Data
+   Table `football_scouting_raw` zu `teamPerformance`: `matchesAnalyzed`, `wins`/`draws`/`losses`,
    `goalsFor`/`goalsAgainst`/`goalDifference`, `points`, `avgGoalsFor`/
    `avgGoalsAgainst`, `form` (neuestes Spiel zuerst). Unbekannter Verein →
    `dataAvailable: false` statt erfundener Werte; Spiele mit fehlenden/
@@ -344,7 +385,8 @@ unten) nicht in Aggregation oder Ranking-Score ein.
 3. **Player-Ranking**
    ([`analytics-player-ranking-subworkflow.json`](./analytics-player-ranking-subworkflow.json)) —
    Input `{ rankingClub?, rankingExcludeClub?, position?, criteria?: [{
-   criterion, weight }], limit? }` (bewusst eigene Feldnamen statt `club`, da
+   criterion, weight }], constraints?: [{ field, operator, value }], limit? }`
+   (bewusst eigene Feldnamen statt `club`, da
    das im Hauptworkflow bereits den zu diagnostizierenden Verein bezeichnet
    und beim Durchreichen des ganzen Items sonst kollidieren würde).
    `rankingClub` filtert auf genau einen Verein, `rankingExcludeClub`
@@ -353,6 +395,16 @@ unten) nicht in Aggregation oder Ranking-Score ein.
    `assists`, `rating`, `minutesPlayed`, `appearances`, `marketValueMEUR`
    (höher = besser) sowie `age` (niedriger = besser); jeder Wert wird über
    den betrachteten Pool min-max-normalisiert und gewichtet aufsummiert.
+   `constraints` (von `playerProfile.constraints` im Hauptworkflow, siehe
+   Node 20 oben) filtert den Pool **vor** dem Scoring hart: `field` ist
+   `age` oder `marketValueMEUR`, `operator` ist `max` (Wert ≤ `value`) oder
+   `min` (Wert ≥ `value`). Ein Constraint auf ein Feld ohne numerisch
+   verfügbare Daten im Pool wird nicht ignoriert-und-verschwiegen, sondern in
+   `ignoredConstraints` aufgeführt; tatsächlich angewendete Constraints stehen
+   in `appliedConstraints`, die Anzahl dadurch ausgeschlossener Kandidaten in
+   `excludedByConstraints`. So werden Budget-/Altersvorgaben aus dem
+   Spielerprofil tatsächlich für die Spielersuche wirksam, statt Dead Data zu
+   bleiben.
    Unbekannte Kriterien werden nicht ignoriert-und-verschwiegen, sondern in
    `ignoredCriteria` aufgeführt; eine nicht im Pool vorkommende Position
    führt — explizit über `positionFallbackApplied: true` markiert — zum
@@ -367,7 +419,8 @@ unten) nicht in Aggregation oder Ranking-Score ein.
 4. **Player-Profil**
    ([`analytics-player-profile-subworkflow.json`](./analytics-player-profile-subworkflow.json)) —
    Input `{ playerName }`. Liefert `playerProfileLookup` mit `found` und
-   `profile` (alle Spalten aus `players.csv`) bzw. `found: false` und
+   `profile` (alle importierten Spalten aus der Data Table
+   `football_scouting_raw`) bzw. `found: false` und
    `profile: null` für einen unbekannten Namen. Einzelne fehlende/ungültige
    numerische Felder im gefundenen Datensatz bleiben in `profile` explizit
    `null` (statt `0`/`NaN`) und werden namentlich in `invalidFields`
@@ -378,11 +431,11 @@ unten) nicht in Aggregation oder Ranking-Score ein.
    gesuchten Spielertyp), beide Verträge bleiben dadurch unabhängig
    voneinander stabil.
 
-Die eingebetteten CSV-Kopien in den vier Subworkflows werden aus
-`n8n/data/matches.csv` / `n8n/data/players.csv` generiert und mit
-Node.js-Skripten verifiziert — siehe [`n8n/data/README.md`](./data/README.md)
-für `build_subworkflows.js`, `verify-analytics.js` und
-`simulate_main_workflow.js`.
+Die vier Subworkflows lesen die importierten Originalzeilen aus der
+persistenten Data Table `football_scouting_raw` (kein eingebetteter
+CSV-Code mehr) — siehe [`n8n/data/README.md`](./data/README.md) für den
+Import (`import-scouting-data.json`) und die Architektur-Verifikation
+(`verify-import-architecture.js`).
 
 ## Recherche-Subworkflow
 
@@ -463,52 +516,49 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    Datenverfügbarkeit prüfen** in ihren Wahr-Zweig verzweigt (kein Gate im
    engeren Sinn, da beide Zweige gültig fortsetzen), und **Teamdiagnose
    LLM**/**Spielerprofil LLM** laufen jeweils über ihren Erfolgs-Output.
-   **Ausgeführt (Logiksimulation):** `node n8n/data/simulate_main_workflow.js`
-   führt alle `Code`- und Execute-Workflow-Nodes des Hauptworkflows sowie
-   aller fünf Subworkflows (Recherche + die vier CSV-Analytics-Tools)
-   außerhalb von n8n mit Node.js gegen die HSV-Beispieldaten
-   (`club: "Hamburger SV"`, das voreingestellte `objective`) sowie gegen
-   Bayern und Leverkusen als weitere Vereine aus. Die beiden
-   `@n8n/n8n-nodes-langchain.chainLlm`-Nodes (**Teamdiagnose LLM**,
-   **Spielerprofil LLM**) werden dabei durch einen deterministischen Mock
-   ersetzt (siehe Kommentar in `simulate_main_workflow.js`) — es gibt in
-   dieser Umgebung keinen erreichbaren Ollama-Endpunkt, der Mock testet daher
-   nachweisbar nur die umgebende Pipeline (Merge-Nodes, Gates,
-   Positions-Konsistenzprüfung, Player-Ranking), **nicht** die tatsächliche
-   Antwortqualität eines echten lokalen Modells. Ergebnis: der komplette Pfad
-   läuft durch, `teamDiagnosis.mainProblem` benennt für HSV korrekt ein
-   Defensivproblem (mehr Gegentore als eigene Tore in den letzten sechs
-   CSV-Spielen) und für Leverkusen ein Offensivproblem, der empfohlene
-   Kandidat stammt aus einem anderen Verein als dem angefragten und
-   `recommendation.candidateProfile` enthält dessen echtes CSV-Profil. Für
-   HSV/Leverkusen wird zusätzlich geprüft, dass die aus `diagnosisCategory`
-   abgeleitete `playerProfile.position` tatsächlich zur Diagnose passt
-   (defensiv bzw. offensiv) und dass sowohl alle gerankten Kandidaten als
-   auch der empfohlene Kandidat wirklich auf dieser Position spielen — die
-   (jetzt LLM-interpretierte) Diagnose beeinflusst die Transfermaßnahme damit
-   nachweisbar. Ein zusätzlicher Negativtest erzwingt eine Mock-LLM-Antwort
-   mit einer zur Diagnosekategorie inkonsistenten Position und prüft, dass
-   **Spielerprofil prüfen** dies unabhängig vom (an sich schema-gültigen)
-   Parser-Output als `valid: false` erkennt. Siehe
-   [`n8n/data/README.md`](./data/README.md) für das Skript selbst.
-   Nicht ausgeführt: das eigentliche Rendern der Formular-/Completion-Seiten,
-   der n8n-**Executions**-Eintrag selbst sowie ein echter Aufruf des lokalen
-   Ollama-Modells (Antwortqualität/Prompt-Befolgung), da dafür eine laufende
-   n8n-Weboberfläche mit erreichbarem Ollama-Endpunkt nötig ist — offen für
-   die nächste Person (oder Session) mit interaktivem Zugriff auf eine
-   importierte Instanz.
+   **Ausgeführt (gezielte Node.js-Verifikation der geänderten Nodes):** der
+   frühere Offline-Simulator für den kompletten Hauptworkflow
+   (`n8n/data/simulate_main_workflow.js`) ist mit der Umstellung der
+   Analytics-Subworkflows auf die persistente Data Table
+   `football_scouting_raw` (siehe [`n8n/data/README.md`](./data/README.md))
+   entfallen — er beruhte auf dem inzwischen ebenfalls entfernten,
+   fünf Vereine umfassenden CSV-Prototyp und ist für die reale Datenquelle
+   nicht mehr repräsentativ. Stattdessen wurden die für diese Story
+   geänderten Code-Nodes isoliert mit Node.js gegen den echten n8n-2.35.7-
+   Vertrag (Structured-Output-Felder direkt auf `$json`, siehe 11./17. oben)
+   verifiziert: **Teamdiagnose zusammenführen** und **Spielerprofil
+   zusammenführen** lesen die simulierte LLM-Antwort korrekt ohne
+   `output`-Hülle; **Teamdiagnose: Datengrundlage prüfen** liefert
+   `valid: false` für `diagnosisCategory: 'no_data'` und `valid: true` für
+   `'defensive'`/`'offensive'`/`'neutral'`; **Spielerprofil prüfen** akzeptiert
+   strukturierte `constraints` (`{ field, operator, value }`) und lehnt
+   unstrukturierte (z. B. freitextliche) Constraints ab. Zusätzlich:
+   `node n8n/data/verify-import-architecture.js` (grün) sowie eine
+   Konsistenzprüfung aller `n8n/*.json`-Workflow-Dateien (gültiges JSON, keine
+   doppelten Node-Namen/-IDs, alle Connections referenzieren existierende
+   Nodes, genau ein Trigger-Node). Nicht ausgeführt: ein vollständiger
+   End-to-End-Lauf des Hauptworkflows (inkl. Formular-/Completion-Seiten, dem
+   n8n-**Executions**-Eintrag und einem echten Aufruf des lokalen
+   Ollama-Modells), da dafür eine laufende n8n-Weboberfläche mit
+   erreichbarem Ollama-Endpunkt nötig ist — offen für die nächste Person
+   (oder Session) mit interaktivem Zugriff auf eine importierte Instanz mit
+   bereits über `import-scouting-data.json` importierten Originaldaten.
 
-### CSV-Analytics-Adapter: gezielte Tests
+### Player-Ranking-Subworkflow: gezielte Tests
 
-`node n8n/data/verify-analytics.js` prüft die vier CSV-Analytics-Subworkflows
-isoliert gegen `matches.csv`/`players.csv` (Positionsfilter, `rankingClub`/
-`rankingExcludeClub`, sowie dass ein unbekannter Verein, Spieler oder eine
-unbekannte Position explizit ausgewiesen statt erfunden wird), dazu
-Negativtests mit leeren/ungültigen CSV-Zellen (fehlende Tordaten, fehlendes
-`age`/ungültiges `rating` einzelner Spieler) gegen eigens dafür eingesetzte
-Test-CSVs — siehe [`n8n/data/README.md`](./data/README.md) für die
-vollständige Liste der Prüfungen. **Ausgeführt:** alle 25 Prüfungen sind
-grün.
+Die Constraint-Filterung (`field`/`operator`/`value`, siehe
+[CSV-Analytics-Adapter](#csv-analytics-adapter), Player-Ranking) wurde isoliert
+mit Node.js gegen einen synthetischen Spieler-Pool verifiziert: ein
+`maxAge`-Constraint schließt ältere Kandidaten korrekt aus (`excludedByConstraints`
+zählt sie), ein `maxMarketValueMEUR`-Constraint filtert nach Marktwert, ein
+Constraint auf ein nicht verfügbares Feld landet unverändert in
+`ignoredConstraints` statt den Lauf abzubrechen, ein Aufruf ganz ohne
+`constraints` bleibt abwärtskompatibel unverändert, und ein Constraint, der den
+gesamten Pool ausschließt, liefert korrekt `dataAvailable: false` statt leerer
+oder erfundener Kandidaten. `node n8n/data/verify-import-architecture.js`
+bestätigt zusätzlich weiterhin, dass die vier Analytics-Subworkflows
+ausschließlich aus `football_scouting_raw` lesen und keine eingebetteten
+CSV-Fixtures mehr enthalten.
 
 ### Negative Testfälle (ein Gate pro Stufe)
 
@@ -558,18 +608,25 @@ wird der positive Testfall erneut ausgeführt.
    Konsistenzprüfung (unabhängig vom an sich schema-gültigen
    Parser-Output) und setzt `valid: false` mit einer Fehlermeldung, die die
    inkonsistente Position und die erwartete Diagnosekategorie benennt.
+9. **Teamdiagnose: Datengrundlage ausreichend?** (`no_data` stoppt kontrolliert) —
+   `teamDiagnosis.diagnosisCategory` auf `'no_data'` setzen (z. B. ein Verein
+   ohne importierte Match-Daten). **Erwartet:** **Teamdiagnose: Datengrundlage
+   prüfen** setzt `valid: false`, **Spielerprofil: Positionspool ermitteln**
+   sowie alle nachfolgenden Stufen (Spielerprofil-LLM, Player-Ranking,
+   Spielersuche, Recherche, Empfehlung) werden **nicht** mehr erreicht,
+   stattdessen zeigt **Fehler anzeigen** einen expliziten Hinweis auf die
+   fehlende Datengrundlage statt eine Transfermaßnahme auf Basis eines
+   beliebigen Positionspools zu erzeugen.
 
-**Ausgeführt (Logiksimulation):** Alle acht Fälle wurden wie oben beschrieben
-mit Node.js gegen die HSV-Beispieldaten durchgespielt (jeweils ein einzelnes
-Feld/Array gezielt entfernt, geleert, dupliziert oder — bei Fall 8 — die
-Mock-LLM-Antwort gezielt auf eine inkonsistente Position gesetzt, alle
-anderen Stufen unverändert gelassen). In jedem Fall meldete genau das
-erwartete Gate `valid: false` mit der oben genannten Fehlermeldung, alle
-nachfolgenden Stufen wurden nicht mehr ausgeführt, und keiner der Fälle
-erreichte **Ergebnis anzeigen**. Nicht ausgeführt: das manuelle Editieren der
-Nodes und Beobachten der **Executions**-Liste in einer laufenden
-n8n-Instanz — offen für die nächste Person (oder Session) mit interaktivem
-Zugriff.
+**Ausgeführt (gezielte Node.js-Verifikation):** Fälle 1–8 wurden bereits vor
+dieser Story mit dem inzwischen entfernten Offline-Simulator gegen die
+HSV-Beispieldaten durchgespielt (siehe oben, Abschnitt „Positiver Testfall“,
+zur Ablösung dieses Simulators); Fall 9 wurde isoliert mit Node.js gegen
+**Teamdiagnose: Datengrundlage prüfen** verifiziert (`valid: false` für
+`diagnosisCategory: 'no_data'`, `valid: true` für `'defensive'`). Nicht
+ausgeführt: das manuelle Editieren der Nodes und Beobachten der
+**Executions**-Liste in einer laufenden n8n-Instanz — offen für die nächste
+Person (oder Session) mit interaktivem Zugriff.
 
 ### Negativer Testfall (Validierung des Startformulars)
 
