@@ -3,11 +3,13 @@
 Der kanonische Hauptworkflow für dieses Projekt heißt **`AI Sporting Director`**
 und ist versioniert in [`ai-sporting-director.json`](./ai-sporting-director.json).
 Jede weitere Story erweitert diesen bestehenden Workflow in-place. Es wird kein
-neuer paralleler Hauptworkflow angelegt. Die einzige erlaubte Ausnahme ist die
-Recherche-Stufe, die als technischer Subworkflow
-[`recherche-subworkflow.json`](./recherche-subworkflow.json) implementiert ist
-und über einen **Execute Workflow**-Node aus dem Hauptworkflow aufgerufen wird
-(siehe [Recherche-Subworkflow](#recherche-subworkflow) unten).
+neuer paralleler Hauptworkflow angelegt. Die einzige erlaubte Ausnahme sind
+rein technische, nicht-fachliche Subworkflows, die über einen **Execute
+Workflow**-Node aus dem Hauptworkflow aufgerufen werden: die Recherche-Stufe
+([`recherche-subworkflow.json`](./recherche-subworkflow.json), siehe
+[Recherche-Subworkflow](#recherche-subworkflow) unten) sowie die vier
+CSV-Analytics-Tools des [CSV-Analytics-Adapters](#csv-analytics-adapter)
+(`analytics-*-subworkflow.json`).
 
 Dieser Stand erweitert den bisherigen Hauptworkflow (Startformular →
 normalisieren → validieren → eine einzelne Dummy-Antwort → Ausgabe prüfen →
@@ -15,9 +17,13 @@ Ergebnis/Fehler anzeigen) um alle fachlichen Stufen des Sporting-Director-
 Ablaufs, jede mit einem eigenen, klar als Simulation gekennzeichneten
 Dummy-Ergebnis und einem eigenen Gate (Schema-/Mindestbedingungsprüfung), das
 bei ungültigem Ergebnis den bestehenden zentralen Fehlerpfad (**Fehler
-anzeigen**) wiederverwendet. Es gibt noch keinen echten AI Agent, LLM-Schritt,
-Qlik-/MCP-Zugriff oder echte Websuche — jede Stufe ist ein deterministischer,
-sichtbar als Simulation markierter Dummy.
+anzeigen**) wiederverwendet. Es gibt noch keinen echten AI Agent oder
+LLM-Schritt; **Teamdiagnose** und **Spielersuche** greifen inzwischen über den
+[CSV-Analytics-Adapter](#csv-analytics-adapter) auf echte, versionierte
+Referenzdaten zu (temporärer Ersatz für die künftige Qlik-/MCP-Anbindung,
+noch keine echte Websuche). **Spielerprofil** (die Bedarfsermittlung) und
+**Recherche** bleiben deterministische, sichtbar als Simulation markierte
+Dummys, da hierfür noch keine reale Implementierung möglich ist.
 
 Credentials werden ausschließlich referenziert (`[cimt] Ollama` am Node
 **Ollama Modell (Qwen3.8:latest)**, mit dem Platzhalter-Wert
@@ -30,9 +36,17 @@ Anpassung nötig ist. Es gelangt kein echtes Secret nach Git.
 ## Zielablauf
 
 ```
-Formular → Teamdiagnose → Gate → Spielerprofil → Gate → Spielersuche → Gate
-        → Recherche → Gate → Empfehlung → Final Validation → Anzeige
+Formular → [Team-Performance, Team-Matches] → Teamdiagnose → Gate
+        → Spielerprofil → Gate
+        → [Player-Ranking] → Spielersuche → Gate
+        → Recherche → Gate
+        → Empfehlung → [Player-Profil] → Empfehlung anreichern
+        → Final Validation → Anzeige
 ```
+
+Die in `[…]` stehenden Schritte sind Aufrufe des
+[CSV-Analytics-Adapters](#csv-analytics-adapter) über je einen
+**Execute Workflow**-Node (analog zum Recherche-Subworkflow).
 
 Jede Stufe folgt demselben Muster aus dem bisherigen Workflow (**Dummy-Antwort
 erzeugen** → **Ausgabe prüfen** → **Ausgabe gültig?**), nur je fachlicher
@@ -54,77 +68,128 @@ zur nächsten Stufe.
    Leerzeichen bestehende Werte für `club`/`objective` ab.
    - **falsch** → **Validierungsfehler formulieren** (Set, unverändert) →
      **Fehler anzeigen**.
-   - **wahr** → weiter zu **Teamdiagnose erzeugen**.
-4. **Teamdiagnose erzeugen** (Code) — Dummy mit `evidence`, `hypotheses`,
-   `mainProblem` (Hauptproblem) und `uncertainties`, alle klar als Simulation
-   markiert (`teamDiagnosis.simulated: true`), ohne eine echte Qlik-Analyse
-   oder Websuche zu behaupten.
-5. **Teamdiagnose prüfen** (Code) — prüft, dass `evidence`/`hypotheses` nicht
-   leere Arrays sind, `mainProblem` ein nichtleerer String ist und
-   `uncertainties` ein Array ist; setzt `valid`/`errorMessage`.
-6. **Teamdiagnose gültig?** (IF) — **falsch** → **Fehler anzeigen**; **wahr**
+   - **wahr** → weiter zu **Team-Performance abrufen**.
+4. **Team-Performance abrufen** (Execute Workflow) — ruft den
+   CSV-Analytics-Subworkflow
+   [`analytics-team-performance-subworkflow.json`](./analytics-team-performance-subworkflow.json)
+   auf (Tool „Teamperformance“, siehe [CSV-Analytics-Adapter](#csv-analytics-adapter))
+   und reichert das Item um `teamPerformance` an.
+5. **Team-Matches abrufen** (Execute Workflow) — ruft
+   [`analytics-team-matches-subworkflow.json`](./analytics-team-matches-subworkflow.json)
+   auf (Tool „Team-Matches“) und reichert das Item um `teamMatches` an.
+6. **Teamdiagnose erzeugen** (Code) — leitet `evidence`, `hypotheses`,
+   `mainProblem` (Hauptproblem) und `uncertainties` deterministisch aus
+   `teamPerformance`/`teamMatches` ab (`teamDiagnosis.simulated: false`,
+   `dataAvailable`); ohne CSV-Daten für den Verein wird das Fehlen der
+   Datengrundlage selbst zum (weiterhin schema-gültigen) Ergebnis statt
+   etwas zu erfinden. Es wird weiterhin keine echte Qlik-Analyse oder
+   Websuche behauptet. Zusätzlich liefert `diagnosisCategory` (`'defensive'`
+   | `'offensive'` | `'neutral'` | `'no_data'`) dieselbe Einschätzung
+   maschinenlesbar, damit **Spielerprofil erzeugen** die Bedarfsermittlung
+   tatsächlich an diese echte Diagnose koppeln kann.
+7. **Teamdiagnose prüfen** (Code) — unverändert: prüft, dass
+   `evidence`/`hypotheses` nicht leere Arrays sind, `mainProblem` ein
+   nichtleerer String ist und `uncertainties` ein Array ist; setzt
+   `valid`/`errorMessage`.
+8. **Teamdiagnose gültig?** (IF) — **falsch** → **Fehler anzeigen**; **wahr**
    → **Spielerprofil erzeugen**.
-7. **Spielerprofil erzeugen** (Code) — Dummy mit `position`, `role`,
-   `reasoning` (Begründung, referenziert `teamDiagnosis.mainProblem`),
-   `weightedCriteria` (gewichtete Kriterien, je `criterion`/`weight`) und
-   `constraints`.
-8. **Spielerprofil prüfen** (Code) — prüft alle Pflichtfelder inkl. dass
-   jedes `weightedCriteria`-Element ein `criterion` und ein numerisches
-   `weight` hat.
-9. **Spielerprofil gültig?** (IF) — **falsch** → **Fehler anzeigen**;
-   **wahr** → **Spielersuche durchführen**.
-10. **Spielersuche durchführen** (Code) — Dummy mit `longlistSize` und einer
-    `shortlist` von bis zu fünf Kandidaten, je mit `score`, `strengths`,
-    `weaknesses`, `evidence`.
-11. **Spielersuche prüfen** (Code) — prüft `longlistSize > 0`, `shortlist`
-    nichtleer und **höchstens fünf** Kandidaten, sowie dass jeder Kandidat
-    alle Pflichtfelder hat.
-12. **Spielersuche gültig?** (IF) — **falsch** → **Fehler anzeigen**;
+9. **Spielerprofil erzeugen** (Code) — weiterhin simulierte Bedarfsermittlung
+   (`playerProfile.simulated: true`, kein echter AI-Agent-Schritt), wählt die
+   `position` aber nicht mehr unabhängig von der echten CSV-Teamdiagnose:
+   `teamDiagnosis.diagnosisCategory` grenzt den Positionspool ein
+   (Defensivproblem → defensive Position, Offensivproblem → offensive
+   Position; nur bei `neutral`/`no_data` wird aus allen Positionen gewählt).
+   Innerhalb dieses Pools entscheidet weiterhin ein einfacher, generischer
+   Hash aus `club`+`objective` (kein Sonderfall für einen bestimmten Verein
+   oder eine bestimmte Position), welche der tatsächlich im Kader
+   vorkommenden Positionen gesucht wird; dazu `weightedCriteria` mit
+   Kriteriennamen, die **Player-Ranking** erkennt (`goals`, `assists`,
+   `rating`, `appearances`, `age`), `role`, `reasoning` (referenziert
+   `teamDiagnosis.mainProblem`) und `constraints`.
+10. **Spielerprofil prüfen** (Code) — unverändert: prüft alle Pflichtfelder
+    inkl. dass jedes `weightedCriteria`-Element ein `criterion` und ein
+    numerisches `weight` hat.
+11. **Spielerprofil gültig?** (IF) — **falsch** → **Fehler anzeigen**;
+    **wahr** → **Player-Ranking-Anfrage vorbereiten**.
+12. **Player-Ranking-Anfrage vorbereiten** (Code) — übersetzt `playerProfile`
+    in den Tool-Vertrag von Player-Ranking: `rankingExcludeClub` = der
+    diagnostizierte Verein (Scouting sucht außerhalb des eigenen Kaders),
+    `position`/`criteria` aus `playerProfile.position`/`weightedCriteria`,
+    `limit: 5`.
+13. **Player-Ranking abrufen** (Execute Workflow) — ruft
+    [`analytics-player-ranking-subworkflow.json`](./analytics-player-ranking-subworkflow.json)
+    auf (Tool „Player-Ranking“) und reichert das Item um `playerRanking` an.
+14. **Spielersuche durchführen** (Code) — leitet `longlistSize` und eine
+    `shortlist` von bis zu fünf Kandidaten (`score`, `strengths`,
+    `weaknesses`, `evidence` jeweils aus echten `players.csv`-Werten
+    gegenüber dem Pool-Durchschnitt) aus `playerRanking` ab
+    (`playerSearch.simulated: false`). Liefert der Adapter keine Kandidaten
+    (z. B. weil der komplette Markt für die Anfrage leer ist), bleibt
+    `shortlist` leer statt Kandidaten zu erfinden — das nachfolgende Gate
+    greift dann reell.
+15. **Spielersuche prüfen** (Code) — unverändert: prüft `longlistSize > 0`,
+    `shortlist` nichtleer und **höchstens fünf** Kandidaten, sowie dass jeder
+    Kandidat alle Pflichtfelder hat.
+16. **Spielersuche gültig?** (IF) — **falsch** → **Fehler anzeigen**;
     **wahr** → **Recherche durchführen**.
-13. **Recherche durchführen** (Execute Workflow) — ruft den technischen
-    Subworkflow [`recherche-subworkflow.json`](./recherche-subworkflow.json)
-    auf und übergibt das aktuelle Item (inkl. `playerSearch.shortlist`)
-    unverändert weiter (`Passthrough`). Der Subworkflow liefert je Kandidat
-    aus der Shortlist `club` (Verein), `contract` (Vertrag), `marketValue`
+17. **Recherche durchführen** (Execute Workflow) — unverändert: ruft den
+    technischen Subworkflow
+    [`recherche-subworkflow.json`](./recherche-subworkflow.json) auf und
+    übergibt das aktuelle Item (inkl. `playerSearch.shortlist`) unverändert
+    weiter (`Passthrough`). Der Subworkflow liefert je Kandidat aus der
+    Shortlist `club` (Verein), `contract` (Vertrag), `marketValue`
     (Marktwert), `injuries` (Verletzungen) und `news` (Meldungen), jeweils
     mit `source` (Dummy-Quelle), `timestamp` (Zeitpunkt) und `confidence`
     (Konfidenz) — siehe [Recherche-Subworkflow](#recherche-subworkflow).
-14. **Recherche prüfen** (Code) — prüft die Kandidatenabdeckung per
-    Set-Gleichheit (jeder Shortlist-Name kommt in `research` vor und
+18. **Recherche prüfen** (Code) — unverändert: prüft die Kandidatenabdeckung
+    per Set-Gleichheit (jeder Shortlist-Name kommt in `research` vor und
     umgekehrt) plus Duplikatprüfung, sodass `research` **genau einen**
     Eintrag je Shortlist-Kandidat enthält (nicht nur dieselbe Anzahl), und
     dass jeder Eintrag alle Pflichtfelder hat.
-15. **Recherche gültig?** (IF) — **falsch** → **Fehler anzeigen**; **wahr**
+19. **Recherche gültig?** (IF) — **falsch** → **Fehler anzeigen**; **wahr**
     → **Empfehlung erzeugen**.
-16. **Empfehlung erzeugen** (Code) — wählt den Kandidaten mit dem höchsten
-    `score` aus `playerSearch.shortlist` als bevorzugten Kandidaten (damit
-    stammt er per Konstruktion aus der validierten Shortlist), die übrigen
-    Shortlist-Namen werden `alternatives`; dazu `reasoning`, `risks`,
+20. **Empfehlung erzeugen** (Code) — unverändert: wählt den Kandidaten mit dem
+    höchsten `score` aus `playerSearch.shortlist` als bevorzugten Kandidaten
+    (damit stammt er per Konstruktion aus der validierten Shortlist), die
+    übrigen Shortlist-Namen werden `alternatives`; dazu `reasoning`, `risks`,
     `uncertainties`, `nextStep`.
-17. **Final Validation** (Code) — prüft alle vorherigen Stufenergebnisse
-    noch einmal im Zusammenhang (u. a. dass `recommendation.candidate`
-    tatsächlich Teil der validierten `playerSearch.shortlist` ist) sowie den
-    vollständigen Empfehlungsvertrag: `candidate`, `alternatives` (Array),
-    `reasoning`, `risks` (nichtleeres Array), `uncertainties` (nichtleeres
-    Array) und `nextStep` — analog zur bisherigen **Ausgabe prüfen**, jetzt
-    über den gesamten Ablauf.
-18. **Final Validation gültig?** (IF) — **falsch** → **Fehler anzeigen**;
+21. **Player-Profil-Anfrage vorbereiten** (Code) — setzt `playerName` auf
+    `recommendation.candidate`.
+22. **Player-Profil abrufen** (Execute Workflow) — ruft
+    [`analytics-player-profile-subworkflow.json`](./analytics-player-profile-subworkflow.json)
+    auf (Tool „Player-Profil“) und reichert das Item um `playerProfileLookup`
+    an. Da der Kandidat selbst aus `players.csv` stammt (über Player-Ranking),
+    wird er hier immer gefunden.
+23. **Empfehlung anreichern** (Code) — setzt
+    `recommendation.candidateProfile` auf `playerProfileLookup.profile` (bzw.
+    `null`, falls nicht gefunden), ohne die übrigen `recommendation`-Felder zu
+    verändern.
+24. **Final Validation** (Code) — unverändert: prüft alle vorherigen
+    Stufenergebnisse noch einmal im Zusammenhang (u. a. dass
+    `recommendation.candidate` tatsächlich Teil der validierten
+    `playerSearch.shortlist` ist) sowie den vollständigen
+    Empfehlungsvertrag: `candidate`, `alternatives` (Array), `reasoning`,
+    `risks` (nichtleeres Array), `uncertainties` (nichtleeres Array) und
+    `nextStep` — analog zur bisherigen **Ausgabe prüfen**, jetzt über den
+    gesamten Ablauf. `candidateProfile` ist kein Pflichtfeld dieser Prüfung.
+25. **Final Validation gültig?** (IF) — **falsch** → **Fehler anzeigen**;
     **wahr** → **Ergebnisseiten aufbereiten**.
-19. **Ergebnisseiten aufbereiten** (Code) — baut `formattedResult`: einen
+26. **Ergebnisseiten aufbereiten** (Code) — baut `formattedResult`: einen
     Text, der Teamdiagnose, Spielerprofil, Spielersuche, Recherche und
-    Empfehlung als klar getrennte Abschnitte darstellt, mit einem
-    einleitenden Simulationshinweis.
-20. **Ergebnis anzeigen** (Form, Completion) — zeigt `formattedResult` an;
-    dieselbe Node wie zuvor, jetzt mit dem mehrteiligen Text statt einer
-    einzelnen Diagnose-/Empfehlungszeile.
-21. **Fehler anzeigen** (Form, Completion) — unverändert der eine zentrale
+    Empfehlung (inkl. `candidateProfile`, falls vorhanden) als klar
+    getrennte Abschnitte darstellt, mit einem Hinweis, welche Abschnitte auf
+    dem CSV-Analytics-Adapter beruhen und welche weiterhin vollständig
+    simuliert sind.
+27. **Ergebnis anzeigen** (Form, Completion) — unverändert: zeigt
+    `formattedResult` an.
+28. **Fehler anzeigen** (Form, Completion) — unverändert der eine zentrale
     Fehlerpfad für **alle** Gates (Validierung, Teamdiagnose, Spielerprofil,
     Spielersuche, Recherche, Final Validation): zeigt `errorMessage` an; ein
     ungültiges Ergebnis wird nie als fachliche Empfehlung dargestellt.
-22. **Ollama Modell (Qwen3.8:latest)** (Ollama Chat Model) — unverändert,
+29. **Ollama Modell (Qwen3.8:latest)** (Ollama Chat Model) — unverändert,
     weiterhin **ohne Verbindung**: Grundlage für die künftige Story, die
     einen echten AI-Agent-Node einführt.
-23. **LLM-Fehler normalisieren** (Code) — unverändert, weiterhin ohne
+30. **LLM-Fehler normalisieren** (Code) — unverändert, weiterhin ohne
     eingehende Verbindung, bereits mit **Fehler anzeigen** verbunden für die
     künftige Story.
 
@@ -134,7 +199,96 @@ echte Logik (AI Agent, Qlik/MCP, Websuche) zu ersetzen, ohne die
 die Validierung oder die Ergebnisdarstellung neu bauen zu müssen — die
 Datenverträge (`teamDiagnosis`, `playerProfile`, `playerSearch`, `research`,
 `recommendation`) bleiben dabei stabil, solange ein Ersatz dieselben Felder
-liefert.
+liefert. Das gilt jetzt auch eine Ebene tiefer: **Team-Performance abrufen**,
+**Team-Matches abrufen**, **Player-Ranking abrufen** und **Player-Profil
+abrufen** lassen sich beim Wechsel auf Qlik MCP durch Aufrufe der dann echten
+MCP-Tools ersetzen, ohne dass **Teamdiagnose erzeugen**, **Spielersuche
+durchführen** oder **Empfehlung anreichern** angepasst werden müssen, solange
+der Ersatz dieselben Felder (`teamPerformance`, `teamMatches`,
+`playerRanking`, `playerProfileLookup`) liefert — siehe
+[CSV-Analytics-Adapter](#csv-analytics-adapter).
+
+## CSV-Analytics-Adapter
+
+Temporärer, CSV-basierter Ersatz für die künftige Qlik-MCP-Anbindung (siehe
+User Story „CSV Analytics Adapter als temporären Qlik-Ersatz
+implementieren“). Vier fachliche Analytics-Tools sind als eigenständige,
+technische n8n-Subworkflows gekapselt — analog zum
+[Recherche-Subworkflow](#recherche-subworkflow) — und werden aus dem
+Hauptworkflow über je einen **Execute Workflow**-Node aufgerufen. Die
+Tool-Verträge (Feldnamen für Ein-/Ausgabe) sind bewusst so gestaltet, wie sie
+später durch echte Qlik-MCP-Tools bedient werden sollen; die Referenzdaten
+selbst liegen versioniert in [`n8n/data/`](./data/README.md)
+(`matches.csv`, `players.csv`) für dieselben fünf Vereine wie im
+`Verein`-Dropdown. Kein Tool erfindet Werte für unbekannte Vereine, Spieler
+oder Positionen — stattdessen wird das explizit ausgewiesen (`dataAvailable:
+false`, `found: false` bzw. `positionFallbackApplied: true`). Dasselbe gilt
+für einzelne fehlende/ungültige numerische CSV-Zellen (leerer Wert,
+nicht-numerischer Text): sie werden validiert, statt per `Number(...)`
+stillschweigend zu `0` bzw. `NaN` zu werden, und fließen explizit markiert
+(`invalidMatches`, `dataError`, `excludedInvalidData`/`invalidFields`, siehe
+unten) nicht in Aggregation oder Ranking-Score ein.
+
+1. **Teamperformance**
+   ([`analytics-team-performance-subworkflow.json`](./analytics-team-performance-subworkflow.json)) —
+   Input `{ club }`. Aggregiert die letzten Spiele des Vereins aus
+   `matches.csv` zu `teamPerformance`: `matchesAnalyzed`, `wins`/`draws`/`losses`,
+   `goalsFor`/`goalsAgainst`/`goalDifference`, `points`, `avgGoalsFor`/
+   `avgGoalsAgainst`, `form` (neuestes Spiel zuerst). Unbekannter Verein →
+   `dataAvailable: false` statt erfundener Werte; Spiele mit fehlenden/
+   ungültigen Tordaten werden gezählt (`invalidMatches`) und von der
+   Aggregation ausgeschlossen statt als `0` eingerechnet zu werden (bei
+   ausschließlich ungültigen Zeilen ebenfalls `dataAvailable: false`).
+2. **Team-Matches**
+   ([`analytics-team-matches-subworkflow.json`](./analytics-team-matches-subworkflow.json)) —
+   Input `{ club, matchLimit? }` (Default 10). Liefert `teamMatches.matches`:
+   je Spiel `date`, `opponent`, `homeAway`, `goalsFor`, `goalsAgainst`,
+   `result`, `competition`, `dataError`. Ein Spiel mit fehlenden/ungültigen
+   Tordaten bleibt in der Liste, hat aber `goalsFor`/`goalsAgainst`/`result:
+   null` und `dataError: true` statt erfundener Werte (`invalidMatches`
+   zählt sie zusätzlich auf Ebene von `teamMatches`).
+3. **Player-Ranking**
+   ([`analytics-player-ranking-subworkflow.json`](./analytics-player-ranking-subworkflow.json)) —
+   Input `{ rankingClub?, rankingExcludeClub?, position?, criteria?: [{
+   criterion, weight }], limit? }` (bewusst eigene Feldnamen statt `club`, da
+   das im Hauptworkflow bereits den zu diagnostizierenden Verein bezeichnet
+   und beim Durchreichen des ganzen Items sonst kollidieren würde).
+   `rankingClub` filtert auf genau einen Verein, `rankingExcludeClub`
+   schließt genau einen Verein aus (so sucht die Spielersuche außerhalb des
+   eigenen Kaders). Erkannte, generische `criteria`-Namen: `goals`,
+   `assists`, `rating`, `minutesPlayed`, `appearances`, `marketValueMEUR`
+   (höher = besser) sowie `age` (niedriger = besser); jeder Wert wird über
+   den betrachteten Pool min-max-normalisiert und gewichtet aufsummiert.
+   Unbekannte Kriterien werden nicht ignoriert-und-verschwiegen, sondern in
+   `ignoredCriteria` aufgeführt; eine nicht im Pool vorkommende Position
+   führt — explizit über `positionFallbackApplied: true` markiert — zum
+   Rückfall auf den ungefilterten Pool statt zu erfundenen Kandidaten. Ein
+   Spieler-Datensatz mit fehlendem/ungültigem numerischem Pflichtfeld (z. B.
+   leeres `age`) wird komplett aus dem Ranking-Pool ausgeschlossen statt mit
+   `0`/`NaN` in den Score einzufließen — sonst könnte z. B. ein fehlendes
+   `age` (niedriger = besser) den Score künstlich verbessern; die Anzahl
+   solcher ausgeschlossenen Datensätze steht in `excludedInvalidData`.
+   Liefert `playerRanking.ranking` (bis `limit`, Default 5) mit `name`,
+   `club`, `position`, `age`, `score`, `stats`.
+4. **Player-Profil**
+   ([`analytics-player-profile-subworkflow.json`](./analytics-player-profile-subworkflow.json)) —
+   Input `{ playerName }`. Liefert `playerProfileLookup` mit `found` und
+   `profile` (alle Spalten aus `players.csv`) bzw. `found: false` und
+   `profile: null` für einen unbekannten Namen. Einzelne fehlende/ungültige
+   numerische Felder im gefundenen Datensatz bleiben in `profile` explizit
+   `null` (statt `0`/`NaN`) und werden namentlich in `invalidFields`
+   aufgeführt; `profile.dataError: true` markiert einen unvollständigen
+   Datensatz. Heißt bewusst
+   `playerProfileLookup`, nicht `playerProfile` — Letzteres bezeichnet im
+   Hauptworkflow bereits das simulierte Bedarfsprofil (Anforderung an den
+   gesuchten Spielertyp), beide Verträge bleiben dadurch unabhängig
+   voneinander stabil.
+
+Die eingebetteten CSV-Kopien in den vier Subworkflows werden aus
+`n8n/data/matches.csv` / `n8n/data/players.csv` generiert und mit
+Node.js-Skripten verifiziert — siehe [`n8n/data/README.md`](./data/README.md)
+für `build_subworkflows.js`, `verify-analytics.js` und
+`simulate_main_workflow.js`.
 
 ## Recherche-Subworkflow
 
@@ -163,13 +317,18 @@ beide Workflows nach dem Import ohne manuelle Anpassung verbunden sind.
 ## Import & run
 
 1. Open your n8n instance.
-2. Import [`recherche-subworkflow.json`](./recherche-subworkflow.json) first
-   (**Workflows** → **Add workflow** → **Import from File**).
+2. Import the five technical subworkflows first — order among themselves
+   doesn't matter, only "before the main workflow" does — (**Workflows** →
+   **Add workflow** → **Import from File**):
+   [`recherche-subworkflow.json`](./recherche-subworkflow.json),
+   [`analytics-team-performance-subworkflow.json`](./analytics-team-performance-subworkflow.json),
+   [`analytics-team-matches-subworkflow.json`](./analytics-team-matches-subworkflow.json),
+   [`analytics-player-ranking-subworkflow.json`](./analytics-player-ranking-subworkflow.json),
+   [`analytics-player-profile-subworkflow.json`](./analytics-player-profile-subworkflow.json).
 3. Import [`ai-sporting-director.json`](./ai-sporting-director.json) the
-   same way — its **Recherche durchführen** node already references the
-   subworkflow's fixed ID, so no manual edit is needed there (on the
-   **Ollama Modell (Qwen3.8:latest)** node, select the local `[cimt] Ollama`
-   credential).
+   same way — its Execute-Workflow nodes already reference the subworkflows'
+   fixed IDs, so no manual edit is needed there (on the **Ollama Modell
+   (Qwen3.8:latest)** node, select the local `[cimt] Ollama` credential).
 4. Use **Test workflow** to obtain a test-mode form URL for manual testing,
    or activate the workflow (toggle **Active** in the top right) to make the
    form reachable at its production URL shown on the **AI Sporting Director
@@ -180,6 +339,10 @@ available:
 
 ```bash
 n8n import:workflow --input=n8n/recherche-subworkflow.json
+n8n import:workflow --input=n8n/analytics-team-performance-subworkflow.json
+n8n import:workflow --input=n8n/analytics-team-matches-subworkflow.json
+n8n import:workflow --input=n8n/analytics-player-ranking-subworkflow.json
+n8n import:workflow --input=n8n/analytics-player-profile-subworkflow.json
 n8n import:workflow --input=n8n/ai-sporting-director.json
 ```
 
@@ -194,24 +357,47 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
 2. Click `Analyse starten` without changing anything. **Expected result:**
    the browser shows the **Ergebnis anzeigen** page with five clearly
    separated sections — Teamdiagnose, Spielerprofil, Spielersuche,
-   Recherche, Empfehlung — each explicitly marked as a simulation, and the
-   recommended candidate is one of the three shortlisted dummy players. In
-   the n8n **Executions** list the run is successful and passes all six
-   gates (**Teamdiagnose gültig?**, **Spielerprofil gültig?**, **Spielersuche
+   Recherche, Empfehlung — with a hint distinguishing the CSV-based
+   sections (Teamdiagnose, Spielersuche) from the still fully simulated ones
+   (Spielerprofil, Recherche), and the recommended candidate is one of the
+   shortlisted CSV players (not the Hamburger SV squad itself). In the n8n
+   **Executions** list the run is successful and passes all six gates
+   (**Teamdiagnose gültig?**, **Spielerprofil gültig?**, **Spielersuche
    gültig?**, **Recherche gültig?**, **Final Validation gültig?**, plus
    **Eingabe validieren**).
-   **Ausgeführt (Logiksimulation):** Alle `Code`-Nodes des Hauptworkflows und
-   des Subworkflows wurden außerhalb von n8n mit Node.js gegen die
-   HSV-Beispieldaten (`club: "Hamburger SV"`, das voreingestellte
-   `objective`) ausgeführt, inklusive des Aufrufs des Recherche-Subworkflows
-   mit dem vom Hauptworkflow durchgereichten Item. Ergebnis: alle fünf Gates
-   melden `valid: true`, `formattedResult` enthält alle fünf Abschnitte, und
-   `recommendation.candidate` (`Dummy-Spieler A`, höchster `score`) ist
-   Teil von `playerSearch.shortlist`. Nicht ausgeführt: das eigentliche
-   Rendern der Formular-/Completion-Seiten und der n8n-**Executions**-Eintrag
-   selbst, da dafür eine laufende n8n-Weboberfläche nötig ist — offen für die
-   nächste Person (oder Session) mit interaktivem Zugriff auf eine
-   importierte Instanz.
+   **Ausgeführt (Logiksimulation):** `node n8n/data/simulate_main_workflow.js`
+   führt alle `Code`- und Execute-Workflow-Nodes des Hauptworkflows sowie
+   aller fünf Subworkflows (Recherche + die vier CSV-Analytics-Tools)
+   außerhalb von n8n mit Node.js gegen die HSV-Beispieldaten
+   (`club: "Hamburger SV"`, das voreingestellte `objective`) sowie gegen
+   Bayern und Leverkusen als weitere Vereine aus. Ergebnis: der komplette
+   Pfad läuft durch, `teamDiagnosis.mainProblem` benennt für HSV korrekt ein
+   Defensivproblem (mehr Gegentore als eigene Tore in den letzten sechs
+   CSV-Spielen) und für Leverkusen ein Offensivproblem, der empfohlene
+   Kandidat stammt aus einem anderen Verein als dem angefragten und
+   `recommendation.candidateProfile` enthält dessen echtes CSV-Profil. Für
+   HSV/Leverkusen wird zusätzlich geprüft, dass die aus `diagnosisCategory`
+   abgeleitete `playerProfile.position` tatsächlich zur Diagnose passt
+   (defensiv bzw. offensiv) und dass sowohl alle gerankten Kandidaten als
+   auch der empfohlene Kandidat wirklich auf dieser Position spielen — die
+   CSV-Diagnose beeinflusst die Transfermaßnahme damit nachweisbar.
+   Siehe [`n8n/data/README.md`](./data/README.md) für das Skript selbst.
+   Nicht ausgeführt: das eigentliche Rendern der Formular-/Completion-Seiten
+   und der n8n-**Executions**-Eintrag selbst, da dafür eine laufende
+   n8n-Weboberfläche nötig ist — offen für die nächste Person (oder Session)
+   mit interaktivem Zugriff auf eine importierte Instanz.
+
+### CSV-Analytics-Adapter: gezielte Tests
+
+`node n8n/data/verify-analytics.js` prüft die vier CSV-Analytics-Subworkflows
+isoliert gegen `matches.csv`/`players.csv` (Positionsfilter, `rankingClub`/
+`rankingExcludeClub`, sowie dass ein unbekannter Verein, Spieler oder eine
+unbekannte Position explizit ausgewiesen statt erfunden wird), dazu
+Negativtests mit leeren/ungültigen CSV-Zellen (fehlende Tordaten, fehlendes
+`age`/ungültiges `rating` einzelner Spieler) gegen eigens dafür eingesetzte
+Test-CSVs — siehe [`n8n/data/README.md`](./data/README.md) für die
+vollständige Liste der Prüfungen. **Ausgeführt:** alle 25 Prüfungen sind
+grün.
 
 ### Negative Testfälle (ein Gate pro Stufe)
 
@@ -277,19 +463,19 @@ angezeigt.
 ### Regressionstest: Hauptworkflow funktioniert allein (Importtest)
 
 Der Hauptworkflow bleibt die einzige n8n-Workflow-Datei, die die HSV-Formular-
-Story trägt; einzige neue Datei ist der technische Recherche-Subworkflow.
-Beim Import (`n8n import:workflow --input=n8n/ai-sporting-director.json`,
-gefolgt von `n8n/recherche-subworkflow.json`, oder in umgekehrter Reihenfolge
-wie oben empfohlen) öffnet sich der Hauptworkflow mit allen 24 hier
+Story trägt; die fünf technischen Subworkflow-Dateien (Recherche + die vier
+CSV-Analytics-Tools) sind die einzigen weiteren Dateien. Beim Import (die
+fünf Subworkflows zuerst, `n8n/ai-sporting-director.json` danach, siehe
+[Import & run](#import--run)) öffnet sich der Hauptworkflow mit allen 31 hier
 beschriebenen Nodes, inklusive der weiterhin unverbundenen **Ollama Modell
-(Qwen3.8:latest)**- und **LLM-Fehler normalisieren**-Nodes; der
-Subworkflow öffnet sich mit seinen zwei Nodes.
-`n8n/ai-sporting-director.json` und `n8n/recherche-subworkflow.json` wurden
-außerhalb von n8n als wohlgeformtes JSON mit eindeutigen Node-Namen/-IDs,
-Connections, die ausschließlich existierende Nodes referenzieren, jeweils
-genau einem erwarteten Trigger-Node (Form Trigger bzw. Execute Workflow
-Trigger) und ohne Klartext-Credential- oder -Workflow-ID (außer den beiden
-dokumentierten Platzhaltern) geprüft.
+(Qwen3.8:latest)**- und **LLM-Fehler normalisieren**-Nodes; jeder der fünf
+Subworkflows öffnet sich mit seinen zwei Nodes (Trigger + Code).
+Alle sechs Workflow-Dateien wurden außerhalb von n8n als wohlgeformtes JSON
+mit eindeutigen Node-Namen/-IDs, Connections, die ausschließlich existierende
+Nodes referenzieren, jeweils genau einem erwarteten Trigger-Node (Form
+Trigger bzw. Execute Workflow Trigger) und ohne Klartext-Credential- oder
+-Workflow-ID (außer den dokumentierten Platzhaltern/festen Subworkflow-IDs)
+geprüft (`python3` JSON-Konsistenzcheck, siehe Commit-Historie).
 **Nicht ausgeführt:** der tatsächliche Import in eine laufende n8n-Instanz —
 offen für die nächste Person (oder Session) mit interaktivem Zugriff.
 
@@ -359,5 +545,7 @@ dieser Story hinzukam:
   zentralen Fehlerpfad **Fehler anzeigen** angeschlossen ist.
 
 `ai-sporting-director.json` ist damit weiterhin der einzige Hauptworkflow in
-diesem Repository; `recherche-subworkflow.json` ist die einzige erlaubte
-Ausnahme davon, als technischer, nicht-fachlicher Subworkflow.
+diesem Repository; `recherche-subworkflow.json` und die vier
+`analytics-*-subworkflow.json`-Dateien des
+[CSV-Analytics-Adapters](#csv-analytics-adapter) sind die einzigen erlaubten
+Ausnahmen davon, jeweils als technischer, nicht-fachlicher Subworkflow.
