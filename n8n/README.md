@@ -3,565 +3,657 @@
 Der kanonische Hauptworkflow für dieses Projekt heißt **`AI Sporting Director`**
 und ist versioniert in [`ai-sporting-director.json`](./ai-sporting-director.json).
 Jede weitere Story erweitert diesen bestehenden Workflow in-place. Es wird kein
-neuer paralleler Hauptworkflow angelegt. Die einzige erlaubte Ausnahme sind
-rein technische, nicht-fachliche Subworkflows, die über einen **Execute
-Workflow**-Node aus dem Hauptworkflow aufgerufen werden: die Recherche-Stufe
-([`recherche-subworkflow.json`](./recherche-subworkflow.json), siehe
-[Recherche-Subworkflow](#recherche-subworkflow) unten) sowie die vier
+neuer paralleler Hauptworkflow angelegt.
+
+Seit der Restrukturierung „AI Sporting Director: Subworkflow-Restructuring"
+zeigt der Hauptworkflow auf oberster Ebene **nur noch die fachlichen Phasen**
+des Sporting-Director-Ablaufs plus das zentrale Routing/Review (Formulare,
+Validierungs-/Review-Entscheidungen, der eine zentrale Fehlerpfad). Jede
+fachliche Phase (Team analysieren, Scouting Brief erstellen, Kandidaten
+suchen, Due Diligence, Empfehlung erstellen) ist ein eigener,
+in sich abgeschlossener **fachlicher Subworkflow** mit eigenen internen
+Transformationen, Validierungen und Gates — der Hauptworkflow ruft sie über
+je einen **Execute Workflow**-Node auf und hat danach genau **ein** `<Phase>
+gültig?`-Gate, das bei `false` in den bestehenden zentralen Fehlerpfad
+(**Fehler anzeigen**) routet. Technische Details (LLM-Prompting,
+CSV-Analytics-Zugriff, feldweise Validierung) sind damit aus dem Hauptworkflow
+verschwunden und nur noch beim Öffnen der jeweiligen Subworkflow-Datei
+sichtbar — der Hauptworkflow selbst liest sich als Business-/Agentenprozess:
+**Detect → Diagnose → Decide → Research → Act**.
+
+Neben den fünf neuen fachlichen Subworkflows bleiben die bereits zuvor
+existierenden **rein technischen, nicht-fachlichen** Subworkflows unverändert
+bestehen (weiterhin über **Execute Workflow**-Nodes aufgerufen, jetzt aus den
+fachlichen Subworkflows heraus statt direkt aus dem Hauptworkflow): die
+Recherche-Stufe ([`recherche-subworkflow.json`](./recherche-subworkflow.json),
+siehe [Recherche-Subworkflow](#recherche-subworkflow) unten) sowie die vier
 CSV-Analytics-Tools des [CSV-Analytics-Adapters](#csv-analytics-adapter)
-(`analytics-*-subworkflow.json`).
+(`analytics-*-subworkflow.json`). Diese technischen Subworkflows bleiben
+bewusst **stabil und unverändert** — dieselben Tool-Verträge
+(`get_team_performance`, `get_team_matches`, `rank_players`,
+`get_player_profile`), dieselben festen Top-Level-IDs, dieselbe interne
+Logik — nur der aufrufende Node zog in eine andere Datei um.
 
-Dieser Stand erweitert den bisherigen Hauptworkflow (Startformular →
-normalisieren → validieren → eine einzelne Dummy-Antwort → Ausgabe prüfen →
-Ergebnis/Fehler anzeigen) um alle fachlichen Stufen des Sporting-Director-
-Ablaufs, jede mit einem eigenen Gate (Schema-/Mindestbedingungsprüfung), das
-bei ungültigem Ergebnis den bestehenden zentralen Fehlerpfad (**Fehler
-anzeigen**) wiederverwendet. **Teamdiagnose** und **Spielerprofil** werden
-inzwischen nicht mehr deterministisch/simuliert erzeugt, sondern von einem
-echten lokalen LLM (**Ollama Modell (Qwen3.8:latest)**, angesprochen über je
-eine **Basic LLM Chain** mit **Structured Output Parser**) interpretiert:
-**Teamdiagnose** greift dafür über den
-[CSV-Analytics-Adapter](#csv-analytics-adapter) auf echte, versionierte
-Referenzdaten zu (temporärer Ersatz für die künftige Qlik-/MCP-Anbindung,
-noch keine echte Websuche) und lässt deren Kennzahlen vom LLM fachlich
-interpretieren (Hypothesen, Ligavergleich, Hauptproblem, Gegenhypothesen,
-Unsicherheiten), ohne die Kennzahlen selbst zu erfinden; **Spielerprofil**
-leitet aus dieser LLM-Teamdiagnose ein strukturiertes Anforderungsprofil ab.
-**Spielersuche** greift ebenfalls über den CSV-Analytics-Adapter auf echte
-Daten zu (weiterhin deterministisch ausgewertet, siehe unten). Nur
-**Recherche** bleibt ein deterministischer, sichtbar als Simulation
-gekennzeichneter Dummy, da hierfür noch keine reale Implementierung möglich
-ist. Zwischen **Spielerprofil** und **Spielersuche** steht jetzt ein echtes
-**Human-Review-Gate** (siehe [Scouting Brief Human-Review](#scouting-brief-human-review)
-unten): der bisherige Dummy-Gate an dieser Stelle (automatische Weiterleitung
-ohne menschliche Beteiligung) ist durch eine echte Formular-Vorlage des
-strukturierten **Scouting Briefs** ersetzt, die ein Mensch **Approve**,
-**Request Changes** (mit Freitext-Feedback, das über **Spielerprofil LLM** in
-eine Überarbeitung einfließt) oder **Reject** entscheiden kann; nur **Approve**
-setzt den bestehenden Hauptworkflow fort.
+Insgesamt gilt: **`ai-sporting-director.json`** ist der einzige Hauptworkflow
+in diesem Repository. Alle übrigen `n8n/*.json`-Dateien sind Subworkflows,
+entweder **fachlich** (`team-analysieren-subworkflow.json`,
+`scouting-brief-subworkflow.json`, `kandidaten-suchen-subworkflow.json`,
+`due-diligence-subworkflow.json`, `empfehlung-erstellen-subworkflow.json` —
+je eine vollständige fachliche Fähigkeit inkl. eigener Validierung/
+Fehlerbehandlung) oder **technisch** (`recherche-subworkflow.json`, die vier
+`analytics-*-subworkflow.json`) — bewusst **keine** Zwischengröße: kein
+Subworkflow kapselt nur eine einzelne Validierung/Zuordnung/Berechnung, jeder
+steht entweder für eine ganze fachliche Fähigkeit oder für eine bewusst
+austauschbare technische Schnittstelle (analog zum CSV-Analytics-Adapter als
+Platzhalter für die künftige Qlik-MCP-Anbindung).
 
-Credentials werden ausschließlich referenziert (`[cimt] Ollama` am Node
-**Ollama Modell (Qwen3.8:latest)**, mit dem Platzhalter-Wert
+**Teamdiagnose** und **Spielerprofil** werden weiterhin nicht
+deterministisch/simuliert erzeugt, sondern von einem echten lokalen LLM
+(**Ollama Modell (Qwen3.8:latest)**, angesprochen über je eine **Basic LLM
+Chain** mit **Structured Output Parser**) interpretiert: **Teamdiagnose**
+greift dafür über den [CSV-Analytics-Adapter](#csv-analytics-adapter) auf
+echte, versionierte Referenzdaten zu (temporärer Ersatz für die künftige
+Qlik-/MCP-Anbindung, noch keine echte Websuche) und lässt deren Kennzahlen vom
+LLM fachlich interpretieren (Hypothesen, Ligavergleich, Hauptproblem,
+Gegenhypothesen, Unsicherheiten), ohne die Kennzahlen selbst zu erfinden;
+**Spielerprofil** leitet aus dieser LLM-Teamdiagnose ein strukturiertes
+Anforderungsprofil ab. **Spielersuche** greift ebenfalls über den
+CSV-Analytics-Adapter auf echte Daten zu (weiterhin deterministisch
+ausgewertet, siehe unten). Nur **Recherche** bleibt ein deterministischer,
+sichtbar als Simulation gekennzeichneter Dummy, da hierfür noch keine reale
+Implementierung möglich ist. Zwischen **Spielerprofil** und **Spielersuche**
+steht ein echtes **Human-Review-Gate** (siehe
+[Scouting Brief Human-Review](#scouting-brief-human-review) unten): ein
+Mensch prüft ein aus **Teamdiagnose** und **Spielerprofil** abgeleitetes
+**Scouting Brief** und kann es **Approve**, **Request Changes** (mit
+Freitext-Feedback, das über **Spielerprofil LLM** in eine Überarbeitung
+einfließt) oder **Reject** entscheiden; nur **Approve** setzt den
+Hauptworkflow fort.
+
+Weil ein n8n-Formular (Form Trigger/Form-Seiten) an die Browser-Session
+gebunden ist, in der es geöffnet wurde, **kann** dieses Human-Review-Gate
+nicht in einen Subworkflow ausgelagert werden — es bleibt bewusst im
+Hauptworkflow als Teil des erlaubten „zentralen Routings/Reviews" (siehe
+[Human Review bleibt im Hauptworkflow](#human-review-bleibt-im-hauptworkflow)
+unten).
+
+Credentials werden ausschließlich referenziert (`[cimt] Ollama` an den beiden
+Nodes **Ollama Modell (Qwen3.8:latest)** in `team-analysieren-subworkflow.json`
+und `scouting-brief-subworkflow.json`, mit dem Platzhalter-Wert
 `REPLACE_WITH_LOCAL_CREDENTIAL_ID` statt einer echten Credential-ID), nie
-exportiert oder dupliziert. Der Recherche-Subworkflow wird dagegen über seine
-feste Top-Level-ID `802fdb6b-4c0a-413f-952d-250c91ddc476` referenziert (siehe
-unten); n8n übernimmt diese ID beim Import unverändert, sodass keine manuelle
-Anpassung nötig ist. Es gelangt kein echtes Secret nach Git.
+exportiert oder dupliziert. Alle Subworkflows werden über ihre feste
+Top-Level-ID referenziert; n8n übernimmt diese ID beim Import
+(`import:workflow`) per Upsert unverändert, sodass nach dem Import (siehe
+[Import & run](#import--run)) alle Workflow-Dateien ohne manuelle Anpassung
+verbunden sind. Es gelangt kein echtes Secret nach Git.
 
 ## Zielablauf
 
+Oberste Ebene des Hauptworkflows (fachliche Phasen plus zentrales
+Routing/Review):
+
 ```
-Formular → [Team-Performance, Team-Matches]
-        → Datenverfuegbarkeit? --nein--> Teamdiagnose (keine Daten) --+
-                 |ja                                                  |
-                 v                                                    |
-        Teamdiagnose-Evidenz aufbereiten → Teamdiagnose-LLM (Ollama)  |
-                 → Teamdiagnose zusammenfuehren -----------------------+
-        → Teamdiagnose pruefen → Gate
-        → Teamdiagnose: Datengrundlage ausreichend? --nein--> Fehler anzeigen
-                 |ja
-                 v
-        → Spielerprofil-Positionspool ermitteln → Spielerprofil-LLM (Ollama) <---------+
-        → Spielerprofil zusammenfuehren → Spielerprofil pruefen → Gate                 |
-        → Scouting Brief erstellen → Scouting Brief pruefen → Gate                     |
-        → Scouting Brief zur Freigabe vorlegen (Human Review: Form)                    |
-        → Review-Entscheidung auswerten → Gate                                         |
-        → Approve? --nein--> Request Changes? --ja--> (zurueck zu Spielerprofil-LLM) --+
-                 |                    |nein
-                 |ja                  v
-                 |            Scouting Brief: Ablehnung dokumentieren --> Fehler anzeigen
-                 v
-        → [Player-Ranking] → Spielersuche → Gate
-        → Recherche → Gate
-        → Empfehlung → [Player-Profil] → Empfehlung anreichern
-        → Final Validation → Anzeige
+Start (Formular)
+  → Team analysieren            [Execute Workflow] → Team analysieren gültig?      --nein--> Fehler anzeigen
+  → Scouting Brief erstellen    [Execute Workflow] → Scouting Brief gültig?        --nein--> Fehler anzeigen
+  → Human Review (Form: Approve / Request Changes / Reject)
+        --Request Changes--> zurück zu Scouting Brief erstellen (mit reviewFeedback)
+        --Reject-----------> Fehler anzeigen
+        --Approve-----------v
+  → Kandidaten suchen            [Execute Workflow] → Kandidaten suchen gültig?      --nein--> Fehler anzeigen
+  → Due Diligence                [Execute Workflow] → Due Diligence gültig?          --nein--> Fehler anzeigen
+  → Empfehlung erstellen         [Execute Workflow] → Empfehlung gültig?             --nein--> Fehler anzeigen
+  → Ergebnis anzeigen
 ```
 
-Die in `[…]` stehenden Schritte sind Aufrufe des
-[CSV-Analytics-Adapters](#csv-analytics-adapter) über je einen
-**Execute Workflow**-Node (analog zum Recherche-Subworkflow). Jeder
-`<Stufe>-LLM`-Schritt ist eine **Basic LLM Chain**
-(`@n8n/n8n-nodes-langchain.chainLlm`), verbunden mit dem gemeinsamen
-**Ollama Modell (Qwen3.8:latest)** (`ai_languageModel`) und einem eigenen
-**Structured Output Parser** (`@n8n/n8n-nodes-langchain.outputParserStructured`,
-`ai_outputParser`), der die jeweilige Ausgabestruktur erzwingt; ein Fehler auf
-diesem Weg (z. B. Ollama nicht erreichbar) wird über `onError:
-continueErrorOutput` an **LLM-Fehler normalisieren** → **Fehler anzeigen**
-geleitet, siehe unten.
+Das liest sich fachlich als **Detect** (Team analysieren erkennt die
+sportliche Lage) **→ Diagnose** (Scouting Brief erstellen leitet daraus einen
+Bedarf ab) **→ Decide** (Human Review entscheidet über die Freigabe) **→
+Research** (Kandidaten suchen + Due Diligence) **→ Act** (Empfehlung
+erstellen).
 
-Jede Stufe folgt weiterhin demselben Grundmuster wie im bisherigen Workflow
-(**Dummy-/LLM-Antwort erzeugen** → **Ausgabe prüfen** → **Ausgabe gültig?**),
-nur je fachlicher Stufe wiederholt: `<Stufe> erzeugen`/`durchführen` (Code,
-Execute Workflow oder LLM-Chain) → `<Stufe> prüfen` (Code, setzt
-`valid`/`errorMessage`) → `<Stufe> gültig?` (IF) → bei `false` **Fehler
-anzeigen**, bei `true` weiter zur nächsten Stufe. Bei **Teamdiagnose** und
-**Spielerprofil** ist aus dem einzelnen `<Stufe> erzeugen`-Node inzwischen
-eine kleine, in sich geschlossene Teilkette geworden (siehe Diagramm oben),
-das Gate-Muster danach bleibt aber identisch.
+Innerhalb jeder fachlichen Phase läuft weiterhin dieselbe interne
+Gate-Kette wie zuvor (`<Stufe> erzeugen/durchführen` → `<Stufe> prüfen` →
+`<Stufe> gültig?`), nur dass ein internes `false` jetzt **nicht** mehr direkt
+zu **Fehler anzeigen** springt (das ist ein Form-Node und kann nicht
+innerhalb eines Subworkflows liegen), sondern in einen konsolidierten,
+lokalen **Phase-Ergebnis**-Knoten (`NoOp`) mündet, der `{ ...item, valid,
+errorMessage }` an den Hauptworkflow zurückgibt. Der Hauptworkflow prüft
+dieses `valid` danach mit **genau einem** `<Phase> gültig?`-Gate und routet
+bei `false` in den weiterhin einzigen zentralen Fehlerpfad **Fehler
+anzeigen**. Siehe die Abschnitte je Subworkflow unten für die jeweilige
+interne Gate-Kette.
 
-## Nodes
+## Hauptworkflow (`ai-sporting-director.json`, 23 Nodes)
 
-1. **AI Sporting Director beauftragen** (Form Trigger) — Formular mit
-   `Verein` (Dropdown, alle 18 Bundesliga-Vereine der Saison 2025/26,
-   `FC Bayern München` vorausgewählt), `Was soll der Sporting Director
-   untersuchen?` (Pflichtfeld, vereinsoffener Default-Auftrag ohne fest
-   verdrahteten Verein, Position oder Problemdiagnose) und optionalem
+1. **AI Sporting Director beauftragen** (Form Trigger) — unverändert:
+   Formular mit `Verein` (Dropdown, alle 18 Bundesliga-Vereine der Saison
+   2025/26, `FC Bayern München` vorausgewählt), `Was soll der Sporting
+   Director untersuchen?` (Pflichtfeld, vereinsoffener Default-Auftrag ohne
+   fest verdrahteten Verein, Position oder Problemdiagnose) und optionalem
    `Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?`.
-2. **Auftrag normalisieren** (Code, `runOnceForEachItem`) — normalisiert die
-   Formularausgabe zu `club`, `clubPlayerData`, `objective`,
+2. **Auftrag normalisieren** (Code, `runOnceForEachItem`) — unverändert:
+   normalisiert die Formularausgabe zu `club`, `clubPlayerData`, `objective`,
    `additionalContext`, `requestId`, `requestedAt`. Gibt dafür pro Item ein
    einzelnes `{ json: ... }`-Objekt zurück (kein Array) — gegen exakt n8n
    **2.35.7** verifiziert: bei `runOnceForEachItem` verwirft
    `validateRunCodeEachItem()` ein Array-Ergebnis mit `Code doesn't return a
-   single object`, bevor **Eingabe validieren** oder die Analytics-Stufen
-   erreicht werden. Bildet die Dropdown-Auswahl über zwei zentrale Maps
-   eindeutig auf die kanonischen Team-Identifier der Analytics-Schicht ab;
-   diese Zuordnungen werden ausschließlich in diesem Node gepflegt und nicht
-   in den Analytics-Subworkflows dupliziert. Zwei getrennte Maps sind nötig,
-   weil die beiden Analytics-Quelldateien denselben Verein unterschiedlich
-   benennen:
-   - `CLUB_CANONICAL_MAP` → `club`, gegen die tatsächlichen Team-Identifier
-     aus `bundesliga_2025_26_match_analytics.csv` abgeglichen (nur 4 der 18
-     Vereine sind dort wortgleich mit dem Dropdown-Label, z. B. `FC Bayern
-     München` → `Bayern Munich`, `1. FC Köln` → `FC Cologne`, `RB Leipzig` →
-     `RasenBallsport Leipzig`), da **Team-Performance abrufen**/**Team-Matches
-     abrufen** `club` per exaktem String-Vergleich gegen `Heimteam`/
-     `Auswärtsteam` matchen.
-   - `CLUB_PLAYER_DATA_MAP` → `clubPlayerData`, gegen die tatsächlichen
-     `Squad`-Identifier aus `players_data-2025_2026-full.csv` abgeglichen.
-     8 der 18 Vereine weichen hier vom Match-Identifier in
-     `CLUB_CANONICAL_MAP` ab (z. B. `Borussia Dortmund` → `Dortmund`,
-     `RB Leipzig` → `RB Leipzig` vs. `RasenBallsport Leipzig`,
-     `1. FC Köln` → `Köln` vs. `FC Cologne`), da **Player-Ranking-Anfrage
-     vorbereiten** (20.) darüber den Eigenkader-Ausschluss
-     (`rankingExcludeClub`) per exaktem String-Vergleich gegen `Squad`
-     bestimmt; ohne eigene Map würden eigene Spieler dieser Clubs nicht
-     ausgeschlossen und könnten als Transferkandidaten gerankt werden.
-
-   `node n8n/data/verify-club-canonical-map.js` verifiziert automatisiert
-   alle 18 Dropdown-Vereine gegen beide CSV-Identifier, den Rückgabevertrag
-   des Nodes sowie, dass **Player-Ranking-Anfrage vorbereiten** tatsächlich
-   `clubPlayerData` (und nicht `club`) für `rankingExcludeClub` verwendet.
-   Eine nicht in den Maps enthaltene Auswahl ergibt ein leeres
-   `club`/`clubPlayerData` und wird von **Eingabe validieren** abgelehnt.
+   single object`. Bildet die Dropdown-Auswahl über zwei zentrale Maps
+   eindeutig auf die kanonischen Team-Identifier der Analytics-Schicht ab
+   (`CLUB_CANONICAL_MAP` → `club`, `CLUB_PLAYER_DATA_MAP` → `clubPlayerData`
+   — siehe die ausführliche Begründung für die zwei getrennten Maps im
+   Node-Kommentar bzw. `n8n/data/verify-club-canonical-map.js`, das
+   automatisiert alle 18 Dropdown-Vereine gegen beide CSV-Identifier sowie
+   den Rückgabevertrag des Nodes verifiziert). Diese Zuordnungen bleiben
+   bewusst zentral in diesem einen Hauptworkflow-Node und werden in keinem
+   Subworkflow dupliziert.
 3. **Eingabe validieren** (IF) — unverändert: lehnt fehlende oder nur aus
    Leerzeichen bestehende Werte für `club`/`objective` ab.
    - **falsch** → **Validierungsfehler formulieren** (Set, unverändert) →
      **Fehler anzeigen**.
-   - **wahr** → weiter zu **Team-Performance abrufen**.
-4. **Team-Performance abrufen** (Execute Workflow) — ruft den
+   - **wahr** → weiter zu **Execute Workflow: Team analysieren**.
+4. **Execute Workflow: Team analysieren** (Execute Workflow) — ruft den
+   fachlichen Subworkflow
+   [`team-analysieren-subworkflow.json`](./team-analysieren-subworkflow.json)
+   über dessen feste Top-Level-ID `25aeb354-a18e-4e44-b0a1-c3a7c546b19f` auf
+   (siehe [Team analysieren](#team-analysieren-subworkflow) unten). Reichert
+   das Item um `teamDiagnosis` sowie `valid`/`errorMessage` an.
+5. **Team analysieren gültig?** (IF, prüft `$json.valid`) — **falsch** →
+   **Fehler anzeigen**; **wahr** → **Execute Workflow: Scouting Brief
+   erstellen**.
+6. **Execute Workflow: Scouting Brief erstellen** (Execute Workflow) — ruft
+   den fachlichen Subworkflow
+   [`scouting-brief-subworkflow.json`](./scouting-brief-subworkflow.json)
+   über dessen feste Top-Level-ID `85a4c672-5c35-4543-98ee-1f877f955593` auf
+   (siehe [Scouting Brief erstellen](#scouting-brief-erstellen-subworkflow)
+   unten). Reichert das Item um `playerProfile`, `scoutingBrief` sowie
+   `valid`/`errorMessage` an. **Derselbe Node** wird bei einer **Request
+   Changes**-Entscheidung im Human Review (13.) erneut aufgerufen, mit
+   `item.reviewFeedback` gesetzt — der Subworkflow unterstützt das über
+   seinen `inputSource: passthrough`-Trigger, der bei jedem Aufruf einfach
+   das aktuell übergebene Item entgegennimmt, unabhängig davon, wie oft er in
+   derselben Hauptworkflow-Ausführung aufgerufen wird.
+7. **Scouting Brief gültig?** (IF, prüft `$json.valid`) — **falsch** →
+   **Fehler anzeigen**; **wahr** → **Scouting Brief zur Freigabe vorlegen**.
+8. – 13. **Human Review** — siehe eigener Abschnitt
+   [Human Review bleibt im Hauptworkflow](#human-review-bleibt-im-hauptworkflow)
+   unten.
+14. **Execute Workflow: Kandidaten suchen** (Execute Workflow) — ruft den
+    fachlichen Subworkflow
+    [`kandidaten-suchen-subworkflow.json`](./kandidaten-suchen-subworkflow.json)
+    über dessen feste Top-Level-ID `803a06a1-fb4b-4cb7-b502-63ab119c9996` auf
+    (siehe [Kandidaten suchen](#kandidaten-suchen-subworkflow) unten).
+    Erreicht wird dieser Node nur über den **Approve**-Zweig des Human
+    Review. Reichert das Item um `playerRanking`, `playerSearch` sowie
+    `valid`/`errorMessage` an.
+15. **Kandidaten suchen gültig?** (IF, prüft `$json.valid`) — **falsch** →
+    **Fehler anzeigen**; **wahr** → **Execute Workflow: Due Diligence**.
+16. **Execute Workflow: Due Diligence** (Execute Workflow) — ruft den
+    fachlichen Subworkflow
+    [`due-diligence-subworkflow.json`](./due-diligence-subworkflow.json) über
+    dessen feste Top-Level-ID `c2ffe3ab-e97a-4147-83a8-4fbd1b87eae6` auf
+    (siehe [Due Diligence](#due-diligence-subworkflow) unten). Reichert das
+    Item um `research` sowie `valid`/`errorMessage` an.
+17. **Due Diligence gültig?** (IF, prüft `$json.valid`) — **falsch** →
+    **Fehler anzeigen**; **wahr** → **Execute Workflow: Empfehlung
+    erstellen**.
+18. **Execute Workflow: Empfehlung erstellen** (Execute Workflow) — ruft den
+    fachlichen Subworkflow
+    [`empfehlung-erstellen-subworkflow.json`](./empfehlung-erstellen-subworkflow.json)
+    über dessen feste Top-Level-ID `7e29c7d7-ef3b-488c-9d1e-2fdd4dad6bf1` auf
+    (siehe [Empfehlung erstellen](#empfehlung-erstellen-subworkflow) unten).
+    Reichert das Item um `recommendation` sowie `valid`/`errorMessage` an.
+19. **Empfehlung gültig?** (IF, prüft `$json.valid`) — **falsch** →
+    **Fehler anzeigen**; **wahr** → **Ergebnisseiten aufbereiten**.
+20. **Ergebnisseiten aufbereiten** (Code) — unverändert (liest weiterhin
+    `item.teamDiagnosis`/`playerProfile`/`playerSearch`/`research`/
+    `recommendation` — dieselben Feldnamen, jetzt aus den fachlichen
+    Subworkflows statt direkt im Hauptworkflow befüllt): baut
+    `formattedResult`, einen Text, der Teamdiagnose, Spielerprofil,
+    Spielersuche, Recherche und Empfehlung (inkl. `candidateProfile`, falls
+    vorhanden) als klar getrennte Abschnitte darstellt, mit einem Hinweis,
+    welche Abschnitte auf dem CSV-Analytics-Adapter bzw. der
+    LLM-Interpretation beruhen und welche weiterhin vollständig simuliert
+    sind.
+21. **Ergebnis anzeigen** (Form, Completion) — unverändert: zeigt
+    `formattedResult` an.
+22. **Fehler anzeigen** (Form, Completion) — unverändert der eine zentrale
+    Fehlerpfad für **alle** Gates: die eingangs- und Human-Review-Gates des
+    Hauptworkflows selbst (**Eingabe validieren**, **Review-Entscheidung
+    gültig?**, ein **Reject**/ausgeschöpfter Review-Loop über **Scouting
+    Brief: Ablehnung dokumentieren**) sowie die fünf neuen
+    `<Phase> gültig?`-Gates nach jedem Execute-Workflow-Aufruf (**Team
+    analysieren gültig?**, **Scouting Brief gültig?**, **Kandidaten suchen
+    gültig?**, **Due Diligence gültig?**, **Empfehlung gültig?**): zeigt
+    `errorMessage` an; ein ungültiges Ergebnis wird nie als fachliche
+    Empfehlung dargestellt.
+
+Nodes 4./15./17./19. tragen jeweils die technische Bezeichnung `Execute
+Workflow: <Phase>` statt des reinen Phasennamens, um sie im n8n-Editor
+eindeutig vom internen `<Stufe> gültig?`-Gate desselben Subworkflows zu
+unterscheiden (z. B. gibt es sowohl ein Hauptworkflow-Gate **Scouting Brief
+gültig?** als auch ein gleichnamiges, aber unabhängiges internes Gate in
+`scouting-brief-subworkflow.json` — beide prüfen `valid`, aber an
+unterschiedlichen Stellen der Pipeline und in unterschiedlichen Dateien).
+
+## Human Review bleibt im Hauptworkflow
+
+n8n-Formulare (Form Trigger und nachfolgende Form-Seiten desselben
+mehrseitigen Formulars) sind an die Browser-Session gebunden, in der das
+Formular geöffnet wurde — ein Form-Node kann deshalb nicht innerhalb eines
+per Execute-Workflow aufgerufenen Subworkflows liegen (dessen Ausführung
+läuft nicht in derselben Browser-Session). Das Human-Review-Gate bleibt daher
+bewusst **im Hauptworkflow** als Teil des erlaubten „zentralen
+Routings/Reviews", nicht als eigener Subworkflow:
+
+8. **Scouting Brief zur Freigabe vorlegen** (`n8n-nodes-base.form`, ohne
+   `operation: "completion"`, d. h. eine zusätzliche Formularseite innerhalb
+   desselben mehrstufigen Formulars wie **AI Sporting Director beauftragen**,
+   nicht dessen Abschluss) — zeigt `scoutingBrief` (Hauptproblem,
+   Zielposition/Rolle, Begründung, gewichtete Kriterien, Constraints,
+   Unsicherheiten, aktuelle Überarbeitungsrunde und ggf. bereits gesammeltes
+   Feedback früherer Runden) rein lesend in `formDescription` an und
+   erfragt zwei Eingabefelder: `Entscheidung` (Dropdown, Pflichtfeld,
+   Optionen `Approve`/`Request Changes`/`Reject`) und `Feedback (Pflicht bei
+   Request Changes)` (Textarea, im Formular selbst nicht als Pflichtfeld
+   hinterlegt — die eigentliche Pflicht bei `Request Changes` erzwingt der
+   nachfolgende Code-Node). Pausiert die Workflow-Ausführung, bis ein Mensch
+   das Formular absendet.
+9. **Review-Entscheidung auswerten** (Code) — liest `$json['Entscheidung']`
+   und `$json['Feedback (Pflicht bei Request Changes)']` aus der
+   Formulareingabe und holt das vollständige Item vor der Formularseite über
+   `$('Execute Workflow: Scouting Brief erstellen').first().json` zurück
+   (bewusst defensiv wie bei den LLM-Chain-Knoten in den Subworkflows,
+   unabhängig davon, ob der Form-Node selbst bereits alle Felder
+   durchreicht — dieser Rückgriff musste bei der Restrukturierung angepasst
+   werden: er zeigte zuvor auf den Code-Node **Scouting Brief erstellen**,
+   der jetzt innerhalb von `scouting-brief-subworkflow.json` liegt und aus
+   dem Hauptworkflow heraus nicht mehr per `$()` adressierbar ist; der
+   Execute-Workflow-Aufrufknoten selbst liefert dasselbe vollständige Item
+   zurück). Validiert, dass `Entscheidung` einer von `Approve`/`Request
+   Changes`/`Reject` ist und dass bei `Request Changes` ein nichtleeres
+   Feedback vorliegt; setzt `valid`/`errorMessage`. Erzwingt außerdem den
+   **begrenzten** Feedback-Loop: ist `scoutingBrief.reviewRound` bereits
+   `maxReviewRounds` (3) erreicht und die Entscheidung erneut `Request
+   Changes`, wird `reviewOutcome` trotzdem auf `'Reject'` gesetzt
+   (`maxRoundsReached: true`) statt eine vierte Überarbeitung zuzulassen —
+   ansonsten entspricht `reviewOutcome` der eingegebenen `Entscheidung`.
+10. **Review-Entscheidung gültig?** (IF) — **falsch** → **Fehler anzeigen**;
+    **wahr** → **Review: Approve?**.
+11. **Review: Approve?** (IF, prüft `reviewOutcome === 'Approve'`) —
+    **wahr** → **Execute Workflow: Kandidaten suchen** (derselbe
+    Hauptworkflow läuft unverändert fort); **falsch** → **Review: Request
+    Changes?**.
+12. **Review: Request Changes?** (IF, prüft `reviewOutcome === 'Request
+    Changes'`) — **wahr** → zurück zu **Execute Workflow: Scouting Brief
+    erstellen** (erneuter Aufruf desselben fachlichen Subworkflows;
+    `item.reviewFeedback` ist zu diesem Zeitpunkt bereits auf dem Item
+    gesetzt und wird vom Subworkflow-Trigger unverändert durchgereicht, siehe
+    6. oben und [Scouting Brief erstellen](#scouting-brief-erstellen-subworkflow)
+    unten); **falsch** (d. h. `reviewOutcome === 'Reject'`, ob explizit oder
+    weil `maxRoundsReached`) → **Scouting Brief: Ablehnung dokumentieren**.
+13. **Scouting Brief: Ablehnung dokumentieren** (Code) — formuliert
+    `errorMessage` mit dem Grund (`Reject` durch den Reviewer oder erreichte
+    `maxReviewRounds`) und dem zuletzt gegebenen Feedback, läuft in den
+    zentralen Fehlerpfad **Fehler anzeigen** — ein Reject beendet die
+    Kandidatensuche damit kontrolliert, ohne eine Empfehlung zu erzeugen.
+
+Position und Profil werden dabei weiterhin ausschließlich vom Agenten
+hergeleitet — der Reviewer entscheidet nur über Freigabe, Überarbeitung oder
+Ablehnung, gibt aber keine eigene Position/kein eigenes Profil vor.
+
+## Team analysieren (Subworkflow)
+
+[`team-analysieren-subworkflow.json`](./team-analysieren-subworkflow.json)
+(feste Top-Level-ID `25aeb354-a18e-4e44-b0a1-c3a7c546b19f`, 16 Nodes) kapselt
+die komplette Team-Analyse-Fähigkeit: CSV-Analytics-Abruf, die
+LLM-Interpretation der Teamdiagnose inklusive eigener **Ollama
+Modell**-/**LLM-Fehler normalisieren**-Instanz, und alle zugehörigen internen
+Gates. Eingang (`inputSource: passthrough`): das vollständige Item aus dem
+Hauptworkflow (`club`, `clubPlayerData`, `objective`, `additionalContext`,
+…). Ausgang: dasselbe Item, angereichert um `teamDiagnosis` sowie
+`valid`/`errorMessage`.
+
+1. **Team-Performance abrufen** (Execute Workflow) — ruft den
    CSV-Analytics-Subworkflow
    [`analytics-team-performance-subworkflow.json`](./analytics-team-performance-subworkflow.json)
-   auf (Tool „Teamperformance“, siehe [CSV-Analytics-Adapter](#csv-analytics-adapter))
+   auf (Tool „Teamperformance", siehe [CSV-Analytics-Adapter](#csv-analytics-adapter))
    und reichert das Item um `teamPerformance` an.
-5. **Team-Matches abrufen** (Execute Workflow) — ruft
+2. **Team-Matches abrufen** (Execute Workflow) — ruft
    [`analytics-team-matches-subworkflow.json`](./analytics-team-matches-subworkflow.json)
-   auf (Tool „Team-Matches“) und reichert das Item um `teamMatches` an.
-6. **Teamdiagnose: Datenverfügbarkeit prüfen** (IF) — prüft
+   auf (Tool „Team-Matches") und reichert das Item um `teamMatches` an.
+3. **Teamdiagnose: Datenverfügbarkeit prüfen** (IF) — prüft
    `teamPerformance.dataAvailable`. **falsch** (kein CSV-Datensatz für den
    angefragten Verein) → **Teamdiagnose (keine Daten) erzeugen**; **wahr** →
    **Teamdiagnose: Evidenz aufbereiten**. Ohne Datengrundlage gibt es nichts,
    was ein LLM interpretieren könnte — dieser Fall bleibt deshalb bewusst
    deterministisch, ohne einen LLM-Aufruf auszulösen.
-7. **Teamdiagnose (keine Daten) erzeugen** (Code) — deterministischer
+4. **Teamdiagnose (keine Daten) erzeugen** (Code) — deterministischer
    Ersatz-Zweig für einen unbekannten Verein: liefert
    `teamDiagnosis.dataAvailable: false`, `diagnosisCategory: 'no_data'` und
    einen expliziten Hinweis auf die fehlende Datengrundlage statt etwas zu
-   erfinden (unverändert gegenüber dem bisherigen No-Data-Verhalten,
-   ergänzt um die beiden neuen Pflichtfelder `leagueComparison` und
-   `counterHypotheses`, damit **Teamdiagnose prüfen** unten auch diesen
-   Zweig als schema-gültig akzeptiert). Läuft direkt weiter zu
-   **Teamdiagnose prüfen**.
-8. **Teamdiagnose: Evidenz aufbereiten** (Code) — deterministische
+   erfinden. Läuft direkt weiter zu **Teamdiagnose prüfen**.
+5. **Teamdiagnose: Evidenz aufbereiten** (Code) — deterministische
    Faktenextraktion aus `teamPerformance`/`teamMatches` (Bilanz, Form,
    Punkteschnitt, letzte Ergebnisse) in `teamDiagnosisEvidence`, bewusst
    **ohne** jede Interpretation (keine Hypothesen, kein Hauptproblem) — das
-   übernimmt jetzt **Teamdiagnose LLM**. Diese Trennung stellt sicher, dass
-   der spätere `teamDiagnosis.evidence`-Wert nachweisbar der reine,
-   unveränderte CSV-Befund bleibt und nicht vom LLM mitgestaltet wird.
-9. **Teamdiagnose LLM** (`@n8n/n8n-nodes-langchain.chainLlm`, Basic LLM
+   übernimmt **Teamdiagnose LLM**. Diese Trennung stellt sicher, dass der
+   spätere `teamDiagnosis.evidence`-Wert nachweisbar der reine, unveränderte
+   CSV-Befund bleibt und nicht vom LLM mitgestaltet wird.
+6. **Teamdiagnose LLM** (`@n8n/n8n-nodes-langchain.chainLlm`, Basic LLM
    Chain) — interpretiert `teamDiagnosisEvidence` sowie die Rohkennzahlen aus
    `teamPerformance`/`teamMatches` über **Ollama Modell (Qwen3.8:latest)**
-   (`ai_languageModel`) und liefert, erzwungen durch **Teamdiagnose
-   Output-Schema** (`ai_outputParser`), `diagnosisCategory`
-   (`'defensive'`/`'offensive'`/`'neutral'`), `leagueComparison`,
-   `hypotheses`, `counterHypotheses`, `mainProblem` und `uncertainties` als
-   strukturiertes JSON — ausdrücklich angewiesen, ausschließlich die
-   gegebenen Fakten zu interpretieren, nichts zu erfinden und Unsicherheiten
-   zu benennen. Da dem LLM nur die Kennzahlen des betrachteten Vereins
-   vorliegen (keine Liga-Durchschnittswerte, keine Kennzahlen anderer
-   Vereine), ist der Prompt ausdrücklich angewiesen, in `leagueComparison`
-   **keine** Bundesliga-Platzierung/-Durchschnitt/-Vergleichswerte zu
-   erfinden, sondern das Fehlen einer belastbaren Vergleichsgrundlage
-   explizit zu benennen. `onError: continueErrorOutput` leitet einen Fehler (z. B.
-   Ollama nicht erreichbar) auf den zweiten Output an **LLM-Fehler
-   normalisieren** statt den Workflow abzubrechen.
-10. **Teamdiagnose Output-Schema** (`@n8n/n8n-nodes-langchain.outputParserStructured`)
-    — erzwingt (`schemaType: manual`) den unter 9. genannten JSON-Vertrag für
-    **Teamdiagnose LLM**; `evidence` ist bewusst **nicht** Teil dieses
-    Schemas (siehe 8.).
-11. **Teamdiagnose zusammenführen** (Code) — gegen n8n **2.35.7** verifiziert:
+   (`ai_languageModel`, eigene Node-Instanz dieser Datei) und liefert,
+   erzwungen durch **Teamdiagnose Output-Schema** (`ai_outputParser`),
+   `diagnosisCategory` (`'defensive'`/`'offensive'`/`'neutral'`),
+   `leagueComparison`, `hypotheses`, `counterHypotheses`, `mainProblem` und
+   `uncertainties` als strukturiertes JSON — ausdrücklich angewiesen,
+   ausschließlich die gegebenen Fakten zu interpretieren, nichts zu erfinden
+   und Unsicherheiten zu benennen; erfindet insbesondere keinen Ligavergleich
+   (keine Platzierung, keinen Liga-Durchschnitt, keinen Vergleich zu
+   konkreten anderen Vereinen), da dem LLM nur die Kennzahlen des
+   betrachteten Vereins vorliegen. `onError: continueErrorOutput` leitet
+   einen Fehler (z. B. Ollama nicht erreichbar) auf den zweiten Output an
+   **LLM-Fehler normalisieren** statt den Workflow abzubrechen.
+7. **Teamdiagnose Output-Schema** (`@n8n/n8n-nodes-langchain.outputParserStructured`)
+   — erzwingt (`schemaType: manual`) den unter 6. genannten JSON-Vertrag;
+   `evidence` ist bewusst **nicht** Teil dieses Schemas (siehe 5.).
+8. **Ollama Modell (Qwen3.8:latest)** (Ollama Chat Model) — eigene
+   Node-Instanz **dieser Datei** (technische Utility-Node, bewusst dupliziert
+   statt geteilt, siehe Einleitung oben), versorgt **Teamdiagnose LLM** über
+   `ai_languageModel`. Credential-Referenz `[cimt] Ollama`
+   (`REPLACE_WITH_LOCAL_CREDENTIAL_ID`).
+9. **LLM-Fehler normalisieren** (Code) — eigene Kopie **dieser Datei**:
+   empfängt den Error-Output (`onError: continueErrorOutput`) von
+   **Teamdiagnose LLM** und normalisiert ihn (String- oder Objekt-Fehler-
+   Shape) zu `errorMessage`; setzt zusätzlich **`valid: false`** (Ergänzung
+   gegenüber der Vor-Restrukturierungs-Fassung dieses Nodes: da diese Kopie
+   nicht mehr direkt an **Fehler anzeigen** hängen kann, muss sie den
+   konsolidierten Phase-Ergebnis-Vertrag dieser Datei selbst erfüllen) und
+   läuft direkt in **Team analysieren: Ergebnis**.
+10. **Teamdiagnose zusammenführen** (Code) — gegen n8n **2.35.7** verifiziert:
     die Basic LLM Chain (v1.6) setzt bei aktivem Output Parser
     `shouldUnwrapObjects = true`, wodurch die geparsten Structured-Output-
     Felder direkt als Node-JSON zurückkommen (`$json.diagnosisCategory` usw.,
-    **nicht** `$json.output.diagnosisCategory`); der Rest des Items geht dabei
-    trotzdem verloren. Dieser Node holt das vollständige Item über
-    `$('Teamdiagnose: Evidenz aufbereiten').first().json` zurück — **nicht**
-    über `.item`, denn die Chain liefert auf dem Erfolgspfad laut exakt
-    getaggtem n8n-2.35.7-Quellcode nur `{ json: ... }` ohne `pairedItem`, und
-    `.item` würde dafür `paired_item_no_info` werfen; `.first()` braucht keine
-    Pairing-Kette und ist für diesen durchgehend Ein-Item-Zweig äquivalent —
-    und baut `teamDiagnosis` aus dem deterministischen `teamDiagnosisEvidence`
-    (→ `evidence`) und der LLM-Interpretation (→ `diagnosisCategory`,
-    `hypotheses`, `counterHypotheses`, `mainProblem`, `uncertainties`)
-    zusammen (`teamDiagnosis.simulated: false`, `dataAvailable: true`). Da dem
-    LLM nachweislich nie echte Liga-Vergleichsdaten vorliegen (siehe 9.), setzt
-    dieser Node `teamDiagnosis.leagueComparisonAvailable` **deterministisch im
-    Code auf `false`** statt es vom LLM zu erfragen, und verwirft dafür den
-    LLM-Text in `leagueComparison` zugunsten eines festen, wahrheitsgemäßen
-    Hinweises — eine reine Promptvorgabe könnte ein regelwidriges LLM nicht
-    zuverlässig daran hindern, trotzdem eine Bundesliga-Platzierung zu
-    erfinden. Läuft anschließend in dieselbe **Teamdiagnose prüfen** wie der
-    No-Data-Zweig.
-12. **Teamdiagnose prüfen** (Code) — erweitert: prüft wie bisher, dass
-    `evidence`/`hypotheses` nichtleere Arrays sind, `mainProblem` ein
-    nichtleerer String ist und `uncertainties` ein Array ist, **zusätzlich**
-    jetzt auch, dass `leagueComparisonAvailable` ein boolean und
-    `leagueComparison` ein nichtleerer String sowie `counterHypotheses` ein
-    Array ist; setzt `valid`/`errorMessage`.
-13. **Teamdiagnose gültig?** (IF) — **falsch** → **Fehler anzeigen**; **wahr**
-    → **Teamdiagnose: Datengrundlage prüfen**.
-13a. **Teamdiagnose: Datengrundlage prüfen** (Code) — prüft, ob
+    **nicht** `$json.output.diagnosisCategory`); der Rest des Items geht
+    dabei trotzdem verloren. Dieser Node holt das vollständige Item über
+    `$('Teamdiagnose: Evidenz aufbereiten').first().json` zurück (`.first()`
+    statt `.item`, da die Chain auf dem Erfolgspfad kein `pairedItem`
+    liefert) und baut `teamDiagnosis` aus dem deterministischen
+    `teamDiagnosisEvidence` (→ `evidence`) und der LLM-Interpretation
+    zusammen (`teamDiagnosis.simulated: false`, `dataAvailable: true`).
+    Setzt `teamDiagnosis.leagueComparisonAvailable` **deterministisch im Code
+    auf `false`** (dem LLM liegen nachweislich nie echte Liga-Vergleichsdaten
+    vor) und verwirft dafür den LLM-Text in `leagueComparison` zugunsten
+    eines festen, wahrheitsgemäßen Hinweises. Läuft anschließend in
+    dieselbe **Teamdiagnose prüfen** wie der No-Data-Zweig.
+11. **Teamdiagnose prüfen** (Code) — prüft, dass `evidence`/`hypotheses`
+    nichtleere Arrays sind, `mainProblem` ein nichtleerer String ist,
+    `uncertainties` ein Array ist, `leagueComparisonAvailable` ein boolean
+    und `leagueComparison` ein nichtleerer String sowie `counterHypotheses`
+    ein Array ist; setzt `valid`/`errorMessage`.
+12. **Teamdiagnose gültig?** (IF) — **falsch** → **Team analysieren:
+    Ergebnis** (statt wie vor der Restrukturierung direkt zu **Fehler
+    anzeigen** — `valid: false` ist bereits gesetzt, der Hauptworkflow routet
+    darüber über sein eigenes **Team analysieren gültig?**-Gate); **wahr** →
+    **Teamdiagnose: Datengrundlage prüfen**.
+13. **Teamdiagnose: Datengrundlage prüfen** (Code) — prüft, ob
     `teamDiagnosis.diagnosisCategory === 'no_data'`. Ohne diesen Stopp würde
-    **Spielerprofil: Positionspool ermitteln** bei fehlender Datengrundlage
-    auf den ungefilterten Positionspool zurückfallen und die Pipeline bis zur
+    die nachfolgende Bedarfsermittlung (im Scouting-Brief-Subworkflow) auf
+    den ungefilterten Positionspool zurückfallen und die Pipeline bis zur
     Empfehlung weiterlaufen lassen, obwohl keine belastbare Diagnose vorliegt
-    — das widerspricht der Story-Vorgabe, bei unzureichender Evidenz
-    Unsicherheit auszuweisen bzw. weitere Analytics anzufordern statt sichere
+    — das widerspricht der Vorgabe, bei unzureichender Evidenz Unsicherheit
+    auszuweisen bzw. weitere Analytics anzufordern statt sichere
     Folgeschlüsse zu erfinden. Setzt `valid`/`errorMessage`.
-13b. **Teamdiagnose: Datengrundlage ausreichend?** (IF) — **falsch** (d. h.
-    `diagnosisCategory === 'no_data'`) → **Fehler anzeigen** (die Bedarfs-
-    ermittlung/Spielersuche wird kontrolliert gestoppt); **wahr** →
-    **Spielerprofil: Positionspool ermitteln**.
-14. **Spielerprofil: Positionspool ermitteln** (Code) — wird nur noch mit
-    einer belastbaren Teamdiagnose erreicht (`no_data` stoppt bereits bei
-    13b.) und grenzt den Positionspool generisch anhand von
-    `teamDiagnosis.diagnosisCategory` ein (Defensivproblem → defensive
-    Positionen, Offensivproblem → offensive Positionen, `neutral` → alle
-    Positionen; kein Sonderfall für einen bestimmten Verein oder eine
-    bestimmte Position) und übergibt diesen Pool als `allowedPositions`
-    verbindlich an **Spielerprofil LLM**.
-15. **Spielerprofil LLM** (`@n8n/n8n-nodes-langchain.chainLlm`, Basic LLM
-    Chain) — leitet aus der (jetzt LLM-erzeugten) Teamdiagnose sowie
-    `club`/`objective`/`additionalContext` ein strukturiertes
-    Anforderungsprofil ab, über dasselbe **Ollama Modell (Qwen3.8:latest)**
-    und erzwungen durch **Spielerprofil Output-Schema**: `position` (die
-    Instruktion verlangt ausdrücklich, ausschließlich aus `allowedPositions`
-    zu wählen), `role`, `weightedCriteria` (Kriteriennamen, die
-    **Player-Ranking** erkennt: `goals`, `assists`, `rating`,
-    `appearances`, `age`, `minutesPlayed`, `marketValueMEUR`), `constraints`
-    (Liste strukturierter, tatsächlich filterbarer Objekte `{ field:
-    'age'|'marketValueMEUR', operator: 'max'|'min', value: <Zahl> }` — nur
-    wenn ein konkreter Alters- oder Budget-/Marktwertrahmen aus dem
-    zusätzlichen Kontext **und/oder** aus einer vorliegenden
-    Reviewer-Rückmeldung (`reviewFeedback`, s. u.) ableitbar ist, sonst ein
-    leeres Array statt eines erfundenen Rahmens) und `reasoning` (muss sich
-    auf `teamDiagnosis.mainProblem` beziehen). Gleiches `onError:
-    continueErrorOutput` → **LLM-Fehler normalisieren** wie bei
-    **Teamdiagnose LLM**. **Neu:** ist `$json.reviewFeedback` gesetzt (dieser
-    Lauf folgt auf eine **Request Changes**-Entscheidung im
-    [Scouting-Brief-Human-Review](#scouting-brief-human-review), siehe 19a./19h.
-    unten), wird der Prompt um genau dieses Freitext-Feedback ergänzt und das
-    LLM angewiesen, Rolle/Kriterien/Constraints/Begründung entsprechend zu
-    überarbeiten, ohne den erlaubten Positionspool oder die zulässigen
-    Kriteriennamen zu verletzen; die `constraints`-Instruktion nennt
-    `additionalContext` und `reviewFeedback` dabei ausdrücklich als
-    gleichberechtigte, alternative Quellen für einen konkreten
-    Alters-/Budgetwert (z. B. „max. 10 Mio. Marktwert“ oder „nur unter 24“ im
-    Feedback), sodass ein vom Reviewer genanntes Limit zuverlässig ins
-    überarbeitete `playerProfile.constraints` übernommen wird, statt vom
-    Widerspruch zur ursprünglichen, auf `additionalContext` beschränkten
-    Formulierung abzuhängen; ist `reviewFeedback` leer (Erstlauf), bleibt der
-    Prompt unverändert. Die zusätzlich konfigurierte Chat-Message (in n8n
-    **2.35.7** als `SystemMessage` vor den User-Prompt gestellt) ist mit
-    dieser Constraints-Instruktion abgestimmt: sie nennt die Teamdiagnose als
-    fachliche Grundlage für Position/Rolle/Kriterien, erlaubt aber ausdrücklich
-    `additionalContext`/`reviewFeedback` als Quelle für einen konkreten
-    Alters-/Budgetgrenzwert — andernfalls würde die System-Message dem
-    User-Prompt widersprechen und das LLM könnte ein Reviewer-Limit trotz
-    korrekter Instruktion im `text`-Prompt ignorieren.
-16. **Spielerprofil Output-Schema** (`@n8n/n8n-nodes-langchain.outputParserStructured`)
-    — erzwingt den unter 15. genannten JSON-Vertrag für **Spielerprofil
-    LLM**, inkl. des strukturierten `constraints`-Objektvertrags.
-17. **Spielerprofil zusammenführen** (Code) — gegen n8n **2.35.7** verifiziert
-    (siehe 11.): die geparsten Structured-Output-Felder liegen direkt auf
-    `$json`, nicht unter `$json.output`. Holt das vollständige Item über
-    `$('Spielerprofil: Positionspool ermitteln').first().json` zurück (**nicht**
-    über `.item`, aus demselben `pairedItem`-Grund wie bei **Teamdiagnose
-    zusammenführen**, siehe 11.) und setzt
-    `playerProfile` aus der LLM-Ausgabe zusammen (`playerProfile.simulated:
-    false` — nicht mehr als Dummy markiert).
-18. **Spielerprofil prüfen** (Code) — erweitert: prüft wie bisher alle
-    Pflichtfelder inkl. dass jedes `weightedCriteria`-Element ein `criterion`
-    und ein numerisches `weight` hat, **zusätzlich** jetzt eine generische
-    Konsistenzprüfung, dass `playerProfile.position` tatsächlich im durch
-    `teamDiagnosis.diagnosisCategory` vorgegebenen Pool liegt (dieselbe
-    Poolzuordnung wie in **Spielerprofil: Positionspool ermitteln**, hier
-    erneut dupliziert, da Code-Nodes keine gemeinsamen Hilfsfunktionen teilen
-    können) — das Parser-Schema allein kann das nicht garantieren, da
-    `position` dort nur als String typisiert ist, nicht als von der Diagnose
-    abhängiges Enum. Verstößt das LLM dagegen, wird `valid: false` gesetzt.
-    Ebenso geprüft: jedes `constraints`-Element hat ein `field` aus
-    `age`/`marketValueMEUR`, ein `operator` aus `max`/`min` und ein
-    numerisches `value` — nur so kann **Player-Ranking-Anfrage vorbereiten**
-    (20.) die Constraints tatsächlich anwenden statt sie als Dead Data
-    mitzuführen.
-19. **Spielerprofil gültig?** (IF) — **falsch** → **Fehler anzeigen**;
-    **wahr** → **Scouting Brief erstellen**.
+14. **Teamdiagnose: Datengrundlage ausreichend?** (IF) — **falsch** (d. h.
+    `diagnosisCategory === 'no_data'`) → **Team analysieren: Ergebnis**
+    (`valid: false`); **wahr** → **Team analysieren: Ergebnis**
+    (`valid: true`).
+15. **Team analysieren: Ergebnis** (`n8n-nodes-base.noOp`) — konsolidierter
+    Phase-Ergebnis-Knoten dieser Datei: alle vier möglichen Pfade (11./12.
+    ungültige Teamdiagnose, 13./14. `no_data`-Stopp, 14. gültige Diagnose, 9.
+    LLM-Fehler) münden hier ein, `valid`/`errorMessage` sind an dieser Stelle
+    bereits vom jeweils zuletzt durchlaufenen Prüf-Node gesetzt. Dieser Node
+    verändert das Item nicht, sondern ist einfach der letzte Node der Datei —
+    n8n liefert dessen Output als Ergebnis des Execute-Workflow-Aufrufs an
+    den Hauptworkflow zurück.
 
-**Scouting Brief Human-Review**
+## Scouting Brief erstellen (Subworkflow)
 
-Nach einem gültigen Spielerprofil folgt jetzt ein echtes Human-Review-Gate
-statt der bisherigen automatischen Weiterleitung an die Spielersuche. Ein
-Mensch prüft dabei ein aus **Teamdiagnose** und **Spielerprofil**
-abgeleitetes, strukturiertes **Scouting Brief** und kann es **Approve**,
-mit Freitext-Feedback **Request Changes** verlangen (der Agent überarbeitet
-das Spielerprofil daraufhin über einen erneuten **Spielerprofil LLM**-Aufruf
-und legt das Brief erneut vor) oder **Reject**. Position und Profil werden
-dabei weiterhin ausschließlich vom Agenten hergeleitet — der Reviewer
-entscheidet nur über Freigabe, Überarbeitung oder Ablehnung, gibt aber keine
-eigene Position/kein eigenes Profil vor.
+[`scouting-brief-subworkflow.json`](./scouting-brief-subworkflow.json) (feste
+Top-Level-ID `85a4c672-5c35-4543-98ee-1f877f955593`, 13 Nodes) kapselt die
+Ableitung des Spielerprofils (LLM) und die Erstellung des Scouting Briefs
+inklusive eigener **Ollama Modell**-/**LLM-Fehler normalisieren**-Instanz und
+aller zugehörigen internen Gates. Eingang (`inputSource: passthrough`): das
+vom Hauptworkflow übergebene Item, inkl. `teamDiagnosis` (aus **Team
+analysieren**) und optional `reviewFeedback`/`reviewDecision`/`scoutingBrief`
+(gesetzt, wenn dies eine erneute Vorlage nach einer **Request
+Changes**-Entscheidung ist, siehe [Human Review](#human-review-bleibt-im-hauptworkflow)
+oben — der Subworkflow selbst unterscheidet nicht zwischen Erst- und
+Folgeaufruf, sondern reagiert nur darauf, ob `reviewFeedback` gesetzt ist).
+Ausgang: dasselbe Item, angereichert um `playerProfile`, `scoutingBrief`
+sowie `valid`/`errorMessage`.
 
-19a. **Scouting Brief erstellen** (Code) — baut `scoutingBrief` aus dem
-    bereits validierten `teamDiagnosis.mainProblem` (→ `problem`) und
-    `playerProfile.position`/`role`/`reasoning`/`weightedCriteria`/
-    `constraints` (→ `targetPosition`/`role`/`reasoning`/`weightedCriteria`/
-    `constraints`) sowie `teamDiagnosis.uncertainties` (→ `uncertainties`)
-    zusammen — rein deklarativ aus bereits vorhandenen, validierten Feldern,
-    ohne neue Werte zu erfinden. Führt zusätzlich eine begrenzte
-    Überarbeitungshistorie: folgt dieser Lauf auf eine **Request
-    Changes**-Entscheidung (`item.reviewDecision === 'Request Changes'`),
-    wird das Feedback der vorherigen Runde (aus dem vorherigen
-    `scoutingBrief.reviewRound`) an `scoutingBrief.feedbackHistory`
-    angehängt; `scoutingBrief.reviewRound` zählt ab 1 hoch,
-    `scoutingBrief.maxReviewRounds` ist auf `3` fest verdrahtet (siehe
-    **Review-Entscheidung auswerten** unten).
-19b. **Scouting Brief prüfen** (Code) — Gate nach demselben Muster wie die
-    übrigen Stufen: prüft, dass `problem`, `targetPosition`, `role` und
-    `reasoning` nichtleere Strings sind, `weightedCriteria` ein nichtleeres
-    Array ist und `constraints`/`uncertainties` Arrays sind; setzt
-    `valid`/`errorMessage`.
-19c. **Scouting Brief gültig?** (IF) — **falsch** → **Fehler anzeigen**
-    (derselbe zentrale Fehlerpfad wie bei allen anderen Gates); **wahr** →
-    **Scouting Brief zur Freigabe vorlegen**.
-19d. **Scouting Brief zur Freigabe vorlegen** (`n8n-nodes-base.form`, ohne
-    `operation: "completion"`, d. h. eine zusätzliche Formularseite
-    innerhalb desselben mehrstufigen Formulars wie **AI Sporting Director
-    beauftragen**, nicht dessen Abschluss) — zeigt `scoutingBrief`
-    (Hauptproblem, Zielposition/Rolle, Begründung, gewichtete Kriterien,
-    Constraints, Unsicherheiten, aktuelle Überarbeitungsrunde und ggf. bereits
-    gesammeltes Feedback früherer Runden) rein lesend in `formDescription` an
-    und erfragt zwei Eingabefelder: `Entscheidung` (Dropdown, Pflichtfeld,
-    Optionen `Approve`/`Request Changes`/`Reject`) und `Feedback (Pflicht bei
-    Request Changes)` (Textarea, im Formular selbst nicht als Pflichtfeld
-    hinterlegt, da n8n-Formularfelder nicht bedingt pflicht sein können — die
-    eigentliche Pflicht bei `Request Changes` erzwingt stattdessen der
-    nachfolgende Code-Node). Pausiert die Workflow-Ausführung, bis ein Mensch
-    das Formular absendet, und setzt danach mit den eingegebenen Werten fort
-    — analog zum mehrstufigen Formularmuster von **AI Sporting Director
-    beauftragen**/**Ergebnis anzeigen**/**Fehler anzeigen**, hier nur ohne
-    `completion`, weil der Workflow nach dieser Seite weiterläuft statt zu
-    enden.
-19e. **Review-Entscheidung auswerten** (Code) — liest `$json['Entscheidung']`
-    und `$json['Feedback (Pflicht bei Request Changes)']` aus der
-    Formulareingabe und holt das vollständige Item vor der Formularseite über
-    `$('Scouting Brief erstellen').first().json` zurück (bewusst defensiv wie
-    bei den LLM-Chain-Knoten, siehe 11./17., unabhängig davon, ob der
-    Form-Node selbst bereits alle Felder durchreicht). Validiert, dass
-    `Entscheidung` einer von `Approve`/`Request Changes`/`Reject` ist und dass
-    bei `Request Changes` ein nichtleeres Feedback vorliegt; setzt
-    `valid`/`errorMessage`. Erzwingt außerdem den **begrenzten** Feedback-Loop
-    aus der Story-Vorgabe: ist `scoutingBrief.reviewRound` bereits
-    `maxReviewRounds` (3) erreicht und die Entscheidung erneut `Request
-    Changes`, wird `reviewOutcome` trotzdem auf `'Reject'` gesetzt
-    (`maxRoundsReached: true`) statt eine vierte Überarbeitung zuzulassen —
-    ansonsten entspricht `reviewOutcome` der eingegebenen `Entscheidung`.
-19f. **Review-Entscheidung gültig?** (IF) — **falsch** → **Fehler anzeigen**;
-    **wahr** → **Review: Approve?**.
-19g. **Review: Approve?** (IF, prüft `reviewOutcome === 'Approve'`) —
-    **wahr** → **Player-Ranking-Anfrage vorbereiten** (derselbe Hauptworkflow
-    läuft unverändert fort); **falsch** → **Review: Request Changes?**.
-19h. **Review: Request Changes?** (IF, prüft `reviewOutcome === 'Request
-    Changes'`) — **wahr** → zurück zu **Spielerprofil: Positionspool
-    ermitteln** (derselbe Positionspool wird deterministisch aus
-    `teamDiagnosis.diagnosisCategory` neu ermittelt; **Spielerprofil LLM**
-    erhält über `reviewFeedback` das Freitext-Feedback und ist angewiesen,
-    das Profil entsprechend zu überarbeiten, siehe 15.); durchläuft danach
-    erneut **Spielerprofil zusammenführen** → **Spielerprofil prüfen** →
-    **Spielerprofil gültig?** → **Scouting Brief erstellen** (19a., das dabei
-    das vorherige Feedback archiviert und die Runde hochzählt) → erneutes
-    Review. **falsch** (d. h. `reviewOutcome === 'Reject'`, ob explizit oder
-    weil `maxRoundsReached`) → **Scouting Brief: Ablehnung dokumentieren**.
-19i. **Scouting Brief: Ablehnung dokumentieren** (Code) — formuliert
-    `errorMessage` mit dem Grund (`Reject` durch den Reviewer oder erreichte
-    `maxReviewRounds`) und dem zuletzt gegebenen Feedback, läuft in denselben
-    zentralen Fehlerpfad **Fehler anzeigen** wie alle anderen Gates — ein
-    Reject beendet die Kandidatensuche damit kontrolliert, ohne eine
-    Empfehlung zu erzeugen.
+1. **Spielerprofil: Positionspool ermitteln** (Code) — grenzt den
+   Positionspool generisch anhand von `teamDiagnosis.diagnosisCategory` ein
+   (Defensivproblem → defensive Positionen, Offensivproblem → offensive
+   Positionen, `neutral` → alle Positionen; kein Sonderfall für einen
+   bestimmten Verein oder eine bestimmte Position) und übergibt diesen Pool
+   als `allowedPositions` verbindlich an **Spielerprofil LLM**.
+2. **Spielerprofil LLM** (`@n8n/n8n-nodes-langchain.chainLlm`, Basic LLM
+   Chain) — leitet aus der Teamdiagnose sowie `club`/`objective`/
+   `additionalContext` ein strukturiertes Anforderungsprofil ab, über
+   **Ollama Modell (Qwen3.8:latest)** (eigene Node-Instanz dieser Datei) und
+   erzwungen durch **Spielerprofil Output-Schema**: `position` (nur aus
+   `allowedPositions`), `role`, `weightedCriteria` (Kriteriennamen, die
+   **Player-Ranking** erkennt: `goals`, `assists`, `rating`,
+   `appearances`, `age`, `minutesPlayed`, `marketValueMEUR`), `constraints`
+   (Liste strukturierter Objekte `{ field: 'age'|'marketValueMEUR',
+   operator: 'max'|'min', value: <Zahl> }` — nur wenn ein konkreter Alters-
+   oder Budget-/Marktwertrahmen aus `additionalContext` und/oder aus
+   `reviewFeedback` ableitbar ist, sonst ein leeres Array) und `reasoning`
+   (muss sich auf `teamDiagnosis.mainProblem` beziehen). `onError:
+   continueErrorOutput` → **LLM-Fehler normalisieren** wie bei
+   **Teamdiagnose LLM**. Ist `$json.reviewFeedback` gesetzt (dieser Lauf
+   folgt auf eine **Request Changes**-Entscheidung), wird der Prompt um genau
+   dieses Freitext-Feedback ergänzt und das LLM angewiesen,
+   Rolle/Kriterien/Constraints/Begründung entsprechend zu überarbeiten, ohne
+   den erlaubten Positionspool oder die zulässigen Kriteriennamen zu
+   verletzen; ist `reviewFeedback` leer (Erstlauf), bleibt der Prompt
+   unverändert.
+3. **Spielerprofil Output-Schema** (`@n8n/n8n-nodes-langchain.outputParserStructured`)
+   — erzwingt den unter 2. genannten JSON-Vertrag, inkl. des strukturierten
+   `constraints`-Objektvertrags.
+4. **Ollama Modell (Qwen3.8:latest)** (Ollama Chat Model) — eigene
+   Node-Instanz **dieser Datei**, versorgt **Spielerprofil LLM** über
+   `ai_languageModel`. Credential-Referenz `[cimt] Ollama`
+   (`REPLACE_WITH_LOCAL_CREDENTIAL_ID`).
+5. **LLM-Fehler normalisieren** (Code) — eigene Kopie **dieser Datei**:
+   empfängt den Error-Output von **Spielerprofil LLM**, normalisiert ihn zu
+   `errorMessage`, setzt zusätzlich `valid: false` und läuft direkt in
+   **Scouting Brief erstellen: Ergebnis** (dieselbe Ergänzung wie bei der
+   Kopie in `team-analysieren-subworkflow.json`, siehe oben).
+6. **Spielerprofil zusammenführen** (Code) — gegen n8n **2.35.7** verifiziert
+   (siehe **Team analysieren**, Punkt 10.): holt das vollständige Item über
+   `$('Spielerprofil: Positionspool ermitteln').first().json` zurück und
+   setzt `playerProfile` aus der LLM-Ausgabe zusammen (`playerProfile.
+   simulated: false`).
+7. **Spielerprofil prüfen** (Code) — prüft alle Pflichtfelder inkl. dass
+   jedes `weightedCriteria`-Element ein `criterion` und ein numerisches
+   `weight` hat, dass jedes `constraints`-Element ein gültiges
+   `field`/`operator`/numerisches `value` hat, sowie eine generische
+   Konsistenzprüfung, dass `playerProfile.position` tatsächlich im durch
+   `teamDiagnosis.diagnosisCategory` vorgegebenen Pool liegt (dieselbe
+   Poolzuordnung wie in 1., hier erneut dupliziert, da Code-Nodes keine
+   gemeinsamen Hilfsfunktionen teilen können).
+8. **Spielerprofil gültig?** (IF) — **falsch** → **Scouting Brief erstellen:
+   Ergebnis** (`valid: false`); **wahr** → **Scouting Brief erstellen**
+   (Code, Punkt 9.).
+9. **Scouting Brief erstellen** (Code) — baut `scoutingBrief` aus dem
+   bereits validierten `teamDiagnosis.mainProblem` (→ `problem`) und
+   `playerProfile.position`/`role`/`reasoning`/`weightedCriteria`/
+   `constraints` sowie `teamDiagnosis.uncertainties` zusammen — rein
+   deklarativ aus bereits vorhandenen, validierten Feldern. Führt zusätzlich
+   eine begrenzte Überarbeitungshistorie: folgt dieser Lauf auf eine
+   **Request Changes**-Entscheidung, wird das Feedback der vorherigen Runde
+   an `scoutingBrief.feedbackHistory` angehängt; `scoutingBrief.reviewRound`
+   zählt ab 1 hoch, `scoutingBrief.maxReviewRounds` ist auf `3` fest
+   verdrahtet.
+10. **Scouting Brief prüfen** (Code) — prüft, dass `problem`,
+    `targetPosition`, `role` und `reasoning` nichtleere Strings sind,
+    `weightedCriteria` ein nichtleeres Array ist und `constraints`/
+    `uncertainties` Arrays sind; setzt `valid`/`errorMessage`.
+11. **Scouting Brief gültig?** (IF, **intern**, nicht zu verwechseln mit dem
+    gleichnamigen Gate im Hauptworkflow) — **falsch**/**wahr** → jeweils
+    **Scouting Brief erstellen: Ergebnis** (`valid` ist in beiden Fällen
+    bereits korrekt von 10. gesetzt).
+12. **Scouting Brief erstellen: Ergebnis** (`n8n-nodes-base.noOp`) —
+    konsolidierter Phase-Ergebnis-Knoten dieser Datei: alle Pfade (7./8.
+    ungültiges Spielerprofil, 10./11. Scouting-Brief-Prüfung, 5. LLM-Fehler)
+    münden hier ein und werden unverändert an den Hauptworkflow
+    zurückgegeben.
 
-20. **Player-Ranking-Anfrage vorbereiten** (Code) — übersetzt `playerProfile`
-    in den Tool-Vertrag von Player-Ranking: `rankingExcludeClub` =
-    `clubPlayerData` des diagnostizierten Vereins (Scouting sucht außerhalb
-    des eigenen Kaders) — bewusst `clubPlayerData` statt `club`, da
-    Player-Ranking den Ausschluss gegen die `Squad`-Spalte der Spielerdaten
-    vergleicht, die bei 8 der 18 Vereine einen anderen Identifier als der
-    Match-Datensatz verwendet (siehe 2.), `constraints` =
-    `playerProfile.constraints` (siehe unten, Abschnitt
-    [CSV-Analytics-Adapter](#csv-analytics-adapter), Player-Ranking),
-    `position`/`criteria` aus `playerProfile.position`/`weightedCriteria`,
-    `limit: 5`.
-21. **Player-Ranking abrufen** (Execute Workflow) — ruft
-    [`analytics-player-ranking-subworkflow.json`](./analytics-player-ranking-subworkflow.json)
-    auf (Tool „Player-Ranking“) und reichert das Item um `playerRanking` an.
-22. **Spielersuche durchführen** (Code) — leitet `longlistSize` und eine
-    `shortlist` von bis zu fünf Kandidaten (`score`, `strengths`,
-    `weaknesses`, `evidence` jeweils aus echten, importierten Spielerwerten
-    gegenüber dem Pool-Durchschnitt) aus `playerRanking` ab
-    (`playerSearch.simulated: false`). Liefert der Adapter keine Kandidaten
-    (z. B. weil der komplette Markt für die Anfrage leer ist), bleibt
-    `shortlist` leer statt Kandidaten zu erfinden — das nachfolgende Gate
-    greift dann reell.
-23. **Spielersuche prüfen** (Code) — prüft `longlistSize > 0`, `shortlist`
-    nichtleer und **höchstens fünf** Kandidaten, sowie dass jeder Kandidat
-    alle Pflichtfelder hat. Prüft zusätzlich, dass
-    `playerRanking.ignoredConstraints` leer ist — ein vom Spielerprofil
-    gefordertes, aber im Player-Ranking nicht anwendbares Constraint (z. B.
-    weil `marketValueMEUR` im Kandidatenpool nicht numerisch verfügbar ist)
-    würde sonst stillschweigend ignoriert und die Pipeline könnte trotzdem bis
-    zur Empfehlung weiterlaufen, obwohl das Constraint keine Wirkung hatte.
-    Ein nicht anwendbares Constraint gilt hier deshalb als unzureichende
-    Datengrundlage und stoppt über das folgende Gate. **Neu:** dasselbe gilt
-    jetzt analog für `playerRanking.ignoredCriteria` — sind alle vom
-    Spielerprofil gewichteten Kriterien im Kandidatenpool nicht numerisch
-    verfügbar, ersetzt der Ranking-Subworkflow sie sonst still durch die
-    Default-Kriterien (`goals`/`assists`/`xG`) und könnte trotzdem eine
-    Empfehlung erzeugen, ohne dass die LLM-Kriterien die Suche tatsächlich
-    steuern. **Neu:** außerdem prüft das Gate `playerRanking.
-    positionFallbackApplied` — schlägt selbst der grobe
-    Positionsgruppen-Match (DF/MF/FW/GK) fehl, behält der Ranking-Subworkflow
-    den kompletten ungefilterten Spielerpool statt gar keinen Kandidaten zu
-    liefern; ohne diese Prüfung könnte eine angeforderte Position komplett
-    verloren gehen und ein Spieler einer völlig anderen Positionsgruppe
-    empfohlen werden.
-24. **Spielersuche gültig?** (IF) — **falsch** → **Fehler anzeigen**;
-    **wahr** → **Recherche durchführen**.
-25. **Recherche durchführen** (Execute Workflow) — unverändert: ruft den
-    technischen Subworkflow
-    [`recherche-subworkflow.json`](./recherche-subworkflow.json) auf und
-    übergibt das aktuelle Item (inkl. `playerSearch.shortlist`) unverändert
-    weiter (`Passthrough`). Der Subworkflow liefert je Kandidat aus der
-    Shortlist `club` (Verein), `contract` (Vertrag), `marketValue`
-    (Marktwert), `injuries` (Verletzungen) und `news` (Meldungen), jeweils
-    mit `source` (Dummy-Quelle), `timestamp` (Zeitpunkt) und `confidence`
-    (Konfidenz) — siehe [Recherche-Subworkflow](#recherche-subworkflow).
-26. **Recherche prüfen** (Code) — unverändert: prüft die Kandidatenabdeckung
-    per Set-Gleichheit (jeder Shortlist-Name kommt in `research` vor und
-    umgekehrt) plus Duplikatprüfung, sodass `research` **genau einen**
-    Eintrag je Shortlist-Kandidat enthält (nicht nur dieselbe Anzahl), und
-    dass jeder Eintrag alle Pflichtfelder hat.
-27. **Recherche gültig?** (IF) — **falsch** → **Fehler anzeigen**; **wahr**
-    → **Empfehlung erzeugen**.
-28. **Empfehlung erzeugen** (Code) — wählt den Kandidaten mit dem
-    höchsten `score` aus `playerSearch.shortlist` als bevorzugten Kandidaten
-    (damit stammt er per Konstruktion aus der validierten Shortlist), die
-    übrigen Shortlist-Namen werden `alternatives`; dazu `reasoning`, `risks`,
-    `uncertainties`, `nextStep`. **Neu:** ist `playerRanking.
-    positionApproximationApplied` gesetzt (angeforderte Position nur grob auf
-    eine Positionsgruppe DF/MF/FW/GK angenähert statt exakt gematcht — mit der
-    FBref-Datengrundlage der Regelfall, siehe Player-Ranking-Subworkflow
-    unten), wird das explizit als zusätzlicher Eintrag in
-    `recommendation.uncertainties` ausgewiesen, statt stillschweigend
-    übernommen zu werden.
-29. **Player-Profil-Anfrage vorbereiten** (Code) — setzt `playerName` auf
-    `recommendation.candidate`.
-30. **Player-Profil abrufen** (Execute Workflow) — ruft
-    [`analytics-player-profile-subworkflow.json`](./analytics-player-profile-subworkflow.json)
-    auf (Tool „Player-Profil“) und reichert das Item um `playerProfileLookup`
-    an. Da der Kandidat selbst aus den importierten Player-Daten stammt (über
-    Player-Ranking), wird er hier immer gefunden.
-31. **Empfehlung anreichern** (Code) — setzt
-    `recommendation.candidateProfile` auf `playerProfileLookup.profile` (bzw.
-    `null`, falls nicht gefunden), ohne die übrigen `recommendation`-Felder zu
-    verändern.
-32. **Final Validation** (Code) — unverändert: prüft alle vorherigen
-    Stufenergebnisse noch einmal im Zusammenhang (u. a. dass
-    `recommendation.candidate` tatsächlich Teil der validierten
-    `playerSearch.shortlist` ist) sowie den vollständigen
-    Empfehlungsvertrag: `candidate`, `alternatives` (Array), `reasoning`,
-    `risks` (nichtleeres Array), `uncertainties` (nichtleeres Array) und
-    `nextStep` — analog zur bisherigen **Ausgabe prüfen**, jetzt über den
-    gesamten Ablauf. `candidateProfile` ist kein Pflichtfeld dieser Prüfung.
-33. **Final Validation gültig?** (IF) — **falsch** → **Fehler anzeigen**;
-    **wahr** → **Ergebnisseiten aufbereiten**.
-34. **Ergebnisseiten aufbereiten** (Code) — baut `formattedResult`: einen
-    Text, der Teamdiagnose, Spielerprofil, Spielersuche, Recherche und
-    Empfehlung (inkl. `candidateProfile`, falls vorhanden) als klar
-    getrennte Abschnitte darstellt, mit einem Hinweis, welche Abschnitte auf
-    dem CSV-Analytics-Adapter bzw. der LLM-Interpretation beruhen und welche
-    weiterhin vollständig simuliert sind.
-35. **Ergebnis anzeigen** (Form, Completion) — unverändert: zeigt
-    `formattedResult` an.
-36. **Fehler anzeigen** (Form, Completion) — unverändert der eine zentrale
-    Fehlerpfad für **alle** Gates (Validierung, Teamdiagnose, Spielerprofil,
-    Spielersuche, Recherche, Final Validation) **und** für Fehler aus
-    **Teamdiagnose LLM**/**Spielerprofil LLM** (über **LLM-Fehler
-    normalisieren**): zeigt `errorMessage` an; ein ungültiges Ergebnis wird
-    nie als fachliche Empfehlung dargestellt.
-37. **Ollama Modell (Qwen3.8:latest)** (Ollama Chat Model) — nicht mehr ohne
-    Verbindung: versorgt jetzt sowohl **Teamdiagnose LLM** als auch
-    **Spielerprofil LLM** über `ai_languageModel`.
-38. **LLM-Fehler normalisieren** (Code) — nicht mehr ohne eingehende
-    Verbindung: empfängt jetzt den Error-Output (`onError:
-    continueErrorOutput`) von **Teamdiagnose LLM** und **Spielerprofil LLM**
-    und normalisiert ihn wie zuvor beschrieben (String- oder
-    Objekt-Fehler-Shape) zu `errorMessage`, weiterhin verbunden mit dem
-    zentralen Fehlerpfad **Fehler anzeigen**.
+## Kandidaten suchen (Subworkflow)
 
-Die Struktur erlaubt, jede `<Stufe> erzeugen`/`durchführen`-Node später durch
-echte Logik (AI Agent, Qlik/MCP, Websuche) zu ersetzen, ohne die
-`<Stufe> prüfen`/`<Stufe> gültig?`-Gates, das Formular, die Normalisierung,
-die Validierung oder die Ergebnisdarstellung neu bauen zu müssen — die
-Datenverträge (`teamDiagnosis`, `playerProfile`, `playerSearch`, `research`,
-`recommendation`) bleiben dabei stabil, solange ein Ersatz dieselben Felder
-liefert. Für **Teamdiagnose** und **Spielerprofil** ist dieser Ersatz jetzt
-bereits vollzogen: statt eines Code-Nodes erzeugt eine **Basic LLM Chain**
-über **Ollama Modell (Qwen3.8:latest)** die Interpretation bzw. das
-Anforderungsprofil; nur **Recherche durchführen** bleibt ein noch zu
-ersetzender Dummy. Das gilt weiterhin auch eine Ebene tiefer:
-**Team-Performance abrufen**, **Team-Matches abrufen**, **Player-Ranking
-abrufen** und **Player-Profil abrufen** lassen sich beim Wechsel auf Qlik MCP
-durch Aufrufe der dann echten MCP-Tools ersetzen, ohne dass **Teamdiagnose:
-Evidenz aufbereiten**, **Spielersuche durchführen** oder **Empfehlung
-anreichern** angepasst werden müssen, solange der Ersatz dieselben Felder
-(`teamPerformance`, `teamMatches`, `playerRanking`, `playerProfileLookup`)
-liefert — siehe [CSV-Analytics-Adapter](#csv-analytics-adapter).
+[`kandidaten-suchen-subworkflow.json`](./kandidaten-suchen-subworkflow.json)
+(feste Top-Level-ID `803a06a1-fb4b-4cb7-b502-63ab119c9996`, 7 Nodes) kapselt
+den Player-Ranking-Abruf und die Ableitung der Spielersuche/Shortlist.
+Eingang: das Item mit `playerProfile` (aus **Scouting Brief erstellen**) und
+`clubPlayerData` (aus **Auftrag normalisieren**). Ausgang: dasselbe Item,
+angereichert um `playerRanking`, `playerSearch` sowie
+`valid`/`errorMessage`.
+
+1. **Player-Ranking-Anfrage vorbereiten** (Code) — übersetzt `playerProfile`
+   in den Tool-Vertrag von Player-Ranking: `rankingExcludeClub` =
+   `clubPlayerData` des diagnostizierten Vereins (Scouting sucht außerhalb
+   des eigenen Kaders) — bewusst `clubPlayerData` statt `club`, da
+   Player-Ranking den Ausschluss gegen die `Squad`-Spalte der Spielerdaten
+   vergleicht, die bei 8 der 18 Vereine einen anderen Identifier als der
+   Match-Datensatz verwendet (siehe Hauptworkflow, Node 2.), `constraints` =
+   `playerProfile.constraints`, `position`/`criteria` aus
+   `playerProfile.position`/`weightedCriteria`, `limit: 5`.
+2. **Player-Ranking abrufen** (Execute Workflow) — ruft
+   [`analytics-player-ranking-subworkflow.json`](./analytics-player-ranking-subworkflow.json)
+   auf (Tool „Player-Ranking", siehe [CSV-Analytics-Adapter](#csv-analytics-adapter))
+   und reichert das Item um `playerRanking` an.
+3. **Spielersuche durchführen** (Code) — leitet `longlistSize` und eine
+   `shortlist` von bis zu fünf Kandidaten (`score`, `strengths`,
+   `weaknesses`, `evidence` jeweils aus echten, importierten Spielerwerten
+   gegenüber dem Pool-Durchschnitt) aus `playerRanking` ab
+   (`playerSearch.simulated: false`). Liefert der Adapter keine Kandidaten,
+   bleibt `shortlist` leer statt Kandidaten zu erfinden.
+4. **Spielersuche prüfen** (Code) — prüft `longlistSize > 0`, `shortlist`
+   nichtleer und **höchstens fünf** Kandidaten, sowie dass jeder Kandidat
+   alle Pflichtfelder hat. Prüft zusätzlich, dass
+   `playerRanking.ignoredConstraints` und `playerRanking.ignoredCriteria`
+   leer sind (sonst wurde ein vom Spielerprofil gefordertes Constraint/
+   Kriterium stillschweigend nicht angewendet) sowie dass
+   `playerRanking.positionFallbackApplied` nicht gesetzt ist (sonst wäre die
+   angeforderte Position komplett verlorengegangen und der Pool ungefiltert
+   geblieben).
+5. **Spielersuche gültig?** (IF, **intern**) — **falsch**/**wahr** → jeweils
+   **Kandidaten suchen: Ergebnis** (`valid` ist bereits von 4. gesetzt).
+6. **Kandidaten suchen: Ergebnis** (`n8n-nodes-base.noOp`) — konsolidierter
+   Phase-Ergebnis-Knoten dieser Datei.
+
+## Due Diligence (Subworkflow)
+
+[`due-diligence-subworkflow.json`](./due-diligence-subworkflow.json) (feste
+Top-Level-ID `c2ffe3ab-e97a-4147-83a8-4fbd1b87eae6`, 5 Nodes) kapselt die
+Recherche zu den Shortlist-Kandidaten. Eingang: das Item mit
+`playerSearch.shortlist` (aus **Kandidaten suchen**). Ausgang: dasselbe Item,
+angereichert um `research` sowie `valid`/`errorMessage`.
+
+1. **Recherche durchführen** (Execute Workflow) — unverändert: ruft den
+   technischen Subworkflow
+   [`recherche-subworkflow.json`](./recherche-subworkflow.json) auf und
+   übergibt das aktuelle Item (inkl. `playerSearch.shortlist`) unverändert
+   weiter (`Passthrough`). Der Subworkflow liefert je Kandidat aus der
+   Shortlist `club`, `contract`, `marketValue`, `injuries` und `news`,
+   jeweils mit `source` (Dummy-Quelle), `timestamp` und `confidence` — siehe
+   [Recherche-Subworkflow](#recherche-subworkflow).
+2. **Recherche prüfen** (Code) — prüft die Kandidatenabdeckung per
+   Set-Gleichheit (jeder Shortlist-Name kommt in `research` vor und
+   umgekehrt) plus Duplikatprüfung, sodass `research` **genau einen**
+   Eintrag je Shortlist-Kandidat enthält, und dass jeder Eintrag alle
+   Pflichtfelder hat.
+3. **Recherche gültig?** (IF, **intern**) — **falsch**/**wahr** → jeweils
+   **Due Diligence: Ergebnis** (`valid` ist bereits von 2. gesetzt).
+4. **Due Diligence: Ergebnis** (`n8n-nodes-base.noOp`) — konsolidierter
+   Phase-Ergebnis-Knoten dieser Datei.
+
+## Empfehlung erstellen (Subworkflow)
+
+[`empfehlung-erstellen-subworkflow.json`](./empfehlung-erstellen-subworkflow.json)
+(feste Top-Level-ID `7e29c7d7-ef3b-488c-9d1e-2fdd4dad6bf1`, 8 Nodes) kapselt
+die Erzeugung der Empfehlung, die Anreicherung mit dem Kandidatenprofil und
+die abschließende Gesamtvalidierung über den kompletten Ablauf. Eingang: das
+Item mit `teamDiagnosis`, `playerProfile`, `playerSearch`, `research` (aus
+den vorherigen Phasen). Ausgang: dasselbe Item, angereichert um
+`recommendation` sowie `valid`/`errorMessage`.
+
+1. **Empfehlung erzeugen** (Code) — wählt den Kandidaten mit dem höchsten
+   `score` aus `playerSearch.shortlist` als bevorzugten Kandidaten (damit
+   stammt er per Konstruktion aus der validierten Shortlist), die übrigen
+   Shortlist-Namen werden `alternatives`; dazu `reasoning`, `risks`,
+   `uncertainties`, `nextStep`. Ist `playerRanking.
+   positionApproximationApplied` gesetzt (angeforderte Position nur grob auf
+   eine Positionsgruppe DF/MF/FW/GK angenähert statt exakt gematcht — mit der
+   FBref-Datengrundlage der Regelfall), wird das explizit als zusätzlicher
+   Eintrag in `recommendation.uncertainties` ausgewiesen.
+2. **Player-Profil-Anfrage vorbereiten** (Code) — setzt `playerName` auf
+   `recommendation.candidate`.
+3. **Player-Profil abrufen** (Execute Workflow) — ruft
+   [`analytics-player-profile-subworkflow.json`](./analytics-player-profile-subworkflow.json)
+   auf (Tool „Player-Profil", siehe [CSV-Analytics-Adapter](#csv-analytics-adapter))
+   und reichert das Item um `playerProfileLookup` an. Da der Kandidat selbst
+   aus den importierten Player-Daten stammt (über Player-Ranking), wird er
+   hier immer gefunden.
+4. **Empfehlung anreichern** (Code) — setzt `recommendation.candidateProfile`
+   auf `playerProfileLookup.profile` (bzw. `null`, falls nicht gefunden),
+   ohne die übrigen `recommendation`-Felder zu verändern.
+5. **Final Validation** (Code) — prüft alle vorherigen Stufenergebnisse noch
+   einmal im Zusammenhang (u. a. dass `recommendation.candidate` tatsächlich
+   Teil der validierten `playerSearch.shortlist` ist) sowie den vollständigen
+   Empfehlungsvertrag: `candidate`, `alternatives` (Array), `reasoning`,
+   `risks` (nichtleeres Array), `uncertainties` (nichtleeres Array) und
+   `nextStep`. `candidateProfile` ist kein Pflichtfeld dieser Prüfung.
+6. **Final Validation gültig?** (IF, **intern**) — **falsch**/**wahr** →
+   jeweils **Empfehlung erstellen: Ergebnis** (`valid` ist bereits von 5.
+   gesetzt).
+7. **Empfehlung erstellen: Ergebnis** (`n8n-nodes-base.noOp`) —
+   konsolidierter Phase-Ergebnis-Knoten dieser Datei.
+
+Die Struktur erlaubt weiterhin, jeden `<Stufe> erzeugen`/`durchführen`-Node
+später durch echte Logik (AI Agent, Qlik/MCP, Websuche) zu ersetzen, ohne die
+umgebenden `<Stufe> prüfen`/`<Stufe> gültig?`-Gates, das Formular, die
+Normalisierung, die Validierung oder die Ergebnisdarstellung neu bauen zu
+müssen — die Datenverträge (`teamDiagnosis`, `playerProfile`, `playerSearch`,
+`research`, `recommendation`) bleiben dabei stabil, solange ein Ersatz
+dieselben Felder liefert. Das gilt jetzt zusätzlich auf Ebene der fachlichen
+Subworkflows selbst: ein künftiger Ersatz für z. B. **Team analysieren**
+müsste nur denselben `teamDiagnosis`/`valid`/`errorMessage`-Vertrag über
+seinen eigenen Execute-Workflow-Trigger/-Ergebnis-Knoten erfüllen, ohne dass
+der Hauptworkflow angepasst werden müsste.
 
 ## CSV-Analytics-Adapter
 
 Temporärer, CSV-basierter Ersatz für die künftige Qlik-MCP-Anbindung (siehe
 User Story „CSV Analytics Adapter als temporären Qlik-Ersatz
-implementieren“). Vier fachliche Analytics-Tools sind als eigenständige,
-technische n8n-Subworkflows gekapselt — analog zum
-[Recherche-Subworkflow](#recherche-subworkflow) — und werden aus dem
-Hauptworkflow über je einen **Execute Workflow**-Node aufgerufen. Die
-Tool-Verträge (Feldnamen für Ein-/Ausgabe) sind bewusst so gestaltet, wie sie
-später durch echte Qlik-MCP-Tools bedient werden sollen; die Referenzdaten
-selbst liegen persistent in der n8n Data Table `football_scouting_raw` (voller
+implementieren"). Vier fachliche Analytics-Tools sind als eigenständige,
+**technische** n8n-Subworkflows gekapselt — analog zum
+[Recherche-Subworkflow](#recherche-subworkflow) — und werden jetzt aus den
+fachlichen Subworkflows heraus über je einen **Execute Workflow**-Node
+aufgerufen (unverändert gegenüber der Zeit vor der Restrukturierung, nur der
+aufrufende Node liegt jetzt in einer anderen Datei). Die Tool-Verträge
+(Feldnamen für Ein-/Ausgabe) sind bewusst so gestaltet, wie sie später durch
+echte Qlik-MCP-Tools bedient werden sollen; die Referenzdaten selbst liegen
+persistent in der n8n Data Table `football_scouting_raw` (voller
 Bundesliga-Datensatz, importiert über
 [`import-scouting-data.json`](./import-scouting-data.json), siehe
-[`n8n/data/README.md`](./data/README.md)), nicht mehr als CSV-Dateien im
-Repository. Kein Tool erfindet Werte für unbekannte Vereine, Spieler
-oder Positionen — stattdessen wird das explizit ausgewiesen (`dataAvailable:
+[`n8n/data/README.md`](./data/README.md)), nicht als CSV-Dateien im
+Repository. Kein Tool erfindet Werte für unbekannte Vereine, Spieler oder
+Positionen — stattdessen wird das explizit ausgewiesen (`dataAvailable:
 false`, `found: false` bzw. `positionFallbackApplied: true`). Dasselbe gilt
 für einzelne fehlende/ungültige numerische CSV-Zellen (leerer Wert,
 nicht-numerischer Text): sie werden validiert, statt per `Number(...)`
@@ -579,6 +671,8 @@ unten) nicht in Aggregation oder Ranking-Score ein.
    ungültigen Tordaten werden gezählt (`invalidMatches`) und von der
    Aggregation ausgeschlossen statt als `0` eingerechnet zu werden (bei
    ausschließlich ungültigen Zeilen ebenfalls `dataAvailable: false`).
+   Aufgerufen von **Team-Performance abrufen** in
+   `team-analysieren-subworkflow.json`.
 2. **Team-Matches**
    ([`analytics-team-matches-subworkflow.json`](./analytics-team-matches-subworkflow.json)) —
    Input `{ club, matchLimit? }` (Default 10). Liefert `teamMatches.matches`:
@@ -586,86 +680,80 @@ unten) nicht in Aggregation oder Ranking-Score ein.
    `result`, `competition`, `dataError`. Ein Spiel mit fehlenden/ungültigen
    Tordaten bleibt in der Liste, hat aber `goalsFor`/`goalsAgainst`/`result:
    null` und `dataError: true` statt erfundener Werte (`invalidMatches`
-   zählt sie zusätzlich auf Ebene von `teamMatches`).
+   zählt sie zusätzlich auf Ebene von `teamMatches`). Aufgerufen von
+   **Team-Matches abrufen** in `team-analysieren-subworkflow.json`.
 3. **Player-Ranking**
    ([`analytics-player-ranking-subworkflow.json`](./analytics-player-ranking-subworkflow.json)) —
    Input `{ rankingClub?, rankingExcludeClub?, position?, criteria?: [{
    criterion, weight }], constraints?: [{ field, operator, value }], limit? }`
-   (bewusst eigene Feldnamen statt `club`, da
-   das im Hauptworkflow bereits den zu diagnostizierenden Verein bezeichnet
-   und beim Durchreichen des ganzen Items sonst kollidieren würde).
-   `rankingClub` filtert auf genau einen Verein, `rankingExcludeClub`
-   schließt genau einen Verein aus (so sucht die Spielersuche außerhalb des
-   eigenen Kaders). Erkannte, generische `criteria`-Namen: `goals`,
-   `assists`, `rating`, `minutesPlayed`, `appearances`, `marketValueMEUR`
-   (höher = besser) sowie `age` (niedriger = besser); jeder Wert wird über
-   den betrachteten Pool min-max-normalisiert und gewichtet aufsummiert.
-   `constraints` (von `playerProfile.constraints` im Hauptworkflow, siehe
-   Node 20 oben) filtert den Pool **vor** dem Scoring hart: `field` ist
-   `age` oder `marketValueMEUR`, `operator` ist `max` (Wert ≤ `value`) oder
-   `min` (Wert ≥ `value`). Ein Constraint auf ein Feld ohne numerisch
-   verfügbare Daten im Pool wird nicht ignoriert-und-verschwiegen, sondern in
-   `ignoredConstraints` aufgeführt; tatsächlich angewendete Constraints stehen
-   in `appliedConstraints`, die Anzahl dadurch ausgeschlossener Kandidaten in
-   `excludedByConstraints`. So werden Budget-/Altersvorgaben aus dem
-   Spielerprofil tatsächlich für die Spielersuche wirksam, statt Dead Data zu
-   bleiben. Ein nicht anwendbares Constraint bleibt hier bewusst nur
-   protokolliert (`ignoredConstraints`) statt den Subworkflow-Lauf
-   abzubrechen; **Spielersuche prüfen** im Hauptworkflow (siehe Node 23 oben)
-   wertet `ignoredConstraints` aus und stoppt die Pipeline vor einer
-   Empfehlung, falls ein Constraint nicht wirksam wurde.
-   Unbekannte oder im Pool nicht numerisch verfügbare Kriterien werden nicht
-   ignoriert-und-verschwiegen, sondern in `ignoredCriteria` aufgeführt;
-   **Spielersuche prüfen** im Hauptworkflow (siehe Node 23 oben) wertet das
-   aus und stoppt die Pipeline, falls dadurch die vom Spielerprofil
-   gewichteten Kriterien die Suche nicht mehr tatsächlich steuern würden.
-   Die Positionssuche versucht zuerst einen exakten Match (normalisiert,
-   `ß`→`ss`), dann einen groben Gruppen-Match (DF/MF/FW/GK, z. B.
-   „Linksaußen“ → `FW`) — dabei wird `positionApproximationApplied: true`
-   gesetzt (mit der FBref-Datengrundlage der Regelfall, da dort keine
-   granulareren Positionen als DF/MF/FW/GK vorliegen; **Empfehlung
-   erzeugen** im Hauptworkflow weist das als Unsicherheit aus, siehe Node 28
-   oben). Schlägt selbst der grobe Gruppen-Match fehl, fällt der
+   (bewusst eigene Feldnamen statt `club`, da das im Hauptworkflow bereits
+   den zu diagnostizierenden Verein bezeichnet und beim Durchreichen des
+   ganzen Items sonst kollidieren würde). `rankingClub` filtert auf genau
+   einen Verein, `rankingExcludeClub` schließt genau einen Verein aus (so
+   sucht die Spielersuche außerhalb des eigenen Kaders). Erkannte,
+   generische `criteria`-Namen: `goals`, `assists`, `rating`,
+   `minutesPlayed`, `appearances`, `marketValueMEUR` (höher = besser) sowie
+   `age` (niedriger = besser); jeder Wert wird über den betrachteten Pool
+   min-max-normalisiert und gewichtet aufsummiert. `constraints` (von
+   `playerProfile.constraints`) filtert den Pool **vor** dem Scoring hart:
+   `field` ist `age` oder `marketValueMEUR`, `operator` ist `max` (Wert ≤
+   `value`) oder `min` (Wert ≥ `value`). Ein Constraint auf ein Feld ohne
+   numerisch verfügbare Daten im Pool wird nicht ignoriert-und-verschwiegen,
+   sondern in `ignoredConstraints` aufgeführt; tatsächlich angewendete
+   Constraints stehen in `appliedConstraints`, die Anzahl dadurch
+   ausgeschlossener Kandidaten in `excludedByConstraints`. Ein nicht
+   anwendbares Constraint bleibt hier bewusst nur protokolliert
+   (`ignoredConstraints`) statt den Subworkflow-Lauf abzubrechen —
+   **Spielersuche prüfen** in `kandidaten-suchen-subworkflow.json` wertet
+   `ignoredConstraints` aus und stoppt die Pipeline vor einer Empfehlung,
+   falls ein Constraint nicht wirksam wurde. Unbekannte oder im Pool nicht
+   numerisch verfügbare Kriterien werden analog in `ignoredCriteria`
+   aufgeführt; **Spielersuche prüfen** wertet das ebenfalls aus. Die
+   Positionssuche versucht zuerst einen exakten Match (normalisiert, `ß`→`ss`),
+   dann einen groben Gruppen-Match (DF/MF/FW/GK, z. B. „Linksaußen" → `FW`) —
+   dabei wird `positionApproximationApplied: true` gesetzt (**Empfehlung
+   erzeugen** in `empfehlung-erstellen-subworkflow.json` weist das als
+   Unsicherheit aus). Schlägt selbst der grobe Gruppen-Match fehl, fällt der
    Subworkflow — explizit über `positionFallbackApplied: true` markiert —
    auf den ungefilterten Pool zurück statt Kandidaten zu erfinden;
-   **Spielersuche prüfen** behandelt das als unzureichende Datengrundlage und
-   stoppt die Pipeline (siehe Node 23 oben). Ein
-   Spieler-Datensatz mit fehlendem/ungültigem numerischem Pflichtfeld (z. B.
-   leeres `age`) wird komplett aus dem Ranking-Pool ausgeschlossen statt mit
-   `0`/`NaN` in den Score einzufließen — sonst könnte z. B. ein fehlendes
-   `age` (niedriger = besser) den Score künstlich verbessern; die Anzahl
-   solcher ausgeschlossenen Datensätze steht in `excludedInvalidData`.
-   Liefert `playerRanking.ranking` (bis `limit`, Default 5) mit `name`,
-   `club`, `position`, `age`, `score`, `stats`.
+   **Spielersuche prüfen** behandelt das als unzureichende Datengrundlage.
+   Ein Spieler-Datensatz mit fehlendem/ungültigem numerischem Pflichtfeld
+   wird komplett aus dem Ranking-Pool ausgeschlossen statt mit `0`/`NaN` in
+   den Score einzufließen; die Anzahl solcher ausgeschlossenen Datensätze
+   steht in `excludedInvalidData`. Liefert `playerRanking.ranking` (bis
+   `limit`, Default 5) mit `name`, `club`, `position`, `age`, `score`,
+   `stats`. Aufgerufen von **Player-Ranking abrufen** in
+   `kandidaten-suchen-subworkflow.json`.
 4. **Player-Profil**
    ([`analytics-player-profile-subworkflow.json`](./analytics-player-profile-subworkflow.json)) —
    Input `{ playerName }`. Liefert `playerProfileLookup` mit `found` und
    `profile` (alle importierten Spalten aus der Data Table
-   `football_scouting_raw`) bzw. `found: false` und
-   `profile: null` für einen unbekannten Namen. Einzelne fehlende/ungültige
-   numerische Felder im gefundenen Datensatz bleiben in `profile` explizit
-   `null` (statt `0`/`NaN`) und werden namentlich in `invalidFields`
-   aufgeführt; `profile.dataError: true` markiert einen unvollständigen
-   Datensatz. Heißt bewusst
-   `playerProfileLookup`, nicht `playerProfile` — Letzteres bezeichnet im
-   Hauptworkflow bereits das simulierte Bedarfsprofil (Anforderung an den
-   gesuchten Spielertyp), beide Verträge bleiben dadurch unabhängig
-   voneinander stabil.
+   `football_scouting_raw`) bzw. `found: false` und `profile: null` für
+   einen unbekannten Namen. Einzelne fehlende/ungültige numerische Felder im
+   gefundenen Datensatz bleiben in `profile` explizit `null` (statt
+   `0`/`NaN`) und werden namentlich in `invalidFields` aufgeführt;
+   `profile.dataError: true` markiert einen unvollständigen Datensatz. Heißt
+   bewusst `playerProfileLookup`, nicht `playerProfile` — Letzteres
+   bezeichnet im Scouting-Brief-Subworkflow bereits das simulierte
+   Bedarfsprofil, beide Verträge bleiben dadurch unabhängig voneinander
+   stabil. Aufgerufen von **Player-Profil abrufen** in
+   `empfehlung-erstellen-subworkflow.json`.
 
 Die vier Subworkflows lesen die importierten Originalzeilen aus der
 persistenten Data Table `football_scouting_raw` (kein eingebetteter
-CSV-Code mehr) — siehe [`n8n/data/README.md`](./data/README.md) für den
-Import (`import-scouting-data.json`) und die Architektur-Verifikation
+CSV-Code) — siehe [`n8n/data/README.md`](./data/README.md) für den Import
+(`import-scouting-data.json`) und die Architektur-Verifikation
 (`verify-import-architecture.js`).
 
 ## Recherche-Subworkflow
 
 [`recherche-subworkflow.json`](./recherche-subworkflow.json) ist ein
-eigenständiger n8n-Workflow mit zwei Nodes:
+eigenständiger, **technischer** n8n-Workflow mit zwei Nodes, unverändert
+gegenüber der Zeit vor der Restrukturierung:
 
 1. **Wenn von anderem Workflow aufgerufen** (Execute Workflow Trigger,
-   `inputSource: passthrough`) — nimmt das vom Hauptworkflow übergebene Item
-   unverändert entgegen.
+   `inputSource: passthrough`) — nimmt das übergebene Item unverändert
+   entgegen.
 2. **Recherche-Dummy je Kandidat erzeugen** (Code) — liest
    `playerSearch.shortlist` aus dem übergebenen Item und erzeugt je
    Kandidat einen deterministischen Dummy-Rechercheeintrag (`club`,
@@ -675,31 +763,41 @@ eigenständiger n8n-Workflow mit zwei Nodes:
    Websuche behauptet oder simuliert vorgetäuscht — jeder Wert ist
    ausdrücklich als Platzhalter gekennzeichnet.
 
-Import-Reihenfolge: **zuerst** `recherche-subworkflow.json` importieren,
-**danach** `ai-sporting-director.json`. Der Node **Recherche durchführen** im
-Hauptworkflow referenziert bereits die feste Top-Level-ID
-`802fdb6b-4c0a-413f-952d-250c91ddc476` des Subworkflows; n8n übernimmt
-vorhandene Workflow-IDs beim Import (`import:workflow`) per Upsert, sodass
-beide Workflows nach dem Import ohne manuelle Anpassung verbunden sind.
+Aufgerufen von **Recherche durchführen** in
+[`due-diligence-subworkflow.json`](./due-diligence-subworkflow.json) (vor der
+Restrukturierung direkt aus `ai-sporting-director.json`). n8n übernimmt die
+feste Top-Level-ID `802fdb6b-4c0a-413f-952d-250c91ddc476` beim Import
+(`import:workflow`) per Upsert, sodass alle Workflow-Dateien nach dem Import
+ohne manuelle Anpassung verbunden sind — siehe [Import & run](#import--run).
 
 ## Import & run
 
 1. Open your n8n instance.
-2. Import the five technical subworkflows first — order among themselves
-   doesn't matter, only "before the main workflow" does — (**Workflows** →
-   **Add workflow** → **Import from File**):
-   [`recherche-subworkflow.json`](./recherche-subworkflow.json),
-   [`analytics-team-performance-subworkflow.json`](./analytics-team-performance-subworkflow.json),
-   [`analytics-team-matches-subworkflow.json`](./analytics-team-matches-subworkflow.json),
-   [`analytics-player-ranking-subworkflow.json`](./analytics-player-ranking-subworkflow.json),
-   [`analytics-player-profile-subworkflow.json`](./analytics-player-profile-subworkflow.json).
+2. Import **alle neun Subworkflows** zuerst — Reihenfolge untereinander egal,
+   nur "vor dem Hauptworkflow" zählt — (**Workflows** → **Add workflow** →
+   **Import from File**):
+   - die fünf **technischen** Subworkflows:
+     [`recherche-subworkflow.json`](./recherche-subworkflow.json),
+     [`analytics-team-performance-subworkflow.json`](./analytics-team-performance-subworkflow.json),
+     [`analytics-team-matches-subworkflow.json`](./analytics-team-matches-subworkflow.json),
+     [`analytics-player-ranking-subworkflow.json`](./analytics-player-ranking-subworkflow.json),
+     [`analytics-player-profile-subworkflow.json`](./analytics-player-profile-subworkflow.json);
+   - die fünf **fachlichen** Subworkflows:
+     [`team-analysieren-subworkflow.json`](./team-analysieren-subworkflow.json),
+     [`scouting-brief-subworkflow.json`](./scouting-brief-subworkflow.json),
+     [`kandidaten-suchen-subworkflow.json`](./kandidaten-suchen-subworkflow.json),
+     [`due-diligence-subworkflow.json`](./due-diligence-subworkflow.json),
+     [`empfehlung-erstellen-subworkflow.json`](./empfehlung-erstellen-subworkflow.json).
 3. Import [`ai-sporting-director.json`](./ai-sporting-director.json) the
    same way — its Execute-Workflow nodes already reference the subworkflows'
-   fixed IDs, so no manual edit is needed there (on the **Ollama Modell
-   (Qwen3.8:latest)** node, select the local `[cimt] Ollama` credential).
-4. Use **Test workflow** to obtain a test-mode form URL for manual testing,
-   or activate the workflow (toggle **Active** in the top right) to make the
-   form reachable at its production URL shown on the **AI Sporting Director
+   fixed IDs, so no manual edit is needed there.
+4. On the **Ollama Modell (Qwen3.8:latest)** node in **both**
+   `team-analysieren-subworkflow.json` and `scouting-brief-subworkflow.json`,
+   select the local `[cimt] Ollama` credential (once per file, per
+   n8n-instance).
+5. Use **Test workflow** on the main workflow to obtain a test-mode form URL
+   for manual testing, or activate it (toggle **Active**) to make the form
+   reachable at its production URL shown on the **AI Sporting Director
    beauftragen** node.
 
 Alternatively, with the [n8n CLI](https://docs.n8n.io/hosting/cli-commands/)
@@ -711,6 +809,11 @@ n8n import:workflow --input=n8n/analytics-team-performance-subworkflow.json
 n8n import:workflow --input=n8n/analytics-team-matches-subworkflow.json
 n8n import:workflow --input=n8n/analytics-player-ranking-subworkflow.json
 n8n import:workflow --input=n8n/analytics-player-profile-subworkflow.json
+n8n import:workflow --input=n8n/team-analysieren-subworkflow.json
+n8n import:workflow --input=n8n/scouting-brief-subworkflow.json
+n8n import:workflow --input=n8n/kandidaten-suchen-subworkflow.json
+n8n import:workflow --input=n8n/due-diligence-subworkflow.json
+n8n import:workflow --input=n8n/empfehlung-erstellen-subworkflow.json
 n8n import:workflow --input=n8n/ai-sporting-director.json
 ```
 
@@ -728,7 +831,10 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    `formDescription` renders the Teamdiagnose-derived Hauptproblem,
    Zielposition/Rolle, Begründung, gewichtete Kriterien, Constraints and
    Unsicherheiten of the Spielerprofil-derived `scoutingBrief`, and shows
-   `Ueberarbeitungsrunde: 1 von max. 3` with no prior feedback.
+   `Ueberarbeitungsrunde: 1 von max. 3` with no prior feedback. In the n8n
+   **Executions** list, this run appears as the main-workflow execution plus
+   two nested sub-executions (**Team analysieren**, **Scouting Brief
+   erstellen**), each independently inspectable.
 3. Select `Approve` in the `Entscheidung` dropdown, leave `Feedback` empty,
    and submit. **Expected result:** the browser shows the **Ergebnis
    anzeigen** page with five clearly separated sections — Teamdiagnose,
@@ -737,82 +843,74 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    LLM interpretation (Teamdiagnose, Spielerprofil, Spielersuche) from the
    still fully simulated one (Recherche), and the recommended candidate is
    one of the shortlisted CSV players (not the Hamburger SV squad itself).
-   In the n8n **Executions** list the run is successful and passes all eight
-   gates (**Teamdiagnose gültig?**, **Spielerprofil gültig?**, **Scouting
-   Brief gültig?**, **Review-Entscheidung gültig?**, **Spielersuche
-   gültig?**, **Recherche gültig?**, **Final Validation gültig?**, plus
-   **Eingabe validieren**); zusätzlich werden die Routing-IFs **Teamdiagnose:
-   Datenverfügbarkeit prüfen** und **Review: Approve?** in ihren Wahr-Zweig
-   verzweigt (kein Gate im engeren Sinn, da beide Zweige gültig fortsetzen),
-   und **Teamdiagnose LLM**/**Spielerprofil LLM** laufen jeweils über ihren
-   Erfolgs-Output.
-   **Ausgeführt (gezielte Node.js-Verifikation der geänderten Nodes):** der
-   frühere Offline-Simulator für den kompletten Hauptworkflow
-   (`n8n/data/simulate_main_workflow.js`) ist mit der Umstellung der
-   Analytics-Subworkflows auf die persistente Data Table
-   `football_scouting_raw` (siehe [`n8n/data/README.md`](./data/README.md))
-   entfallen — er beruhte auf dem inzwischen ebenfalls entfernten,
-   fünf Vereine umfassenden CSV-Prototyp und ist für die reale Datenquelle
-   nicht mehr repräsentativ. Stattdessen wurden die für diese Story
-   geänderten Code-Nodes isoliert mit Node.js gegen den echten n8n-2.35.7-
-   Vertrag (Structured-Output-Felder direkt auf `$json`, siehe 11./17. oben)
-   verifiziert: **Teamdiagnose zusammenführen** und **Spielerprofil
-   zusammenführen** lesen die simulierte LLM-Antwort korrekt ohne
-   `output`-Hülle und holen das Vor-LLM-Item über `.first()` statt über das
-   `pairedItem`-abhängige `.item` zurück (gegen einen `$()`-Mock verifiziert,
-   der bewusst nur `.first()` implementiert, sodass ein verbliebener
-   `.item`-Zugriff sofort fehlschlagen würde); **Teamdiagnose zusammenführen**
+   In the n8n **Executions** list the main-workflow run is successful and
+   passes all seven top-level gates (**Eingabe validieren**, **Team
+   analysieren gültig?**, **Scouting Brief gültig?**, **Review-Entscheidung
+   gültig?**, **Kandidaten suchen gültig?**, **Due Diligence gültig?**,
+   **Empfehlung gültig?**), plus the routing IF **Review: Approve?** in its
+   true branch; each of the three additional Execute-Workflow calls (**Team
+   analysieren**, **Scouting Brief erstellen**, **Kandidaten suchen**, **Due
+   Diligence**, **Empfehlung erstellen**) shows as its own successful nested
+   sub-execution, internally passing its own gates (see the per-subworkflow
+   sections above).
+
+   **Ausgeführt (gezielte Node.js-Verifikation der geänderten Nodes):** ein
+   Offline-Simulator für den kompletten Hauptworkflow existiert nicht mehr
+   (siehe Migrationshinweis unten); stattdessen werden die relevanten
+   Code-Nodes isoliert mit Node.js gegen den echten n8n-2.35.7-Vertrag
+   (Structured-Output-Felder direkt auf `$json`, siehe **Team analysieren**,
+   Punkt 10. oben) verifiziert: **Teamdiagnose zusammenführen** und
+   **Spielerprofil zusammenführen** lesen die simulierte LLM-Antwort korrekt
+   ohne `output`-Hülle und holen das Vor-LLM-Item über `.first()` statt über
+   das `pairedItem`-abhängige `.item` zurück; **Teamdiagnose zusammenführen**
    verwirft dabei außerdem eine erfundene LLM-Ligaplatzierung zugunsten des
    deterministischen `leagueComparisonAvailable: false`-Vertrags;
    **Teamdiagnose: Datengrundlage prüfen** liefert `valid: false` für
    `diagnosisCategory: 'no_data'` und `valid: true` für
    `'defensive'`/`'offensive'`/`'neutral'`; **Spielerprofil prüfen** akzeptiert
-   strukturierte `constraints` (`{ field, operator, value }`) und lehnt
-   unstrukturierte (z. B. freitextliche) Constraints ab; **Spielersuche
+   strukturierte `constraints` und lehnt unstrukturierte ab; **Spielersuche
    prüfen** liefert `valid: false`, sobald `playerRanking.ignoredConstraints`
    nichtleer ist, und `valid: true`, wenn keine Constraints ignoriert wurden.
-   Für das neue Human-Review-Gate: `node
-   n8n/data/verify-scouting-brief-review.js` (grün) verifiziert isoliert die
-   drei zugehörigen Code-Nodes 1:1 aus ihrem `jsCode`-Inhalt — **Scouting
-   Brief erstellen** setzt `reviewRound: 1` mit leerer `feedbackHistory` im
-   Erstlauf und übernimmt in Folgerunden das Feedback der Vorrunde korrekt in
-   die Historie; **Scouting Brief prüfen** liefert `valid: false` bei einem
+   Für das Human-Review-Gate: `node n8n/data/verify-scouting-brief-review.js`
+   (grün) verifiziert isoliert die drei zugehörigen Code-Nodes 1:1 aus ihrem
+   `jsCode`-Inhalt (jetzt in `scouting-brief-subworkflow.json` bzw.
+   `ai-sporting-director.json`, siehe unten) — **Scouting Brief erstellen**
+   setzt `reviewRound: 1` mit leerer `feedbackHistory` im Erstlauf und
+   übernimmt in Folgerunden das Feedback der Vorrunde korrekt in die
+   Historie; **Scouting Brief prüfen** liefert `valid: false` bei einem
    fehlenden Pflichtfeld; **Review-Entscheidung auswerten** liefert
    `valid: false` für eine unbekannte Entscheidung sowie für `Request Changes`
    ohne Feedback-Text, setzt `reviewOutcome` korrekt für `Approve`/`Reject`,
    und erzwingt nach drei erreichten Überarbeitungsrunden `reviewOutcome:
-   'Reject'` (`maxRoundsReached: true`) statt eine vierte `Request
-   Changes`-Runde zuzulassen; zusätzlich verifiziert dieselbe Datei, dass ein
-   konkretes Reviewer-Alters-/Budgetlimit aus `reviewFeedback` (z. B. „max.
-   10 Mio. Marktwert“) — simuliert über die dadurch ausgelöste
-   **Spielerprofil LLM**-Folgerunde — unverändert in
-   `playerProfile.constraints` und von dort in `scoutingBrief.constraints`
-   der Folgerunde landet und ein gültiges Brief ergibt, statt am
-   ursprünglichen Widerspruch zwischen der `additionalContext`- und der
-   `reviewFeedback`-Instruktion im Prompt zu scheitern (siehe 15. oben).
-   Zusätzlich:
-   `node n8n/data/verify-import-architecture.js` (grün) sowie eine
-   Konsistenzprüfung aller `n8n/*.json`-Workflow-Dateien (gültiges JSON, keine
-   doppelten Node-Namen/-IDs, alle Connections referenzieren existierende
-   Nodes, genau ein Trigger-Node). Ebenfalls ausgeführt (grün):
-   `node n8n/data/verify-club-canonical-map.js` — verifiziert automatisiert
-   alle 18 Dropdown-Vereine der Saison 2025/26 sowohl in `CLUB_CANONICAL_MAP`
-   gegen die tatsächlichen Team-Identifier aus
-   `bundesliga_2025_26_match_analytics.csv` (Spalten Heimteam/Auswärtsteam)
-   als auch in `CLUB_PLAYER_DATA_MAP` gegen die tatsächlichen
-   `Squad`-Identifier aus `players_data-2025_2026-full.csv`, den
-   `{ json: ... }`-Rückgabevertrag von **Auftrag normalisieren** gegen dessen
-   `runOnceForEachItem`-Modus, sowie dass **Player-Ranking-Anfrage
-   vorbereiten** `rankingExcludeClub` tatsächlich aus `clubPlayerData` (statt
-   aus dem Match-Identifier `club`) ableitet — dieser Test schlägt fehl, wenn
-   der Eigenkader-Ausschluss wieder gegen den falschen Datensatz verglichen
-   würde. Nicht ausgeführt: ein vollständiger
-   End-to-End-Lauf des Hauptworkflows (inkl. Formular-/Completion-Seiten, dem
-   n8n-**Executions**-Eintrag und einem echten Aufruf des lokalen
-   Ollama-Modells), da dafür eine laufende n8n-Weboberfläche mit
-   erreichbarem Ollama-Endpunkt nötig ist — offen für die nächste Person
-   (oder Session) mit interaktivem Zugriff auf eine importierte Instanz mit
-   bereits über `import-scouting-data.json` importierten Originaldaten.
+   'Reject'` (`maxRoundsReached: true`); zusätzlich verifiziert dieselbe
+   Datei, dass ein konkretes Reviewer-Alters-/Budgetlimit aus
+   `reviewFeedback` unverändert in `playerProfile.constraints` und von dort
+   in `scoutingBrief.constraints` der Folgerunde landet.
+
+   `node n8n/data/verify-import-architecture.js` (grün) verifiziert zusätzlich
+   die vier `analytics-*-subworkflow.json`-Dateien sowie
+   `import-scouting-data.json` (unverändert von der Restrukturierung).
+   `node n8n/data/verify-club-canonical-map.js` (grün) verifiziert weiterhin
+   alle 18 Dropdown-Vereine der Saison 2025/26 in `ai-sporting-director.json`
+   (Node **Auftrag normalisieren**) sowie, jetzt aus
+   `kandidaten-suchen-subworkflow.json` gelesen, dass **Player-Ranking-Anfrage
+   vorbereiten** `rankingExcludeClub` tatsächlich aus `clubPlayerData`
+   ableitet.
+
+   Eine eigene JSON-Konsistenzprüfung (siehe
+   [Regressionstest: alle Workflow-Dateien sind in sich konsistent](#regressionstest-alle-workflow-dateien-sind-in-sich-konsistent)
+   unten) bestätigt für **alle zwölf** `n8n/*.json`-Dateien: gültiges JSON,
+   keine doppelten Node-Namen/-IDs innerhalb einer Datei, alle Connections
+   referenzieren existierende Nodes, genau ein Trigger-Node je Datei, sowie
+   dass keine zwei Nodes derselben Datei dieselbe `position` teilen.
+
+   Nicht ausgeführt: ein vollständiger End-to-End-Lauf des Hauptworkflows
+   (inkl. Formular-/Completion-Seiten, dem n8n-**Executions**-Eintrag und
+   einem echten Aufruf des lokalen Ollama-Modells), da dafür eine laufende
+   n8n-Weboberfläche mit erreichbarem Ollama-Endpunkt nötig ist — offen für
+   die nächste Person (oder Session) mit interaktivem Zugriff auf eine
+   importierte Instanz mit bereits über `import-scouting-data.json`
+   importierten Originaldaten.
 
 ### Player-Ranking-Subworkflow: gezielte Tests
 
@@ -828,160 +926,137 @@ gesamten Pool ausschließt, liefert korrekt `dataAvailable: false` statt leerer
 oder erfundener Kandidaten. `node n8n/data/verify-import-architecture.js`
 bestätigt zusätzlich weiterhin, dass die vier Analytics-Subworkflows
 ausschließlich aus `football_scouting_raw` lesen und keine eingebetteten
-CSV-Fixtures mehr enthalten.
+CSV-Fixtures mehr enthalten. Dieser Subworkflow selbst blieb von der
+Restrukturierung unverändert; nur sein Aufrufer (**Player-Ranking abrufen**)
+zog von `ai-sporting-director.json` nach `kandidaten-suchen-subworkflow.json`
+um.
 
 Zusätzlich isoliert gegen die extrahierten `norm()`/`posMatch()`-Funktionen
-verifiziert (**Linksaußen-Negativtest**, behebt einen Bug, bei dem `ß` von der
-alten Normalisierung ersatzlos entfernt statt zu `ss` transliteriert wurde):
-`norm('Linksaußen')` liefert jetzt `'linksaussen'` (vorher `'linksauen'`, was
-gegen das hartkodierte `'linksaussen'` in `posMatch()` nie gematcht hätte) und
-`posMatch('FW', 'Linksaußen')` liefert `true`, sodass eine angeforderte
-Linksaußen-Position korrekt der `FW`-Gruppe zugeordnet wird statt in den
-ungefilterten Fallback zu laufen.
+verifiziert (**Linksaußen-Negativtest**): `norm('Linksaußen')` liefert
+`'linksaussen'` und `posMatch('FW', 'Linksaußen')` liefert `true`, sodass eine
+angeforderte Linksaußen-Position korrekt der `FW`-Gruppe zugeordnet wird
+statt in den ungefilterten Fallback zu laufen.
 
 ### Negative Testfälle (ein Gate pro Stufe)
 
 Für jedes der folgenden Gates gilt dasselbe Muster: in einer Testkopie des
-Workflows wird die vorausgehende `erzeugen`/`durchführen`-Node so verändert,
-dass ein Pflichtfeld fehlt oder eine Mindestbedingung verletzt ist, danach
-wird der positive Testfall erneut ausgeführt.
+jeweiligen Workflows (Hauptworkflow oder Subworkflow, siehe Klammerhinweis)
+wird die vorausgehende `erzeugen`/`durchführen`-Node so verändert, dass ein
+Pflichtfeld fehlt oder eine Mindestbedingung verletzt ist, danach wird der
+positive Testfall erneut ausgeführt.
 
-1. **Teamdiagnose gültig?** — `teamDiagnosis.mainProblem` entfernen.
-   **Erwartet:** **Teamdiagnose prüfen** setzt `valid: false`, die Anzeige
-   zeigt die Fehlermeldung "Die Teamdiagnose ist ungültig …" statt einer
-   Diagnose.
-2. **Spielerprofil gültig?** — `playerProfile.reasoning` entfernen.
-   **Erwartet:** Fehlermeldung "Das Spielerprofil ist ungültig …".
-3. **Spielersuche gültig?** — `playerSearch.shortlist` auf ein leeres Array
-   setzen. **Erwartet:** Fehlermeldung "Die Spielersuche ist ungültig …".
+1. **Teamdiagnose gültig?** (intern in `team-analysieren-subworkflow.json`) —
+   `teamDiagnosis.mainProblem` entfernen. **Erwartet:** **Teamdiagnose
+   prüfen** setzt `valid: false`; im Hauptworkflow greift **Team analysieren
+   gültig?** und die Anzeige zeigt die Fehlermeldung "Die Teamdiagnose ist
+   ungültig …" statt einer Diagnose.
+2. **Spielerprofil gültig?** (intern in `scouting-brief-subworkflow.json`) —
+   `playerProfile.reasoning` entfernen. **Erwartet:** Fehlermeldung "Das
+   Spielerprofil ist ungültig …", ausgelöst über das Hauptworkflow-Gate
+   **Scouting Brief gültig?**.
+3. **Spielersuche gültig?** (intern in `kandidaten-suchen-subworkflow.json`) —
+   `playerSearch.shortlist` auf ein leeres Array setzen. **Erwartet:**
+   Fehlermeldung "Die Spielersuche ist ungültig …", ausgelöst über
+   **Kandidaten suchen gültig?**.
 3a. **Spielersuche gültig?** (ignoriertes Constraint) — `playerRanking.ignoredConstraints`
    auf `[{ field: 'marketValueMEUR', operator: 'max', value: 5 }]` setzen,
    während `playerSearch.shortlist` ansonsten gültig bleibt. **Erwartet:**
    **Spielersuche prüfen** setzt trotz gültiger Shortlist `valid: false` mit
-   einer Fehlermeldung, die `ignoredConstraints` nennt — ein nicht
-   angewendetes Constraint darf keine Empfehlung erreichen.
+   einer Fehlermeldung, die `ignoredConstraints` nennt.
 3b. **Spielersuche gültig?** (ignoriertes Kriterium) — `playerRanking.ignoredCriteria`
    auf `['rating']` setzen, während `playerSearch.shortlist` ansonsten
    gültig bleibt. **Erwartet:** **Spielersuche prüfen** setzt trotz gültiger
    Shortlist `valid: false` mit einer Fehlermeldung, die `ignoredCriteria`
-   nennt — ein vom Spielerprofil gewichtetes, aber nicht numerisch
-   verfügbares Kriterium darf nicht still durch Default-Kriterien ersetzt
-   werden, ohne dass das die Pipeline stoppt.
+   nennt.
 3c. **Spielersuche gültig?** (Positions-Fallback) — `playerRanking.positionFallbackApplied`
    auf `true` setzen, während `playerSearch.shortlist` ansonsten gültig
    bleibt. **Erwartet:** **Spielersuche prüfen** setzt trotz gültiger
    Shortlist `valid: false` mit einer Fehlermeldung, die
-   `positionFallbackApplied` nennt — ein kompletter Rückfall auf den
-   ungefilterten Pool darf keine Empfehlung außerhalb der angeforderten
-   Position erreichen.
-4. **Recherche gültig?** — im Recherche-Subworkflow `research` auf ein
-   leeres Array setzen (bzw. die Longlist/Shortlist so verändern, dass keine
-   Recherche-Einträge entstehen). **Erwartet:** Fehlermeldung "Die Recherche
-   ist ungültig …".
-5. **Final Validation gültig?** — in **Empfehlung erzeugen**
+   `positionFallbackApplied` nennt.
+4. **Recherche gültig?** (intern in `due-diligence-subworkflow.json`) — im
+   Recherche-Subworkflow `research` auf ein leeres Array setzen. **Erwartet:**
+   Fehlermeldung "Die Recherche ist ungültig …", ausgelöst über **Due
+   Diligence gültig?**.
+5. **Final Validation gültig?** (intern in
+   `empfehlung-erstellen-subworkflow.json`) — in **Empfehlung erzeugen**
    `recommendation.candidate` auf einen Namen setzen, der nicht Teil der
    Shortlist ist. **Erwartet:** Fehlermeldung "Die finale Validierung ist
-   fehlgeschlagen …" (fängt damit auch einen Fehler ab, der die einzelnen
-   Stufen-Gates unbeschädigt durchlaufen hat).
+   fehlgeschlagen …", ausgelöst über **Empfehlung gültig?** (fängt damit auch
+   einen Fehler ab, der die einzelnen Stufen-Gates unbeschädigt durchlaufen
+   hat).
 6. **Recherche gültig?** (Kandidatenabdeckung) — im Recherche-Subworkflow
    den `research`-Eintrag des letzten Shortlist-Kandidaten durch ein Duplikat
-   des ersten Kandidaten ersetzen, sodass `research` weiterhin genauso viele
-   Einträge wie die Shortlist hat, aber ein Kandidat doppelt und ein anderer
-   gar nicht recherchiert wurde. **Erwartet:** **Recherche prüfen** erkennt
+   des ersten Kandidaten ersetzen. **Erwartet:** **Recherche prüfen** erkennt
    sowohl das Duplikat als auch den fehlenden Kandidaten und setzt
-   `valid: false` mit Fehlermeldung "Die Recherche ist ungültig …" (deckt
-   damit ab, dass gleiche Länge/erlaubte Namen allein keine 1:1-Abdeckung
-   der Shortlist beweisen).
+   `valid: false`.
 7. **Final Validation gültig?** (vollständiger Empfehlungsvertrag) — in
    **Empfehlung erzeugen** einzeln `alternatives`, `risks` bzw.
    `uncertainties` aus der Empfehlung entfernen oder auf ein leeres Array
    setzen. **Erwartet:** **Final Validation** setzt in jedem der drei Fälle
-   `valid: false` mit einer feldspezifischen Fehlermeldung ("Die finale
-   Validierung ist fehlgeschlagen …"); keiner der Fälle erreicht
-   **Ergebnis anzeigen**.
+   `valid: false`.
 8. **Spielerprofil gültig?** (Positions-/Diagnose-Konsistenz) —
    **Spielerprofil LLM** liefert eine `position` außerhalb des durch
-   `teamDiagnosis.diagnosisCategory` vorgegebenen Pools (z. B. eine
-   offensive Position bei einer Defensivdiagnose). **Erwartet:**
+   `teamDiagnosis.diagnosisCategory` vorgegebenen Pools. **Erwartet:**
    **Spielerprofil prüfen** erkennt dies über die generische
-   Konsistenzprüfung (unabhängig vom an sich schema-gültigen
-   Parser-Output) und setzt `valid: false` mit einer Fehlermeldung, die die
-   inkonsistente Position und die erwartete Diagnosekategorie benennt.
-9. **Teamdiagnose: Datengrundlage ausreichend?** (`no_data` stoppt kontrolliert) —
-   `teamDiagnosis.diagnosisCategory` auf `'no_data'` setzen (z. B. ein Verein
-   ohne importierte Match-Daten). **Erwartet:** **Teamdiagnose: Datengrundlage
-   prüfen** setzt `valid: false`, **Spielerprofil: Positionspool ermitteln**
-   sowie alle nachfolgenden Stufen (Spielerprofil-LLM, Player-Ranking,
-   Spielersuche, Recherche, Empfehlung) werden **nicht** mehr erreicht,
-   stattdessen zeigt **Fehler anzeigen** einen expliziten Hinweis auf die
-   fehlende Datengrundlage statt eine Transfermaßnahme auf Basis eines
-   beliebigen Positionspools zu erzeugen.
-10. **Scouting Brief gültig?** — `playerProfile.reasoning` vor **Scouting
-    Brief erstellen** entfernen (bzw. eine leere `weightedCriteria`-Liste
-    setzen). **Erwartet:** **Scouting Brief prüfen** setzt `valid: false`,
-    die Anzeige zeigt "Das Scouting Brief ist ungültig …" statt der
-    Freigabeseite.
+   Konsistenzprüfung und setzt `valid: false`.
+9. **Teamdiagnose: Datengrundlage ausreichend?** (`no_data` stoppt
+   kontrolliert, intern in `team-analysieren-subworkflow.json`) —
+   `teamDiagnosis.diagnosisCategory` auf `'no_data'` setzen. **Erwartet:**
+   **Teamdiagnose: Datengrundlage prüfen** setzt `valid: false`, der gesamte
+   restliche Ablauf (Spielerprofil, Kandidaten suchen, Due Diligence,
+   Empfehlung) wird über **Team analysieren gültig?** im Hauptworkflow
+   **nicht** mehr erreicht.
+10. **Scouting Brief gültig?** (intern) — `playerProfile.reasoning` vor
+    **Scouting Brief erstellen** entfernen. **Erwartet:** **Scouting Brief
+    prüfen** setzt `valid: false`, die Anzeige zeigt "Das Scouting Brief ist
+    ungültig …" (ausgelöst über das Hauptworkflow-Gate **Scouting Brief
+    gültig?**) statt der Freigabeseite.
 11. **Review-Entscheidung gültig?** (Request Changes ohne Feedback) — im
     Formular **Scouting Brief zur Freigabe vorlegen** `Entscheidung` =
     `Request Changes` waehlen und `Feedback` leer lassen. **Erwartet:**
-    **Review-Entscheidung auswerten** setzt `valid: false` mit einer
-    Fehlermeldung, die einen erforderlichen Feedback-Text nennt; die
-    Kandidatensuche stoppt kontrolliert über **Fehler anzeigen**, statt eine
-    leere Überarbeitung anzustoßen.
+    **Review-Entscheidung auswerten** setzt `valid: false`; die
+    Kandidatensuche stoppt kontrolliert über **Fehler anzeigen**.
 12. **Review: Request Changes?** (begrenzter Feedback-Loop) — im Formular
     dreimal hintereinander `Request Changes` mit nichtleerem Feedback waehlen.
-    **Erwartet:** die ersten beiden Runden erzeugen über **Spielerprofil
-    LLM** (mit `reviewFeedback` im Prompt) ein erneut vorgelegtes,
-    überarbeitetes Scouting Brief (`reviewRound` 2, dann 3) mit der
-    bisherigen Feedback-Historie sichtbar in `formDescription`; bei der
-    dritten `Request Changes`-Entscheidung (auf bereits erreichter
-    `maxReviewRounds: 3`) setzt **Review-Entscheidung auswerten**
-    `maxRoundsReached: true` und `reviewOutcome: 'Reject'`, sodass **Scouting
-    Brief: Ablehnung dokumentieren** die Kandidatensuche kontrolliert über
-    **Fehler anzeigen** beendet, statt eine vierte Überarbeitung zuzulassen.
+    **Erwartet:** die ersten beiden Runden rufen erneut **Execute Workflow:
+    Scouting Brief erstellen** auf (mit `reviewFeedback` im Prompt) und
+    legen ein überarbeitetes Scouting Brief erneut vor (`reviewRound` 2, dann
+    3); bei der dritten `Request Changes`-Entscheidung setzt
+    **Review-Entscheidung auswerten** `maxRoundsReached: true` und
+    `reviewOutcome: 'Reject'`, sodass **Scouting Brief: Ablehnung
+    dokumentieren** die Kandidatensuche kontrolliert über **Fehler anzeigen**
+    beendet.
 13. **Review: Approve?** (Reject) — im Formular `Entscheidung` = `Reject`
     waehlen. **Erwartet:** **Scouting Brief: Ablehnung dokumentieren**
     formuliert eine `errorMessage`, die auf die Ablehnung durch den Reviewer
-    hinweist (inkl. eines evtl. angegebenen Feedbacks), und die Anzeige zeigt
-    diese über **Fehler anzeigen** statt einer Empfehlung — keine der
-    nachfolgenden Stufen (Player-Ranking, Spielersuche, Recherche,
-    Empfehlung) wird erreicht.
+    hinweist, und die Anzeige zeigt diese über **Fehler anzeigen** statt
+    einer Empfehlung.
 14. **Review: Request Changes?** (Reviewer-Alters-/Budgetlimit wird wirksam) —
-    im Formular **Scouting Brief zur Freigabe vorlegen** `Entscheidung` =
-    `Request Changes` waehlen und im `Feedback`-Feld ein konkretes Limit ohne
-    Bezug zum urspruenglichen `additionalContext` angeben (z. B. „bitte nur
-    Kandidaten unter 10 Mio. Marktwert vorschlagen“). **Erwartet:** die
-    Folgerunde von **Spielerprofil LLM** liefert ein `playerProfile.constraints`
-    mit genau diesem Limit (`{ field: 'marketValueMEUR', operator: 'max',
-    value: 10 }`), **Scouting Brief erstellen** übernimmt es unverändert in
-    `scoutingBrief.constraints` der Folgerunde, und nach **Approve** wendet
-    **Player-Ranking-Anfrage vorbereiten**/der Player-Ranking-Subworkflow es
-    tatsächlich an (`appliedConstraints` enthält es, `ignoredConstraints`
-    bleibt leer) — das vom Reviewer genannte Limit darf nicht folgenlos
-    bleiben, nur weil es nicht aus `additionalContext`, sondern aus
-    `reviewFeedback` stammt.
+    im Formular ein konkretes Limit im Feedback angeben (z. B. „bitte nur
+    Kandidaten unter 10 Mio. Marktwert vorschlagen"). **Erwartet:** die
+    Folgerunde von **Spielerprofil LLM** (in `scouting-brief-subworkflow.json`)
+    liefert ein `playerProfile.constraints` mit genau diesem Limit, das
+    unveraendert in `scoutingBrief.constraints` der Folgerunde landet, und
+    nach **Approve** wendet **Player-Ranking-Anfrage vorbereiten**/der
+    Player-Ranking-Subworkflow (jetzt in `kandidaten-suchen-subworkflow.json`)
+    es tatsaechlich an.
 
-**Ausgeführt (gezielte Node.js-Verifikation):** Fälle 1–8 wurden bereits vor
-dieser Story mit dem inzwischen entfernten Offline-Simulator gegen die
-HSV-Beispieldaten durchgespielt (siehe oben, Abschnitt „Positiver Testfall“,
-zur Ablösung dieses Simulators); Fall 9 wurde isoliert mit Node.js gegen
-**Teamdiagnose: Datengrundlage prüfen** verifiziert (`valid: false` für
-`diagnosisCategory: 'no_data'`, `valid: true` für `'defensive'`); die Fälle
-10–12 wurden isoliert mit Node.js gegen die 1:1 aus `ai-sporting-director.json`
-übernommenen Funktionen in `n8n/data/verify-scouting-brief-review.js`
-verifiziert (siehe oben, Abschnitt "Positiver Testfall"); Fall 13 (Reject)
-teilt sich denselben `evaluateReview`-Codepfad wie Fall 12 und wurde dort mit
-verifiziert (`reviewOutcome: 'Reject'` bei direkter Reject-Entscheidung ohne
-`maxRoundsReached`); Fall 14 (Reviewer-Alters-/Budgetlimit) wurde für den Teil
-bis einschließlich `scoutingBrief.constraints` ebenfalls isoliert mit Node.js
-in `n8n/data/verify-scouting-brief-review.js` verifiziert (siehe oben) — der
-Teil ab **Player-Ranking-Anfrage vorbereiten** deckt sich mit der bereits
-bestehenden, isolierten Constraint-Filterung des Player-Ranking-Subworkflows
-(siehe unten, Abschnitt „Player-Ranking-Subworkflow: gezielte Tests“) und
-wurde nicht erneut end-to-end durchgespielt. Nicht ausgeführt: das manuelle
-Editieren der Nodes bzw. Ausfüllen des Freigabe-Formulars und Beobachten der
-**Executions**-Liste in einer laufenden n8n-Instanz — offen für die nächste
-Person (oder Session) mit
+**Ausgeführt (gezielte Node.js-Verifikation):** Fälle 1–8 wurden isoliert
+gegen die 1:1 aus den jeweiligen Subworkflow-Dateien übernommenen
+Code-Node-Funktionen verifiziert (siehe „Positiver Testfall" oben); Fall 9
+wurde isoliert mit Node.js gegen **Teamdiagnose: Datengrundlage prüfen**
+verifiziert; die Fälle 10–12 wurden isoliert mit Node.js gegen die 1:1 aus
+`scouting-brief-subworkflow.json`/`ai-sporting-director.json` übernommenen
+Funktionen in `n8n/data/verify-scouting-brief-review.js` verifiziert; Fall 13
+(Reject) teilt sich denselben `evaluateReview`-Codepfad wie Fall 12; Fall 14
+(Reviewer-Alters-/Budgetlimit) wurde für den Teil bis einschließlich
+`scoutingBrief.constraints` ebenfalls isoliert mit Node.js in
+`n8n/data/verify-scouting-brief-review.js` verifiziert — der Teil ab
+**Player-Ranking-Anfrage vorbereiten** deckt sich mit der bereits
+bestehenden, isolierten Constraint-Filterung des Player-Ranking-Subworkflows.
+Nicht ausgeführt: das manuelle Editieren der Nodes bzw. Ausfüllen des
+Freigabe-Formulars und Beobachten der **Executions**-Liste in einer
+laufenden n8n-Instanz — offen für die nächste Person (oder Session) mit
 interaktivem Zugriff.
 
 ### Negativer Testfall (Validierung des Startformulars)
@@ -993,81 +1068,92 @@ formulieren** → **Fehler anzeigen** mit der Meldung, `Verein` und die
 Zielsetzung auszufüllen — keine Dummy-Diagnose oder -Empfehlung wird
 angezeigt.
 
-### Regressionstest: Hauptworkflow funktioniert allein (Importtest)
+### Regressionstest: alle Workflow-Dateien sind in sich konsistent
 
-Der Hauptworkflow bleibt die einzige n8n-Workflow-Datei, die die HSV-Formular-
-Story trägt; die fünf technischen Subworkflow-Dateien (Recherche + die vier
-CSV-Analytics-Tools) sind die einzigen weiteren Dateien. Beim Import (die
-fünf Subworkflows zuerst, `n8n/ai-sporting-director.json` danach, siehe
-[Import & run](#import--run)) öffnet sich der Hauptworkflow mit allen 50 hier
-beschriebenen Nodes, inklusive der jetzt verbundenen **Ollama Modell
-(Qwen3.8:latest)**- und **LLM-Fehler normalisieren**-Nodes (siehe die beiden
-folgenden Regressionstests); jeder der fünf Subworkflows öffnet sich mit
-seinen zwei Nodes (Trigger + Code).
-Alle sechs Workflow-Dateien wurden außerhalb von n8n als wohlgeformtes JSON
-mit eindeutigen Node-Namen/-IDs, Connections, die ausschließlich existierende
-Nodes referenzieren, jeweils genau einem erwarteten Trigger-Node (Form
-Trigger bzw. Execute Workflow Trigger) und ohne Klartext-Credential- oder
--Workflow-ID (außer den dokumentierten Platzhaltern/festen Subworkflow-IDs)
-geprüft (`python3` JSON-Konsistenzcheck, siehe Commit-Historie).
+Der Hauptworkflow (`ai-sporting-director.json`, 23 Nodes) trägt seit der
+Restrukturierung nur noch die **fachlichen Phasen plus zentrales
+Routing/Review** der HSV-Formular-Story; die fünf **fachlichen**
+Subworkflow-Dateien (`team-analysieren-subworkflow.json`, 16 Nodes;
+`scouting-brief-subworkflow.json`, 13 Nodes; `kandidaten-suchen-subworkflow.json`,
+7 Nodes; `due-diligence-subworkflow.json`, 5 Nodes;
+`empfehlung-erstellen-subworkflow.json`, 8 Nodes) tragen die technischen
+Details je fachlicher Fähigkeit; die fünf **technischen** Subworkflow-Dateien
+(Recherche + die vier CSV-Analytics-Tools) bleiben unverändert bestehen.
+Beim Import (alle neun Subworkflows zuerst, `n8n/ai-sporting-director.json`
+danach, siehe [Import & run](#import--run)) öffnet sich der Hauptworkflow mit
+den 23 oben beschriebenen Nodes; jeder fachliche Subworkflow öffnet sich mit
+seinen eigenen Nodes (siehe die jeweiligen Abschnitte oben); jeder der fünf
+technischen Subworkflows öffnet sich unveraendert mit seinen bisherigen
+Nodes.
+
+Alle zwölf Workflow-Dateien wurden außerhalb von n8n als wohlgeformtes JSON
+mit eindeutigen Node-Namen/-IDs innerhalb jeder Datei, Connections, die
+ausschließlich existierende Nodes referenzieren, jeweils genau einem
+erwarteten Trigger-Node (Form Trigger bzw. Execute Workflow Trigger) und
+ohne überlappende Node-`position`-Koordinaten innerhalb einer Datei geprüft
+(Node.js-Konsistenzcheck, siehe Commit-Historie). Keine Datei enthält
+Klartext-Credential- oder -Workflow-IDs außer den dokumentierten
+Platzhaltern/festen Subworkflow-IDs.
+
 **Nicht ausgeführt:** der tatsächliche Import in eine laufende n8n-Instanz —
 offen für die nächste Person (oder Session) mit interaktivem Zugriff.
 
 ### Regressionstest: aktiver Ollama-Node
 
-1. Open the imported main workflow and select the **Ollama Modell
-   (Qwen3.8:latest)** node.
+1. Open the imported **`team-analysieren-subworkflow.json`** and select its
+   **Ollama Modell (Qwen3.8:latest)** node (independently, repeat for
+   **`scouting-brief-subworkflow.json`**'s own instance of this node).
    **Expected result:** the model field shows `Qwen3.8:latest`, **Options →
    Think** is enabled, and **Credential to connect with** references
-   `[cimt] Ollama` (select the existing local credential here — the import
-   cannot resolve the instance-specific credential ID automatically).
-2. **Expected result:** the node now has two outgoing `ai_languageModel`
-   connections — to **Teamdiagnose LLM** and to **Spielerprofil LLM** — and
-   still no incoming connection (language-model sub-nodes are only ever a
-   connection source, never a `main`-flow target). Running the positive test
-   case above therefore requires a real, reachable local Ollama instance
-   with the referenced credential configured; without one, both LLM chain
-   nodes fail and the execution ends on **Fehler anzeigen** via **LLM-Fehler
-   normalisieren** (see below) instead of on **Ergebnis anzeigen**.
+   `[cimt] Ollama` (select the existing local credential here in **both**
+   files — the import cannot resolve the instance-specific credential ID
+   automatically, and each file has its own node instance).
+2. **Expected result:** in each file, the node has exactly one outgoing
+   `ai_languageModel` connection (to **Teamdiagnose LLM** in
+   `team-analysieren-subworkflow.json`, to **Spielerprofil LLM** in
+   `scouting-brief-subworkflow.json`) and no incoming connection
+   (language-model sub-nodes are only ever a connection source). Running the
+   positive test case above therefore requires a real, reachable local
+   Ollama instance with the referenced credential configured in both files;
+   without one, both LLM chain nodes fail and their respective subworkflow
+   execution ends on its local **LLM-Fehler normalisieren** → **... :
+   Ergebnis** node with `valid: false`, which the main workflow then routes
+   to **Fehler anzeigen** via its **Team analysieren gültig?** /
+   **Scouting Brief gültig?** gate instead of reaching **Ergebnis anzeigen**.
 
 ### Regressionstest: aktive Fehler-Normalisierung
 
-1. Open the imported main workflow and select the **LLM-Fehler
-   normalisieren** node.
-   **Expected result:** the node is a Code node connected to **Fehler
-   anzeigen** as its only output, and now has two incoming connections — the
-   error output (`onError: continueErrorOutput`) of **Teamdiagnose LLM** and
-   of **Spielerprofil LLM** — so it runs whenever either chain fails (e.g.
-   Ollama not reachable, or the model's answer fails the connected
-   Structured Output Parser's schema).
-2. Open a test copy of the workflow, temporarily wire a manual trigger into
-   **LLM-Fehler normalisieren** and run it once with the input item
+1. Open **`team-analysieren-subworkflow.json`** (repeat for
+   **`scouting-brief-subworkflow.json`**) and select the **LLM-Fehler
+   normalisieren** node. **Expected result:** the node is a Code node
+   connected to the file's local **... : Ergebnis** NoOp node as its only
+   output, and has exactly one incoming connection — the error output
+   (`onError: continueErrorOutput`) of the file's own LLM chain node
+   (**Teamdiagnose LLM** / **Spielerprofil LLM**).
+2. Open a test copy of the subworkflow, temporarily wire a manual trigger
+   into **LLM-Fehler normalisieren** and run it once with the input item
    `{ "error": "Verbindung zu Ollama fehlgeschlagen (Testfall)" }` — the real
    shape n8n 2.35.7's **Basic LLM Chain** produces on its error output when
    `onError: continueErrorOutput` is set (`json: { error: error.message }`,
    i.e. `$json.error` is a **string**, not an object).
-   **Expected result:** the node's output contains `errorMessage` with the
-   text "Bei der Kommunikation mit dem lokalen Ollama-Modell ist ein Fehler
-   aufgetreten. Bitte versuchen Sie es später erneut.\n\nDetails:
-   Verbindung zu Ollama fehlgeschlagen (Testfall)", i.e. the same message
-   shape the Frage-Antwort-Altworkflow used to show on its error-display
-   node.
+   **Expected result:** the node's output contains `valid: false` and
+   `errorMessage` with the text "Bei der Kommunikation mit dem lokalen
+   Ollama-Modell ist ein Fehler aufgetreten. Bitte versuchen Sie es später
+   erneut.\n\nDetails: Verbindung zu Ollama fehlgeschlagen (Testfall)".
 3. Repeat step 2 with the input item
    `{ "error": { "message": "Verbindung zu Ollama fehlgeschlagen (Testfall)" } }`
-   (object shape, in case a future node ever produces it instead of a
-   string).
-   **Expected result:** the same `errorMessage` text as in step 2 — the node
-   still extracts the message correctly.
+   (object shape). **Expected result:** the same `errorMessage` text as in
+   step 2 — the node still extracts the message correctly.
 4. Repeat step 2 with an input item that has no `error` field.
    **Expected result:** `errorMessage` falls back to "... Details:
-   Unbekannter Fehler" instead of throwing.
+   Unbekannter Fehler" instead of throwing, `valid` stays `false`.
 
 ## Migration der Altworkflows
 
 Die beiden früheren Altworkflow-Dateien in diesem Verzeichnis (ein
-Hello-World-Workflow und ein Frage-Antwort-Workflow) wurden gegen die obige
+Hello-World-Workflow und ein Frage-Antwort-Workflow) wurden gegen eine frühe
 Analyse geprüft und aus dem Repository entfernt, bevor die Dummy-Pipeline
-dieser Story hinzukam:
+hinzukam:
 
 - **Der Hello-World-Altworkflow** enthielt nur einen Manual Trigger und ein
   statisches `Hello World`-Feld. Keine seiner Fähigkeiten wurde benötigt;
@@ -1077,16 +1163,35 @@ dieser Story hinzukam:
   die einfache LLM-Chain sind durch den Hauptworkflow abgelöst und wurden
   nicht übernommen. Die Ollama-Konfiguration selbst (Modell
   `Qwen3.8:latest`, aktiviertes Thinking, Credential-Referenz `[cimt]
-  Ollama` ohne echte ID oder Secret) wurde 1:1 als der oben beschriebene
-  Node **Ollama Modell (Qwen3.8:latest)** in `ai-sporting-director.json`
-  übernommen. Das kontrollierte Fehler-Routing dieses Altworkflows
-  (`onError: continueErrorOutput` am Chain-Node, verständliche Fehleranzeige
-  aus dem Fehler-Output) wurde ebenfalls übernommen, als der oben
-  beschriebene Node **LLM-Fehler normalisieren**, der bereits an den
-  zentralen Fehlerpfad **Fehler anzeigen** angeschlossen ist.
+  Ollama` ohne echte ID oder Secret) wurde 1:1 als Node **Ollama Modell
+  (Qwen3.8:latest)** übernommen — heute als zwei eigenständige Node-Instanzen
+  in `team-analysieren-subworkflow.json` und `scouting-brief-subworkflow.json`
+  (siehe Einleitung oben zur Duplizierung technischer Utility-Nodes über
+  Subworkflow-Grenzen hinweg). Das kontrollierte Fehler-Routing dieses
+  Altworkflows (`onError: continueErrorOutput` am Chain-Node, verständliche
+  Fehleranzeige aus dem Fehler-Output) wurde ebenfalls übernommen, als der
+  Node **LLM-Fehler normalisieren** (heute ebenfalls zwei eigenständige
+  Kopien in denselben zwei Dateien).
+
+Ein Offline-Simulator für den kompletten Hauptworkflow
+(`n8n/data/simulate_main_workflow.js`) existierte zwischenzeitlich, ist aber
+mit der Umstellung der Analytics-Subworkflows auf die persistente Data Table
+`football_scouting_raw` entfallen — er beruhte auf einem inzwischen
+entfernten, fünf Vereine umfassenden CSV-Prototyp und ist für die reale
+Datenquelle nicht mehr repräsentativ. Die verbliebenen Node.js-Verifikationen
+in `n8n/data/` (`verify-club-canonical-map.js`, `verify-scouting-brief-review.js`,
+`verify-import-architecture.js`) testen stattdessen einzelne Code-Nodes 1:1
+aus ihrem `jsCode`-Inhalt, gelesen aus der Workflow-Datei, in der der
+jeweilige Node aktuell liegt (siehe die Abschnitte oben).
 
 `ai-sporting-director.json` ist damit weiterhin der einzige Hauptworkflow in
-diesem Repository; `recherche-subworkflow.json` und die vier
-`analytics-*-subworkflow.json`-Dateien des
-[CSV-Analytics-Adapters](#csv-analytics-adapter) sind die einzigen erlaubten
-Ausnahmen davon, jeweils als technischer, nicht-fachlicher Subworkflow.
+diesem Repository. Alle übrigen `n8n/*.json`-Dateien sind Subworkflows: die
+fünf fachlichen Subworkflows (`team-analysieren-subworkflow.json`,
+`scouting-brief-subworkflow.json`, `kandidaten-suchen-subworkflow.json`,
+`due-diligence-subworkflow.json`, `empfehlung-erstellen-subworkflow.json`)
+sowie die fünf technischen Subworkflows (`recherche-subworkflow.json` und die
+vier `analytics-*-subworkflow.json`-Dateien des
+[CSV-Analytics-Adapters](#csv-analytics-adapter)) — zusammen mit
+`import-scouting-data.json` (Daten-Import, kein Teil des Sporting-Director-
+Ablaufs selbst) die einzigen erlaubten Ausnahmen vom Grundsatz „ein
+Hauptworkflow, keine parallele Kopie".

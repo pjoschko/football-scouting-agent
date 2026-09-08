@@ -1,0 +1,209 @@
+{
+  "id": "803a06a1-fb4b-4cb7-b502-63ab119c9996",
+  "name": "Kandidaten suchen",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "bc79f244-3029-4b39-b416-6d56aa84298f",
+      "name": "Wenn von anderem Workflow aufgerufen",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst p = item.playerProfile;\n\nreturn [{\n  json: {\n    ...item,\n    rankingExcludeClub: item.clubPlayerData,\n    position: p.position,\n    criteria: p.weightedCriteria,\n    constraints: p.constraints || [],\n    limit: 5\n  }\n}];"
+      },
+      "id": "f97d626f-2224-4844-a279-8f791b70151f",
+      "name": "Player-Ranking-Anfrage vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "5e50b3ea-5e60-436f-b8bd-77957b54355a",
+          "mode": "list",
+          "cachedResultName": "Player-Ranking (CSV)"
+        },
+        "options": {}
+      },
+      "id": "26c50a98-a512-43a7-a0c5-852d30e1c186",
+      "name": "Player-Ranking abrufen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        680,
+        180
+      ],
+      "notesInFlow": false,
+      "notes": "CSV-Analytics-Adapter (temporaerer Ersatz fuer Qlik MCP): ruft n8n/analytics-player-ranking-subworkflow.json ueber dessen feste Top-Level-ID auf. Uebergibt excludeClub statt club, da die Spielersuche ausserhalb des eigenen Kaders sucht (kein Sonderfall fuer einen bestimmten Verein). Reichert das Item um playerRanking an. Siehe n8n/README.md, Abschnitt \"CSV-Analytics-Adapter\"."
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst ranking = item.playerRanking;\n\n// Ersetzt den bisherigen Dummy durch eine echte Auswertung des CSV-Analytics-\n// Adapters (Player-Ranking abrufen, siehe n8n/README.md, Abschnitt\n// \"CSV-Analytics-Adapter\"). Es werden keine Kandidaten erfunden: liefert der\n// Adapter keine Ranglisten-Eintraege (z. B. weil der komplette Markt - alle\n// Vereine ausser dem eigenen - fuer die Anfrage leer ist), bleibt shortlist\n// leer und das nachfolgende Gate \"Spielersuche gueltig?\" greift.\nif (!ranking || !ranking.dataAvailable || !Array.isArray(ranking.ranking) || ranking.ranking.length === 0) {\n  const playerSearch = {\n    simulated: false,\n    dataAvailable: false,\n    longlistSize: 0,\n    shortlist: []\n  };\n  return [{ json: { ...item, playerSearch } }];\n}\n\nconst pool = ranking.ranking;\nconst statFields = Object.keys(pool[0].stats).filter((f) => f !== 'age');\nconst poolAverage = {};\nstatFields.forEach((field) => {\n  poolAverage[field] = pool.reduce((sum, p) => sum + p.stats[field], 0) / pool.length;\n});\n\nconst shortlist = pool.slice(0, 5).map((candidate) => {\n  const strengths = [];\n  const weaknesses = [];\n  statFields.forEach((field) => {\n    const avg = poolAverage[field];\n    if (candidate.stats[field] > avg) strengths.push(`${field}: ${candidate.stats[field]} (Pool-Schnitt ${avg.toFixed(2)})`);\n    else if (candidate.stats[field] < avg) weaknesses.push(`${field}: ${candidate.stats[field]} (Pool-Schnitt ${avg.toFixed(2)})`);\n  });\n\n  return {\n    name: candidate.name,\n    score: candidate.score,\n    strengths: strengths.length > 0 ? strengths : [`Score ${candidate.score} im CSV-Player-Ranking (${ranking.excludeClub ? 'ohne ' + ranking.excludeClub : ranking.club || 'alle Vereine'}${ranking.position ? ', ' + ranking.position : ''}).`],\n    weaknesses: weaknesses.length > 0 ? weaknesses : ['Keine auffaelligen Schwaechen gegenueber dem betrachteten CSV-Pool.'],\n    evidence: [`CSV-Analytics-Datenpunkt (Data Table football_scouting_raw): ${candidate.club}, ${candidate.position}, Alter ${candidate.age}, Rating ${candidate.stats.rating}, ${candidate.stats.goals} Tore, ${candidate.stats.assists} Vorlagen in ${candidate.stats.appearances} Einsaetzen.`]\n  };\n});\n\nconst playerSearch = {\n  simulated: false,\n  dataAvailable: true,\n  longlistSize: ranking.poolSize,\n  shortlist\n};\n\nreturn [{ json: { ...item, playerSearch } }];\n"
+      },
+      "id": "084953e2-07d9-4a9d-8c5d-abd484c45c63",
+      "name": "Spielersuche durchfuehren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst s = item.playerSearch;\nconst errors = [];\n\n// Ein vom Spielerprofil gefordertes Constraint (z. B. Alters-/Budgetlimit)\n// kann im Player-Ranking-Subworkflow als 'ignoredConstraints' zurueckkommen,\n// wenn das benoetigte Feld im Kandidatenpool nicht numerisch verfuegbar ist\n// (siehe analytics-player-ranking-subworkflow.json). Ein still ignoriertes\n// Constraint darf keine Empfehlung erreichen - das wuerde das\n// Akzeptanzkriterium verletzen, dass Folgestufen die erzeugten Constraints\n// tatsaechlich verwenden. Ein nicht anwendbares Constraint gilt hier deshalb\n// als unzureichende Datengrundlage statt nur im Tool-Output (playerRanking)\n// protokolliert zu werden.\nconst ignoredConstraints = (item.playerRanking && Array.isArray(item.playerRanking.ignoredConstraints))\n  ? item.playerRanking.ignoredConstraints\n  : [];\nif (ignoredConstraints.length > 0) {\n  errors.push('playerRanking.ignoredConstraints ist nicht leer - folgende Constraints aus dem Spielerprofil konnten im Player-Ranking nicht angewendet werden und wuerden sonst stillschweigend ignoriert: ' + JSON.stringify(ignoredConstraints) + '.');\n}\n\n// Dasselbe Problem gilt fuer vom Spielerprofil gewichtete Kriterien: nicht\n// numerisch verfuegbare Kriterien landen im Ranking-Subworkflow in\n// 'ignoredCriteria' und werden dort ggf. vollstaendig durch Default-Kriterien\n// (goals/assists/xG) ersetzt, ohne dass 'dataAvailable' dadurch false wird.\n// Damit wuerden die vom LLM erzeugten weightedCriteria die Folgestufe nicht\n// mehr zuverlaessig steuern - analog zu ignoredConstraints gilt ein nicht\n// verfuegbares Kriterium hier als unzureichende Datengrundlage.\nconst ignoredCriteria = (item.playerRanking && Array.isArray(item.playerRanking.ignoredCriteria))\n  ? item.playerRanking.ignoredCriteria\n  : [];\nif (ignoredCriteria.length > 0) {\n  errors.push('playerRanking.ignoredCriteria ist nicht leer - folgende vom Spielerprofil gewichteten Kriterien sind im Kandidatenpool nicht numerisch verfuegbar und wurden durch Default-Kriterien ersetzt: ' + JSON.stringify(ignoredCriteria) + '.');\n}\n\n// Wenn selbst der grobe Positionsgruppen-Match (DF/MF/FW/GK) fehlschlaegt,\n// behaelt der Ranking-Subworkflow den kompletten ungefilterten Spielerpool\n// (siehe analytics-player-ranking-subworkflow.json, posMatch()). Die vom\n// Spielerprofil geforderte Position ginge damit vollstaendig verloren und ein\n// Spieler einer voellig anderen Positionsgruppe koennte empfohlen werden -\n// das gilt hier als unzureichende Datengrundlage.\nif (item.playerRanking && item.playerRanking.positionFallbackApplied) {\n  errors.push('playerRanking.positionFallbackApplied ist gesetzt - die angeforderte Position (' + (item.playerRanking.position || '?') + ') konnte im Kandidatenpool nicht einmal grob einer Positionsgruppe zugeordnet werden, der Pool wurde daher ungefiltert beibehalten.');\n}\n\nif (!s || typeof s !== 'object') {\n  errors.push('playerSearch fehlt oder ist kein Objekt.');\n} else {\n  if (typeof s.longlistSize !== 'number' || s.longlistSize <= 0) errors.push('playerSearch.longlistSize fehlt oder ist ungueltig.');\n  if (!Array.isArray(s.shortlist) || s.shortlist.length === 0) {\n    errors.push('playerSearch.shortlist fehlt oder ist leer.');\n  } else if (s.shortlist.length > 5) {\n    errors.push('playerSearch.shortlist enthaelt mehr als fuenf Kandidaten.');\n  } else if (s.shortlist.some((c) => !c.name || typeof c.score !== 'number' || !Array.isArray(c.strengths) || !Array.isArray(c.weaknesses) || !Array.isArray(c.evidence))) {\n    errors.push('playerSearch.shortlist enthaelt einen Kandidaten ohne name, score, strengths, weaknesses oder evidence.');\n  }\n}\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die Spielersuche ist ungueltig und wird nicht fuer die weitere Recherche verwendet.\\n\\n' + errors.join('\\n')\n  }\n}];"
+      },
+      "id": "1359e982-2383-4123-8b80-b17ee9611d8a",
+      "name": "Spielersuche pruefen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c495744e-4a83-400a-ade8-5aa428c60361",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "006028a3-60d5-44e9-8def-58e87032b8d8",
+      "name": "Spielersuche gueltig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        180
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "177bae2b-a84f-4c33-90f9-eeadf76058ff",
+      "name": "Kandidaten suchen: Ergebnis",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        180
+      ],
+      "notes": "Konsolidierter Phase-Ergebnis-Knoten dieser Subworkflow-Datei (siehe n8n/README.md): liefert playerSearch + playerRanking + valid + errorMessage (bereits von 'Spielersuche pruefen' gesetzt) an den Hauptworkflow zurueck.",
+      "notesInFlow": false
+    }
+  ],
+  "connections": {
+    "Wenn von anderem Workflow aufgerufen": {
+      "main": [
+        [
+          {
+            "node": "Player-Ranking-Anfrage vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Player-Ranking-Anfrage vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Player-Ranking abrufen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Player-Ranking abrufen": {
+      "main": [
+        [
+          {
+            "node": "Spielersuche durchfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielersuche durchfuehren": {
+      "main": [
+        [
+          {
+            "node": "Spielersuche pruefen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielersuche pruefen": {
+      "main": [
+        [
+          {
+            "node": "Spielersuche gueltig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielersuche gueltig?": {
+      "main": [
+        [
+          {
+            "node": "Kandidaten suchen: Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Kandidaten suchen: Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
