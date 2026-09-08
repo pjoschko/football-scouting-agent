@@ -81,13 +81,16 @@ Hauptworkflow als Teil des erlaubten „zentralen Routings/Reviews" (siehe
 [Human Review bleibt im Hauptworkflow](#human-review-bleibt-im-hauptworkflow)
 unten).
 
-Credentials werden ausschließlich referenziert (`[cimt] Ollama` an den Nodes
-**Ollama Modell (Qwen3.8:latest)** in `team-analysieren-subworkflow.json`,
-`scouting-brief-subworkflow.json` und — seit der
-Kandidaten-Due-Diligence-Parallelisierung — `recherche-subworkflow.json`; dazu
-neu `[cimt] Tavily Search` am Node **Websuche (Tavily)** in
+Credentials werden ausschließlich referenziert: `[cimt] Ollama` am Node
+**Ollama Modell (Qwen3.8:latest)** in `team-analysieren-subworkflow.json` und
+`scouting-brief-subworkflow.json` sowie separat am Research-Node **Ollama
+Modell (qwen3.8-agent-128k:latest)** in `recherche-subworkflow.json`. Dazu
+kommt `[cimt] Tavily Search` am Node **Websuche (Tavily)** in
 `recherche-subworkflow.json`, mit dem Platzhalter-Wert
-`REPLACE_WITH_LOCAL_CREDENTIAL_ID` statt einer echten Credential-ID), nie
+`REPLACE_WITH_LOCAL_CREDENTIAL_ID` statt einer echten Credential-ID. Die
+unterschiedlichen Modellnamen sind beabsichtigt: der Research-Agent verwendet
+`qwen3.8-agent-128k:latest` für Tool-/Function-Calling; Teamdiagnose und
+Scouting-Brief verwenden weiterhin `Qwen3.8:latest`. Credentials werden nie
 exportiert oder dupliziert. Alle Subworkflows werden über ihre feste
 Top-Level-ID referenziert; n8n übernimmt diese ID beim Import
 (`import:workflow`) per Upsert unverändert, sodass nach dem Import (siehe
@@ -910,8 +913,8 @@ durch (kein deterministischer Dummy mehr):
 Aufgerufen von **Recherche je Kandidat starten** in
 [`due-diligence-subworkflow.json`](./due-diligence-subworkflow.json), einmal
 separat je Shortlist-Kandidat. Erfordert nach dem Import eine lokale
-`ollamaApi`-Credential (dieselbe `[cimt] Ollama` wie in den anderen beiden
-Dateien) sowie eine neue lokale `httpHeaderAuth`-Credential
+`ollamaApi`-Credential `[cimt] Ollama` am Node **Ollama Modell
+(qwen3.8-agent-128k:latest)** sowie eine lokale `httpHeaderAuth`-Credential
 `[cimt] Tavily Search` (Header `Authorization`, Wert `Bearer <TAVILY_API_KEY>`)
 am Node **Websuche (Tavily)** — siehe [Import & run](#import--run).
 
@@ -937,14 +940,15 @@ am Node **Websuche (Tavily)** — siehe [Import & run](#import--run).
 3. Import [`ai-sporting-director.json`](./ai-sporting-director.json) the
    same way — its Execute-Workflow nodes already reference the subworkflows'
    fixed IDs, so no manual edit is needed there.
-4. On the **Ollama Modell (Qwen3.8:latest)** node in **all three**
-   `team-analysieren-subworkflow.json`, `scouting-brief-subworkflow.json` and
-   `recherche-subworkflow.json`, select the local `[cimt] Ollama` credential
-   (once per file, per n8n-instance). The model must support tool/function
-   calling for `recherche-subworkflow.json`'s **Recherche-Agent** to actually
-   invoke the search tool.
-4a. On the **Websuche (Tavily)** node in `recherche-subworkflow.json`, create
-   and select a local `httpHeaderAuth` credential named `[cimt] Tavily Search`
+4. In `team-analysieren-subworkflow.json` and
+   `scouting-brief-subworkflow.json`, select the local `[cimt] Ollama`
+   credential on each **Ollama Modell (Qwen3.8:latest)** node.
+4a. In `recherche-subworkflow.json`, select the local `[cimt] Ollama`
+   credential on **Ollama Modell (qwen3.8-agent-128k:latest)** and verify
+   that the model field is exactly `qwen3.8-agent-128k:latest`. This is the
+   tool-/function-calling model used by **Recherche-Agent**.
+4b. On **Websuche (Tavily)** in `recherche-subworkflow.json`, create and
+   select a local `httpHeaderAuth` credential named `[cimt] Tavily Search`
    (header `Authorization`, value `Bearer <TAVILY_API_KEY>`) once per
    n8n-instance.
 5. Use **Test workflow** on the main workflow to obtain a test-mode form URL
@@ -1406,3 +1410,4 @@ Hauptworkflow, keine parallele Kopie".
 - `contractEndDate` ist kanonisch und wird vor Freitext-Fallbacks wie `auslaufend` bewertet.
 - `transferLikelihoodNotes` und `currentSituation` fließen deterministisch in die Transfer-Realisierbarkeit ein.
 - Jeder `Recherche`-Child hat `executionTimeout: 120` Sekunden. Der Parent verankert den Timeout am jeweiligen `started`-Marker; fehlt dieser vollständig, verhindert ein Batch-Start-Failsafe endloses Polling.
+- Ein `dispatch_error` wird im selben nullable Research-Vertrag wie andere unsichere Ergebnisse persistiert (`evidence: []`, kanonische Felder `null`), sodass ein einzelner Dispatch-Fehler erfolgreiche parallele Kandidaten nicht invalidiert.
