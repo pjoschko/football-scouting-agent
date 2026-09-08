@@ -93,27 +93,42 @@ das Gate-Muster danach bleibt aber identisch.
    verdrahteten Verein, Position oder Problemdiagnose) und optionalem
    `Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?`.
 2. **Auftrag normalisieren** (Code, `runOnceForEachItem`) — normalisiert die
-   Formularausgabe zu `club`, `objective`, `additionalContext`, `requestId`,
-   `requestedAt`. Gibt dafür pro Item ein einzelnes `{ json: ... }`-Objekt
-   zurück (kein Array) — gegen exakt n8n **2.35.7** verifiziert: bei
-   `runOnceForEachItem` verwirft `validateRunCodeEachItem()` ein
-   Array-Ergebnis mit `Code doesn't return a single object`, bevor
-   **Eingabe validieren** oder die Analytics-Stufen erreicht werden. Bildet
-   die Dropdown-Auswahl über eine zentrale `CLUB_CANONICAL_MAP` eindeutig auf
-   den kanonischen Team-Identifier der Analytics-Schicht ab; diese Zuordnung
-   wird ausschließlich in diesem Node gepflegt und nicht in den
-   Analytics-Subworkflows dupliziert. Die Map-Werte sind gegen die
-   tatsächlichen Team-Identifier aus
-   `bundesliga_2025_26_match_analytics.csv` abgeglichen (nur 4 der 18 Vereine
-   sind dort wortgleich mit dem Dropdown-Label, z. B. `FC Bayern München` →
-   `Bayern Munich`, `1. FC Köln` → `FC Cologne`, `RB Leipzig` →
-   `RasenBallsport Leipzig`), da **Team-Performance abrufen**/**Team-Matches
-   abrufen** `club` per exaktem String-Vergleich gegen `Heimteam`/
-   `Auswärtsteam` matchen. `node n8n/data/verify-club-canonical-map.js`
-   verifiziert automatisiert alle 18 Dropdown-Vereine gegen diese
-   CSV-Identifier sowie den Rückgabevertrag des Nodes. Eine nicht in der Map
-   enthaltene Auswahl ergibt ein leeres `club` und wird von **Eingabe
-   validieren** abgelehnt.
+   Formularausgabe zu `club`, `clubPlayerData`, `objective`,
+   `additionalContext`, `requestId`, `requestedAt`. Gibt dafür pro Item ein
+   einzelnes `{ json: ... }`-Objekt zurück (kein Array) — gegen exakt n8n
+   **2.35.7** verifiziert: bei `runOnceForEachItem` verwirft
+   `validateRunCodeEachItem()` ein Array-Ergebnis mit `Code doesn't return a
+   single object`, bevor **Eingabe validieren** oder die Analytics-Stufen
+   erreicht werden. Bildet die Dropdown-Auswahl über zwei zentrale Maps
+   eindeutig auf die kanonischen Team-Identifier der Analytics-Schicht ab;
+   diese Zuordnungen werden ausschließlich in diesem Node gepflegt und nicht
+   in den Analytics-Subworkflows dupliziert. Zwei getrennte Maps sind nötig,
+   weil die beiden Analytics-Quelldateien denselben Verein unterschiedlich
+   benennen:
+   - `CLUB_CANONICAL_MAP` → `club`, gegen die tatsächlichen Team-Identifier
+     aus `bundesliga_2025_26_match_analytics.csv` abgeglichen (nur 4 der 18
+     Vereine sind dort wortgleich mit dem Dropdown-Label, z. B. `FC Bayern
+     München` → `Bayern Munich`, `1. FC Köln` → `FC Cologne`, `RB Leipzig` →
+     `RasenBallsport Leipzig`), da **Team-Performance abrufen**/**Team-Matches
+     abrufen** `club` per exaktem String-Vergleich gegen `Heimteam`/
+     `Auswärtsteam` matchen.
+   - `CLUB_PLAYER_DATA_MAP` → `clubPlayerData`, gegen die tatsächlichen
+     `Squad`-Identifier aus `players_data-2025_2026-full.csv` abgeglichen.
+     8 der 18 Vereine weichen hier vom Match-Identifier in
+     `CLUB_CANONICAL_MAP` ab (z. B. `Borussia Dortmund` → `Dortmund`,
+     `RB Leipzig` → `RB Leipzig` vs. `RasenBallsport Leipzig`,
+     `1. FC Köln` → `Köln` vs. `FC Cologne`), da **Player-Ranking-Anfrage
+     vorbereiten** (20.) darüber den Eigenkader-Ausschluss
+     (`rankingExcludeClub`) per exaktem String-Vergleich gegen `Squad`
+     bestimmt; ohne eigene Map würden eigene Spieler dieser Clubs nicht
+     ausgeschlossen und könnten als Transferkandidaten gerankt werden.
+
+   `node n8n/data/verify-club-canonical-map.js` verifiziert automatisiert
+   alle 18 Dropdown-Vereine gegen beide CSV-Identifier, den Rückgabevertrag
+   des Nodes sowie, dass **Player-Ranking-Anfrage vorbereiten** tatsächlich
+   `clubPlayerData` (und nicht `club`) für `rankingExcludeClub` verwendet.
+   Eine nicht in den Maps enthaltene Auswahl ergibt ein leeres
+   `club`/`clubPlayerData` und wird von **Eingabe validieren** abgelehnt.
 3. **Eingabe validieren** (IF) — unverändert: lehnt fehlende oder nur aus
    Leerzeichen bestehende Werte für `club`/`objective` ab.
    - **falsch** → **Validierungsfehler formulieren** (Set, unverändert) →
@@ -267,9 +282,13 @@ das Gate-Muster danach bleibt aber identisch.
 19. **Spielerprofil gültig?** (IF) — **falsch** → **Fehler anzeigen**;
     **wahr** → **Player-Ranking-Anfrage vorbereiten**.
 20. **Player-Ranking-Anfrage vorbereiten** (Code) — übersetzt `playerProfile`
-    in den Tool-Vertrag von Player-Ranking: `rankingExcludeClub` = der
-    diagnostizierte Verein (Scouting sucht außerhalb des eigenen Kaders),
-    `constraints` = `playerProfile.constraints` (siehe unten, Abschnitt
+    in den Tool-Vertrag von Player-Ranking: `rankingExcludeClub` =
+    `clubPlayerData` des diagnostizierten Vereins (Scouting sucht außerhalb
+    des eigenen Kaders) — bewusst `clubPlayerData` statt `club`, da
+    Player-Ranking den Ausschluss gegen die `Squad`-Spalte der Spielerdaten
+    vergleicht, die bei 8 der 18 Vereine einen anderen Identifier als der
+    Match-Datensatz verwendet (siehe 2.), `constraints` =
+    `playerProfile.constraints` (siehe unten, Abschnitt
     [CSV-Analytics-Adapter](#csv-analytics-adapter), Player-Ranking),
     `position`/`criteria` aus `playerProfile.position`/`weightedCriteria`,
     `limit: 5`.
@@ -621,11 +640,17 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    doppelten Node-Namen/-IDs, alle Connections referenzieren existierende
    Nodes, genau ein Trigger-Node). Ebenfalls ausgeführt (grün):
    `node n8n/data/verify-club-canonical-map.js` — verifiziert automatisiert
-   alle 18 Dropdown-Vereine der Saison 2025/26 in `CLUB_CANONICAL_MAP` gegen
-   die tatsächlichen Team-Identifier aus
+   alle 18 Dropdown-Vereine der Saison 2025/26 sowohl in `CLUB_CANONICAL_MAP`
+   gegen die tatsächlichen Team-Identifier aus
    `bundesliga_2025_26_match_analytics.csv` (Spalten Heimteam/Auswärtsteam)
-   sowie den `{ json: ... }`-Rückgabevertrag von **Auftrag normalisieren**
-   gegen dessen `runOnceForEachItem`-Modus. Nicht ausgeführt: ein vollständiger
+   als auch in `CLUB_PLAYER_DATA_MAP` gegen die tatsächlichen
+   `Squad`-Identifier aus `players_data-2025_2026-full.csv`, den
+   `{ json: ... }`-Rückgabevertrag von **Auftrag normalisieren** gegen dessen
+   `runOnceForEachItem`-Modus, sowie dass **Player-Ranking-Anfrage
+   vorbereiten** `rankingExcludeClub` tatsächlich aus `clubPlayerData` (statt
+   aus dem Match-Identifier `club`) ableitet — dieser Test schlägt fehl, wenn
+   der Eigenkader-Ausschluss wieder gegen den falschen Datensatz verglichen
+   würde. Nicht ausgeführt: ein vollständiger
    End-to-End-Lauf des Hauptworkflows (inkl. Formular-/Completion-Seiten, dem
    n8n-**Executions**-Eintrag und einem echten Aufruf des lokalen
    Ollama-Modells), da dafür eine laufende n8n-Weboberfläche mit
