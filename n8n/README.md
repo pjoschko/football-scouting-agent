@@ -265,14 +265,26 @@ das Gate-Muster danach bleibt aber identisch.
     greift dann reell.
 23. **Spielersuche prüfen** (Code) — prüft `longlistSize > 0`, `shortlist`
     nichtleer und **höchstens fünf** Kandidaten, sowie dass jeder Kandidat
-    alle Pflichtfelder hat. **Neu:** prüft zusätzlich, dass
+    alle Pflichtfelder hat. Prüft zusätzlich, dass
     `playerRanking.ignoredConstraints` leer ist — ein vom Spielerprofil
     gefordertes, aber im Player-Ranking nicht anwendbares Constraint (z. B.
     weil `marketValueMEUR` im Kandidatenpool nicht numerisch verfügbar ist)
     würde sonst stillschweigend ignoriert und die Pipeline könnte trotzdem bis
     zur Empfehlung weiterlaufen, obwohl das Constraint keine Wirkung hatte.
     Ein nicht anwendbares Constraint gilt hier deshalb als unzureichende
-    Datengrundlage und stoppt über das folgende Gate.
+    Datengrundlage und stoppt über das folgende Gate. **Neu:** dasselbe gilt
+    jetzt analog für `playerRanking.ignoredCriteria` — sind alle vom
+    Spielerprofil gewichteten Kriterien im Kandidatenpool nicht numerisch
+    verfügbar, ersetzt der Ranking-Subworkflow sie sonst still durch die
+    Default-Kriterien (`goals`/`assists`/`xG`) und könnte trotzdem eine
+    Empfehlung erzeugen, ohne dass die LLM-Kriterien die Suche tatsächlich
+    steuern. **Neu:** außerdem prüft das Gate `playerRanking.
+    positionFallbackApplied` — schlägt selbst der grobe
+    Positionsgruppen-Match (DF/MF/FW/GK) fehl, behält der Ranking-Subworkflow
+    den kompletten ungefilterten Spielerpool statt gar keinen Kandidaten zu
+    liefern; ohne diese Prüfung könnte eine angeforderte Position komplett
+    verloren gehen und ein Spieler einer völlig anderen Positionsgruppe
+    empfohlen werden.
 24. **Spielersuche gültig?** (IF) — **falsch** → **Fehler anzeigen**;
     **wahr** → **Recherche durchführen**.
 25. **Recherche durchführen** (Execute Workflow) — unverändert: ruft den
@@ -291,11 +303,17 @@ das Gate-Muster danach bleibt aber identisch.
     dass jeder Eintrag alle Pflichtfelder hat.
 27. **Recherche gültig?** (IF) — **falsch** → **Fehler anzeigen**; **wahr**
     → **Empfehlung erzeugen**.
-28. **Empfehlung erzeugen** (Code) — unverändert: wählt den Kandidaten mit dem
+28. **Empfehlung erzeugen** (Code) — wählt den Kandidaten mit dem
     höchsten `score` aus `playerSearch.shortlist` als bevorzugten Kandidaten
     (damit stammt er per Konstruktion aus der validierten Shortlist), die
     übrigen Shortlist-Namen werden `alternatives`; dazu `reasoning`, `risks`,
-    `uncertainties`, `nextStep`.
+    `uncertainties`, `nextStep`. **Neu:** ist `playerRanking.
+    positionApproximationApplied` gesetzt (angeforderte Position nur grob auf
+    eine Positionsgruppe DF/MF/FW/GK angenähert statt exakt gematcht — mit der
+    FBref-Datengrundlage der Regelfall, siehe Player-Ranking-Subworkflow
+    unten), wird das explizit als zusätzlicher Eintrag in
+    `recommendation.uncertainties` ausgewiesen, statt stillschweigend
+    übernommen zu werden.
 29. **Player-Profil-Anfrage vorbereiten** (Code) — setzt `playerName` auf
     `recommendation.candidate`.
 30. **Player-Profil abrufen** (Execute Workflow) — ruft
@@ -428,10 +446,22 @@ unten) nicht in Aggregation oder Ranking-Score ein.
    abzubrechen; **Spielersuche prüfen** im Hauptworkflow (siehe Node 23 oben)
    wertet `ignoredConstraints` aus und stoppt die Pipeline vor einer
    Empfehlung, falls ein Constraint nicht wirksam wurde.
-   Unbekannte Kriterien werden nicht ignoriert-und-verschwiegen, sondern in
-   `ignoredCriteria` aufgeführt; eine nicht im Pool vorkommende Position
-   führt — explizit über `positionFallbackApplied: true` markiert — zum
-   Rückfall auf den ungefilterten Pool statt zu erfundenen Kandidaten. Ein
+   Unbekannte oder im Pool nicht numerisch verfügbare Kriterien werden nicht
+   ignoriert-und-verschwiegen, sondern in `ignoredCriteria` aufgeführt;
+   **Spielersuche prüfen** im Hauptworkflow (siehe Node 23 oben) wertet das
+   aus und stoppt die Pipeline, falls dadurch die vom Spielerprofil
+   gewichteten Kriterien die Suche nicht mehr tatsächlich steuern würden.
+   Die Positionssuche versucht zuerst einen exakten Match (normalisiert,
+   `ß`→`ss`), dann einen groben Gruppen-Match (DF/MF/FW/GK, z. B.
+   „Linksaußen“ → `FW`) — dabei wird `positionApproximationApplied: true`
+   gesetzt (mit der FBref-Datengrundlage der Regelfall, da dort keine
+   granulareren Positionen als DF/MF/FW/GK vorliegen; **Empfehlung
+   erzeugen** im Hauptworkflow weist das als Unsicherheit aus, siehe Node 28
+   oben). Schlägt selbst der grobe Gruppen-Match fehl, fällt der
+   Subworkflow — explizit über `positionFallbackApplied: true` markiert —
+   auf den ungefilterten Pool zurück statt Kandidaten zu erfinden;
+   **Spielersuche prüfen** behandelt das als unzureichende Datengrundlage und
+   stoppt die Pipeline (siehe Node 23 oben). Ein
    Spieler-Datensatz mit fehlendem/ungültigem numerischem Pflichtfeld (z. B.
    leeres `age`) wird komplett aus dem Ranking-Pool ausgeschlossen statt mit
    `0`/`NaN` in den Score einzufließen — sonst könnte z. B. ein fehlendes
@@ -592,6 +622,15 @@ bestätigt zusätzlich weiterhin, dass die vier Analytics-Subworkflows
 ausschließlich aus `football_scouting_raw` lesen und keine eingebetteten
 CSV-Fixtures mehr enthalten.
 
+Zusätzlich isoliert gegen die extrahierten `norm()`/`posMatch()`-Funktionen
+verifiziert (**Linksaußen-Negativtest**, behebt einen Bug, bei dem `ß` von der
+alten Normalisierung ersatzlos entfernt statt zu `ss` transliteriert wurde):
+`norm('Linksaußen')` liefert jetzt `'linksaussen'` (vorher `'linksauen'`, was
+gegen das hartkodierte `'linksaussen'` in `posMatch()` nie gematcht hätte) und
+`posMatch('FW', 'Linksaußen')` liefert `true`, sodass eine angeforderte
+Linksaußen-Position korrekt der `FW`-Gruppe zugeordnet wird statt in den
+ungefilterten Fallback zu laufen.
+
 ### Negative Testfälle (ein Gate pro Stufe)
 
 Für jedes der folgenden Gates gilt dasselbe Muster: in einer Testkopie des
@@ -613,6 +652,20 @@ wird der positive Testfall erneut ausgeführt.
    **Spielersuche prüfen** setzt trotz gültiger Shortlist `valid: false` mit
    einer Fehlermeldung, die `ignoredConstraints` nennt — ein nicht
    angewendetes Constraint darf keine Empfehlung erreichen.
+3b. **Spielersuche gültig?** (ignoriertes Kriterium) — `playerRanking.ignoredCriteria`
+   auf `['rating']` setzen, während `playerSearch.shortlist` ansonsten
+   gültig bleibt. **Erwartet:** **Spielersuche prüfen** setzt trotz gültiger
+   Shortlist `valid: false` mit einer Fehlermeldung, die `ignoredCriteria`
+   nennt — ein vom Spielerprofil gewichtetes, aber nicht numerisch
+   verfügbares Kriterium darf nicht still durch Default-Kriterien ersetzt
+   werden, ohne dass das die Pipeline stoppt.
+3c. **Spielersuche gültig?** (Positions-Fallback) — `playerRanking.positionFallbackApplied`
+   auf `true` setzen, während `playerSearch.shortlist` ansonsten gültig
+   bleibt. **Erwartet:** **Spielersuche prüfen** setzt trotz gültiger
+   Shortlist `valid: false` mit einer Fehlermeldung, die
+   `positionFallbackApplied` nennt — ein kompletter Rückfall auf den
+   ungefilterten Pool darf keine Empfehlung außerhalb der angeforderten
+   Position erreichen.
 4. **Recherche gültig?** — im Recherche-Subworkflow `research` auf ein
    leeres Array setzen (bzw. die Longlist/Shortlist so verändern, dass keine
    Recherche-Einträge entstehen). **Erwartet:** Fehlermeldung "Die Recherche
