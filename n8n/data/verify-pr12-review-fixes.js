@@ -27,7 +27,11 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function assertPerItemLoop(workflow, splitNode, loopNode, executeNode, fanInNode) {
+function assertPerItemProfileLoop(workflow) {
+  const splitNode = 'Kandidaten fuer Profilabgleich aufteilen';
+  const loopNode = 'Profilabgleich je Kandidat';
+  const executeNode = 'Player-Profil je Kandidat abrufen';
+  const fanInNode = 'Kandidatenvergleich validieren';
   const loop = nodeByName(workflow, loopNode);
   const execute = nodeByName(workflow, executeNode);
 
@@ -42,92 +46,170 @@ function assertPerItemLoop(workflow, splitNode, loopNode, executeNode, fanInNode
   assert(targets(workflow, loopNode, 0).some((t) => t.node === fanInNode), `${workflow.name}: Done-Ausgang von ${loopNode} muss in ${fanInNode} fuehren.`);
 }
 
-function assertParallelSubworkflowFanOut(workflow) {
-  const splitName = 'Kandidaten fuer Recherche aufteilen';
-  const executeName = 'Recherche je Kandidat durchfuehren';
-  const mergeName = 'Research-Zweige einsammeln';
-  const fanInName = 'Recherche-Ergebnisse zusammenfuehren';
+function assertAsyncResearchFanOut(parent, child) {
+  const tableName = 'football_scouting_research_runtime';
+  const loopName = 'Research-Children dispatchen';
+  const executeName = 'Recherche je Kandidat starten';
+  const progressName = 'Research-Fortschritt und Fan-in pruefen';
 
-  const execute = nodeByName(workflow, executeName);
-  const merge = nodeByName(workflow, mergeName);
+  const loop = nodeByName(parent, loopName);
+  const execute = nodeByName(parent, executeName);
+  const ensureTable = nodeByName(parent, 'Research-Runtime-Tabelle sicherstellen');
+  const loadRows = nodeByName(parent, 'Research-Resultate laden');
+  const pollWait = nodeByName(parent, 'Auf Research-Children warten');
 
-  assert(!workflow.nodes.some((node) => node.type === 'n8n-nodes-base.splitInBatches'),
-    `${workflow.name}: Due Diligence darf keinen Loop Over Items enthalten, weil dieser die Research-Ausfuehrungen serialisiert.`);
-  assert(execute.type === 'n8n-nodes-base.executeWorkflow', `${workflow.name}: ${executeName} muss Execute Sub-workflow sein.`);
-  assert(execute.parameters.mode === 'each',
-    `${workflow.name}: ${executeName} muss mode="each" verwenden, damit je Kandidat eine eigene Child-Execution gestartet wird.`);
-  assert(execute.parameters.options && execute.parameters.options.waitForSubWorkflow === true,
-    `${workflow.name}: ${executeName} muss auf die parallel gestarteten Child-Executions warten, bevor der Fan-in weiterlaeuft.`);
-  assert(execute.onError === 'continueErrorOutput',
-    `${workflow.name}: ${executeName} muss fehlgeschlagene Kandidaten auf dem Fehlerausgang erhalten.`);
+  // n8n Execute Sub-workflow runs mode="each" serially when waiting for child completion.
+  // Therefore the parent must only serialize the short dispatch operation and explicitly
+  // NOT wait for a child. n8n's no-wait path returns the input immediately after starting
+  // the child execution, so subsequent loop iterations can dispatch while earlier children run.
+  assert(loop.type === 'n8n-nodes-base.splitInBatches' && loop.parameters.batchSize === 1,
+    `${parent.name}: Research-Dispatch muss ueber Loop Over Items batchSize=1 laufen.`);
+  assert(execute.type === 'n8n-nodes-base.executeWorkflow',
+    `${parent.name}: ${executeName} muss Execute Sub-workflow sein.`);
+  assert(execute.typeVersion >= 1.3,
+    `${parent.name}: ${executeName} muss mindestens typeVersion 1.3 verwenden; aeltere Error-Output-Semantik ist positionsabhaengig.`);
+  assert(execute.parameters.mode === 'once',
+    `${parent.name}: ${executeName} muss pro Dispatch genau ein Item mit mode="once" starten.`);
+  assert(execute.parameters.options && execute.parameters.options.waitForSubWorkflow === false,
+    `${parent.name}: ${executeName} darf nicht auf Child-Completion warten, sonst werden die Research-Zweige serialisiert.`);
 
-  assert(targets(workflow, splitName, 0).some((t) => t.node === executeName),
-    `${workflow.name}: Kandidaten-Fan-out muss direkt in ${executeName} fuehren.`);
+  assert(targets(parent, 'Kandidaten fuer Recherche aufteilen', 0).some((t) => t.node === loopName),
+    `${parent.name}: Kandidaten-Fan-out muss in den Dispatch-Loop fuehren.`);
+  assert(targets(parent, loopName, 1).some((t) => t.node === executeName),
+    `${parent.name}: Loop-Ausgang muss ${executeName} starten.`);
+  assert(targets(parent, executeName, 0).some((t) => t.node === loopName),
+    `${parent.name}: erfolgreicher Fire-and-forget-Dispatch muss sofort in den Loop zuruecklaufen.`);
+  assert(targets(parent, executeName, 1).some((t) => t.node === 'Dispatch-Fehler als Unsicherheit markieren'),
+    `${parent.name}: Dispatch-Fehler muessen kandidatenspezifisch persistiert werden.`);
+  assert(targets(parent, loopName, 0).some((t) => t.node === 'Fan-in-Kontext herstellen'),
+    `${parent.name}: erst nach Dispatch aller Kandidaten darf der Fan-in pollen.`);
 
-  const successTargets = targets(workflow, executeName, 0);
-  const errorTargets = targets(workflow, executeName, 1);
-  assert(successTargets.some((t) => t.node === mergeName && t.index === 0),
-    `${workflow.name}: Erfolgsoutput muss auf Input 0 von ${mergeName} gehen.`);
-  assert(errorTargets.some((t) => t.node === mergeName && t.index === 1),
-    `${workflow.name}: Fehleroutput muss auf Input 1 von ${mergeName} gehen.`);
+  assert(ensureTable.type === 'n8n-nodes-base.dataTable'
+    && ensureTable.parameters.resource === 'table'
+    && ensureTable.parameters.operation === 'create'
+    && ensureTable.parameters.tableName === tableName
+    && ensureTable.parameters.options.createIfNotExists === true,
+  `${parent.name}: Runtime-Tabelle ${tableName} muss vor dem Dispatch sichergestellt werden.`);
 
-  assert(merge.type === 'n8n-nodes-base.merge', `${workflow.name}: ${mergeName} muss ein Merge-Node sein.`);
-  assert(merge.parameters.mode === 'append', `${workflow.name}: ${mergeName} muss Append verwenden.`);
-  assert(merge.parameters.numberInputs === 2, `${workflow.name}: ${mergeName} muss Erfolg + Fehler zusammenfuehren.`);
-  assert(targets(workflow, mergeName, 0).some((t) => t.node === fanInName),
-    `${workflow.name}: ${mergeName} muss in ${fanInName} fuehren.`);
+  assert(loadRows.type === 'n8n-nodes-base.dataTable'
+    && loadRows.parameters.operation === 'get'
+    && loadRows.parameters.dataTableId.value === tableName,
+  `${parent.name}: Fan-in muss Ergebnisse aus ${tableName} laden.`);
+  assert(pollWait.type === 'n8n-nodes-base.wait'
+    && pollWait.parameters.resume === 'timeInterval',
+  `${parent.name}: unvollstaendiger Fan-in muss warten und erneut pollen.`);
+  assert(targets(parent, 'Research vollstaendig?', 1).some((t) => t.node === 'Auf Research-Children warten'),
+    `${parent.name}: unvollstaendiger Fan-in muss in den Polling-Wait laufen.`);
+  assert(targets(parent, 'Auf Research-Children warten', 0).some((t) => t.node === 'Research-Resultate laden'),
+    `${parent.name}: Polling-Wait muss erneut die Runtime-Ergebnisse laden.`);
+
+  const childWait = nodeByName(child, 'Simulierte Research-Latenz');
+  const childResearch = nodeByName(child, 'Recherche-Dummy fuer Kandidat erzeugen');
+  const successStore = nodeByName(child, 'Research-Erfolg speichern');
+  const errorStore = nodeByName(child, 'Research-Fehler speichern');
+
+  assert(childWait.type === 'n8n-nodes-base.wait'
+    && childWait.parameters.resume === 'timeInterval'
+    && Number(childWait.parameters.amount) >= 1,
+  `${child.name}: Dummy-Research braucht sichtbare Latenz, damit parallele Child-Executions im UAT zeitlich ueberlappen.`);
+  assert(childResearch.onError === 'continueErrorOutput',
+    `${child.name}: kandidatenspezifische Research-Fehler muessen im Child normalisiert werden.`);
+  for (const store of [successStore, errorStore]) {
+    assert(store.type === 'n8n-nodes-base.dataTable'
+      && store.parameters.operation === 'insert'
+      && store.parameters.dataTableId.value === tableName,
+    `${child.name}: Erfolg und Fehler muessen in ${tableName} persistiert werden.`);
+  }
+
+  assert(targets(child, 'Recherche-Dummy fuer Kandidat erzeugen', 0).some((t) => t.node === 'Research-Erfolg fuer Fan-in vorbereiten'),
+    `${child.name}: Erfolgspfad muss fuer den Fan-in persistiert werden.`);
+  assert(targets(child, 'Recherche-Dummy fuer Kandidat erzeugen', 1).some((t) => t.node === 'Research-Fehler als Unsicherheit markieren'),
+    `${child.name}: Fehlerpfad muss als Unsicherheit persistiert werden.`);
+
+  return nodeByName(parent, progressName).parameters.jsCode;
 }
 
 const candidates = loadWorkflow('kandidaten-suchen-subworkflow.json');
-assertPerItemLoop(
-  candidates,
-  'Kandidaten fuer Profilabgleich aufteilen',
-  'Profilabgleich je Kandidat',
-  'Player-Profil je Kandidat abrufen',
-  'Kandidatenvergleich validieren',
-);
+assertPerItemProfileLoop(candidates);
 
 const dueDiligence = loadWorkflow('due-diligence-subworkflow.json');
-assertParallelSubworkflowFanOut(dueDiligence);
+const researchChild = loadWorkflow('recherche-subworkflow.json');
+const fanInCode = assertAsyncResearchFanOut(dueDiligence, researchChild);
 
-const fanInCode = nodeByName(dueDiligence, 'Recherche-Ergebnisse zusammenfuehren').parameters.jsCode;
-const fanInInput = [
+// Simulate persisted results from two independent child executions: A succeeds, B fails.
+// This tests the actual fan-in contract used after the asynchronous dispatch.
+const base = {
+  requestId: 'test',
+  researchBatchId: 'test-batch',
+  researchStartedAt: new Date().toISOString(),
+  researchTimeoutMs: 30000,
+  playerSearch: { shortlist: [{ name: 'A' }, { name: 'B' }] },
+};
+const fanInRows = [
   {
     json: {
-      playerSearch: { shortlist: [{ name: 'A' }, { name: 'B' }] },
-      researchCandidateName: 'A',
-      researchResult: {
+      batchId: 'test-batch',
+      candidate: 'A',
+      status: 'success',
+      payload: JSON.stringify({
         candidate: 'A',
         club: 'Club A',
-        contract: 'bis 2027',
+        contract: 'Simulierter Vertrag bis 30.06.2027',
         marketValue: '5 Mio. EUR',
         injuries: 'Keine bekannten Verletzungen',
         news: ['ok'],
         source: 'source',
         timestamp: '2026-09-08T00:00:00.000Z',
         confidence: 0.8,
-      },
+        uncertain: false,
+      }),
+      completedAt: '2026-09-08T00:00:02.000Z',
     },
   },
   {
     json: {
-      playerSearch: { shortlist: [{ name: 'A' }, { name: 'B' }] },
-      researchCandidateName: 'B',
-      error: { message: 'simulierter Fehler' },
+      batchId: 'test-batch',
+      candidate: 'B',
+      status: 'error',
+      payload: JSON.stringify({
+        candidate: 'B',
+        club: null,
+        contract: null,
+        marketValue: null,
+        injuries: null,
+        news: [],
+        source: 'Recherche fehlgeschlagen',
+        timestamp: '2026-09-08T00:00:02.100Z',
+        confidence: 0,
+        uncertain: true,
+        uncertaintyReason: 'simulierter Fehler',
+      }),
+      completedAt: '2026-09-08T00:00:02.100Z',
     },
   },
 ];
 
 const fanInResult = vm.runInNewContext(`(function () { ${fanInCode} })()`, {
-  $input: { all: () => fanInInput },
+  $input: { all: () => fanInRows },
+  $: (name) => {
+    if (name !== 'Research-Lauf vorbereiten') throw new Error(`Unexpected node lookup: ${name}`);
+    return { first: () => ({ json: base }) };
+  },
   Date,
+  Set,
+  Map,
+  JSON,
+  Number,
   String,
+  Boolean,
+  Error,
 });
-const research = fanInResult[0].json.research;
-assert(research.length === 2, 'Due-Diligence-Fan-in muss Erfolg und Fehler beider Kandidaten erhalten.');
-const failed = research.find((entry) => entry.candidate === 'B');
-assert(failed && failed.uncertain === true && failed.confidence === 0,
-  'Fehlgeschlagener paralleler Research-Zweig muss als kandidatenspezifische Unsicherheit erhalten bleiben.');
+const fanInOutput = fanInResult[0].json;
+assert(fanInOutput.researchComplete === true, 'Fan-in muss bei einem Ergebnis je Kandidat vollstaendig sein.');
+assert(fanInOutput.research.length === 2, 'Fan-in muss beide Kandidaten erhalten.');
+const failedResearch = fanInOutput.research.find((entry) => entry.candidate === 'B');
+assert(failedResearch && failedResearch.uncertain === true && failedResearch.confidence === 0,
+  'Fehlgeschlagener Child-Research muss als kandidatenspezifische Unsicherheit erhalten bleiben.');
 
 const recommendation = loadWorkflow('empfehlung-erstellen-subworkflow.json');
 const recommendationCode = nodeByName(recommendation, 'Empfehlung erzeugen').parameters.jsCode;
@@ -191,4 +273,4 @@ assert(feasible.combinedScore > star.combinedScore, 'Kombinierter Score muss den
 assert(feasible.researchConfidence < star.researchConfidence,
   'Test muss zeigen, dass Research-Confidence nicht mit Transfer-Realisierbarkeit gleichgesetzt wird.');
 
-console.log('OK: kandidatengenauer Profil-Loop, paralleler Due-Diligence-Fan-out/Fan-in und Transfer-Realisierbarkeit verifiziert.');
+console.log('OK: Profil-Loop, asynchroner Research-Fan-out/Fan-in mit Partial-Error und Transfer-Realisierbarkeit verifiziert.');
