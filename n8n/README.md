@@ -155,18 +155,29 @@ das Gate-Muster danach bleibt aber identisch.
     Felder direkt als Node-JSON zurückkommen (`$json.diagnosisCategory` usw.,
     **nicht** `$json.output.diagnosisCategory`); der Rest des Items geht dabei
     trotzdem verloren. Dieser Node holt das vollständige Item über
-    `$('Teamdiagnose: Evidenz aufbereiten').item.json`
-    zurück und baut `teamDiagnosis` aus dem deterministischen
-    `teamDiagnosisEvidence` (→ `evidence`) und der LLM-Interpretation (→
-    `diagnosisCategory`, `leagueComparison`, `hypotheses`,
-    `counterHypotheses`, `mainProblem`, `uncertainties`) zusammen
-    (`teamDiagnosis.simulated: false`, `dataAvailable: true`). Läuft
-    anschließend in dieselbe **Teamdiagnose prüfen** wie der No-Data-Zweig.
+    `$('Teamdiagnose: Evidenz aufbereiten').first().json` zurück — **nicht**
+    über `.item`, denn die Chain liefert auf dem Erfolgspfad laut exakt
+    getaggtem n8n-2.35.7-Quellcode nur `{ json: ... }` ohne `pairedItem`, und
+    `.item` würde dafür `paired_item_no_info` werfen; `.first()` braucht keine
+    Pairing-Kette und ist für diesen durchgehend Ein-Item-Zweig äquivalent —
+    und baut `teamDiagnosis` aus dem deterministischen `teamDiagnosisEvidence`
+    (→ `evidence`) und der LLM-Interpretation (→ `diagnosisCategory`,
+    `hypotheses`, `counterHypotheses`, `mainProblem`, `uncertainties`)
+    zusammen (`teamDiagnosis.simulated: false`, `dataAvailable: true`). Da dem
+    LLM nachweislich nie echte Liga-Vergleichsdaten vorliegen (siehe 9.), setzt
+    dieser Node `teamDiagnosis.leagueComparisonAvailable` **deterministisch im
+    Code auf `false`** statt es vom LLM zu erfragen, und verwirft dafür den
+    LLM-Text in `leagueComparison` zugunsten eines festen, wahrheitsgemäßen
+    Hinweises — eine reine Promptvorgabe könnte ein regelwidriges LLM nicht
+    zuverlässig daran hindern, trotzdem eine Bundesliga-Platzierung zu
+    erfinden. Läuft anschließend in dieselbe **Teamdiagnose prüfen** wie der
+    No-Data-Zweig.
 12. **Teamdiagnose prüfen** (Code) — erweitert: prüft wie bisher, dass
     `evidence`/`hypotheses` nichtleere Arrays sind, `mainProblem` ein
     nichtleerer String ist und `uncertainties` ein Array ist, **zusätzlich**
-    jetzt auch, dass `leagueComparison` ein nichtleerer String und
-    `counterHypotheses` ein Array ist; setzt `valid`/`errorMessage`.
+    jetzt auch, dass `leagueComparisonAvailable` ein boolean und
+    `leagueComparison` ein nichtleerer String sowie `counterHypotheses` ein
+    Array ist; setzt `valid`/`errorMessage`.
 13. **Teamdiagnose gültig?** (IF) — **falsch** → **Fehler anzeigen**; **wahr**
     → **Teamdiagnose: Datengrundlage prüfen**.
 13a. **Teamdiagnose: Datengrundlage prüfen** (Code) — prüft, ob
@@ -212,8 +223,9 @@ das Gate-Muster danach bleibt aber identisch.
 17. **Spielerprofil zusammenführen** (Code) — gegen n8n **2.35.7** verifiziert
     (siehe 11.): die geparsten Structured-Output-Felder liegen direkt auf
     `$json`, nicht unter `$json.output`. Holt das vollständige Item über
-    `$('Spielerprofil: Positionspool ermitteln').item.json` zurück (gleicher
-    Mechanismus wie bei **Teamdiagnose zusammenführen**) und setzt
+    `$('Spielerprofil: Positionspool ermitteln').first().json` zurück (**nicht**
+    über `.item`, aus demselben `pairedItem`-Grund wie bei **Teamdiagnose
+    zusammenführen**, siehe 11.) und setzt
     `playerProfile` aus der LLM-Ausgabe zusammen (`playerProfile.simulated:
     false` — nicht mehr als Dummy markiert).
 18. **Spielerprofil prüfen** (Code) — erweitert: prüft wie bisher alle
@@ -251,9 +263,16 @@ das Gate-Muster danach bleibt aber identisch.
     (z. B. weil der komplette Markt für die Anfrage leer ist), bleibt
     `shortlist` leer statt Kandidaten zu erfinden — das nachfolgende Gate
     greift dann reell.
-23. **Spielersuche prüfen** (Code) — unverändert: prüft `longlistSize > 0`,
-    `shortlist` nichtleer und **höchstens fünf** Kandidaten, sowie dass jeder
-    Kandidat alle Pflichtfelder hat.
+23. **Spielersuche prüfen** (Code) — prüft `longlistSize > 0`, `shortlist`
+    nichtleer und **höchstens fünf** Kandidaten, sowie dass jeder Kandidat
+    alle Pflichtfelder hat. **Neu:** prüft zusätzlich, dass
+    `playerRanking.ignoredConstraints` leer ist — ein vom Spielerprofil
+    gefordertes, aber im Player-Ranking nicht anwendbares Constraint (z. B.
+    weil `marketValueMEUR` im Kandidatenpool nicht numerisch verfügbar ist)
+    würde sonst stillschweigend ignoriert und die Pipeline könnte trotzdem bis
+    zur Empfehlung weiterlaufen, obwohl das Constraint keine Wirkung hatte.
+    Ein nicht anwendbares Constraint gilt hier deshalb als unzureichende
+    Datengrundlage und stoppt über das folgende Gate.
 24. **Spielersuche gültig?** (IF) — **falsch** → **Fehler anzeigen**;
     **wahr** → **Recherche durchführen**.
 25. **Recherche durchführen** (Execute Workflow) — unverändert: ruft den
@@ -404,7 +423,11 @@ unten) nicht in Aggregation oder Ranking-Score ein.
    in `appliedConstraints`, die Anzahl dadurch ausgeschlossener Kandidaten in
    `excludedByConstraints`. So werden Budget-/Altersvorgaben aus dem
    Spielerprofil tatsächlich für die Spielersuche wirksam, statt Dead Data zu
-   bleiben.
+   bleiben. Ein nicht anwendbares Constraint bleibt hier bewusst nur
+   protokolliert (`ignoredConstraints`) statt den Subworkflow-Lauf
+   abzubrechen; **Spielersuche prüfen** im Hauptworkflow (siehe Node 23 oben)
+   wertet `ignoredConstraints` aus und stoppt die Pipeline vor einer
+   Empfehlung, falls ein Constraint nicht wirksam wurde.
    Unbekannte Kriterien werden nicht ignoriert-und-verschwiegen, sondern in
    `ignoredCriteria` aufgeführt; eine nicht im Pool vorkommende Position
    führt — explizit über `positionFallbackApplied: true` markiert — zum
@@ -528,11 +551,20 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    Vertrag (Structured-Output-Felder direkt auf `$json`, siehe 11./17. oben)
    verifiziert: **Teamdiagnose zusammenführen** und **Spielerprofil
    zusammenführen** lesen die simulierte LLM-Antwort korrekt ohne
-   `output`-Hülle; **Teamdiagnose: Datengrundlage prüfen** liefert
-   `valid: false` für `diagnosisCategory: 'no_data'` und `valid: true` für
+   `output`-Hülle und holen das Vor-LLM-Item über `.first()` statt über das
+   `pairedItem`-abhängige `.item` zurück (gegen einen `$()`-Mock verifiziert,
+   der bewusst nur `.first()` implementiert, sodass ein verbliebener
+   `.item`-Zugriff sofort fehlschlagen würde); **Teamdiagnose zusammenführen**
+   verwirft dabei außerdem eine erfundene LLM-Ligaplatzierung zugunsten des
+   deterministischen `leagueComparisonAvailable: false`-Vertrags;
+   **Teamdiagnose: Datengrundlage prüfen** liefert `valid: false` für
+   `diagnosisCategory: 'no_data'` und `valid: true` für
    `'defensive'`/`'offensive'`/`'neutral'`; **Spielerprofil prüfen** akzeptiert
    strukturierte `constraints` (`{ field, operator, value }`) und lehnt
-   unstrukturierte (z. B. freitextliche) Constraints ab. Zusätzlich:
+   unstrukturierte (z. B. freitextliche) Constraints ab; **Spielersuche
+   prüfen** liefert `valid: false`, sobald `playerRanking.ignoredConstraints`
+   nichtleer ist, und `valid: true`, wenn keine Constraints ignoriert wurden.
+   Zusätzlich:
    `node n8n/data/verify-import-architecture.js` (grün) sowie eine
    Konsistenzprüfung aller `n8n/*.json`-Workflow-Dateien (gültiges JSON, keine
    doppelten Node-Namen/-IDs, alle Connections referenzieren existierende
@@ -575,6 +607,12 @@ wird der positive Testfall erneut ausgeführt.
    **Erwartet:** Fehlermeldung "Das Spielerprofil ist ungültig …".
 3. **Spielersuche gültig?** — `playerSearch.shortlist` auf ein leeres Array
    setzen. **Erwartet:** Fehlermeldung "Die Spielersuche ist ungültig …".
+3a. **Spielersuche gültig?** (ignoriertes Constraint) — `playerRanking.ignoredConstraints`
+   auf `[{ field: 'marketValueMEUR', operator: 'max', value: 5 }]` setzen,
+   während `playerSearch.shortlist` ansonsten gültig bleibt. **Erwartet:**
+   **Spielersuche prüfen** setzt trotz gültiger Shortlist `valid: false` mit
+   einer Fehlermeldung, die `ignoredConstraints` nennt — ein nicht
+   angewendetes Constraint darf keine Empfehlung erreichen.
 4. **Recherche gültig?** — im Recherche-Subworkflow `research` auf ein
    leeres Array setzen (bzw. die Longlist/Shortlist so verändern, dass keine
    Recherche-Einträge entstehen). **Erwartet:** Fehlermeldung "Die Recherche
