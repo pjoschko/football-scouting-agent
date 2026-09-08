@@ -60,9 +60,12 @@ Gegenhypothesen, Unsicherheiten), ohne die Kennzahlen selbst zu erfinden;
 **Spielerprofil** leitet aus dieser LLM-Teamdiagnose ein strukturiertes
 Anforderungsprofil ab. **Spielersuche** greift ebenfalls über den
 CSV-Analytics-Adapter auf echte Daten zu (weiterhin deterministisch
-ausgewertet, siehe unten). Nur **Recherche** bleibt ein deterministischer,
-sichtbar als Simulation gekennzeichneter Dummy, da hierfür noch keine reale
-Implementierung möglich ist. Zwischen **Spielerprofil** und **Spielersuche**
+ausgewertet, siehe unten). **Recherche** führt seit der
+Kandidaten-Due-Diligence-Story eine echte externe Recherche je Kandidat durch
+(**Recherche-Agent**, ein LLM mit echtem Websuche-Tool statt eines
+deterministischen Dummys) — siehe
+[Recherche-Subworkflow](#recherche-subworkflow) unten. Zwischen
+**Spielerprofil** und **Spielersuche**
 steht ein echtes **Human-Review-Gate** (siehe
 [Scouting Brief Human-Review](#scouting-brief-human-review) unten): ein
 Mensch prüft ein aus **Teamdiagnose** und **Spielerprofil** abgeleitetes
@@ -78,9 +81,12 @@ Hauptworkflow als Teil des erlaubten „zentralen Routings/Reviews" (siehe
 [Human Review bleibt im Hauptworkflow](#human-review-bleibt-im-hauptworkflow)
 unten).
 
-Credentials werden ausschließlich referenziert (`[cimt] Ollama` an den beiden
-Nodes **Ollama Modell (Qwen3.8:latest)** in `team-analysieren-subworkflow.json`
-und `scouting-brief-subworkflow.json`, mit dem Platzhalter-Wert
+Credentials werden ausschließlich referenziert (`[cimt] Ollama` an den Nodes
+**Ollama Modell (Qwen3.8:latest)** in `team-analysieren-subworkflow.json`,
+`scouting-brief-subworkflow.json` und — seit der
+Kandidaten-Due-Diligence-Parallelisierung — `recherche-subworkflow.json`; dazu
+neu `[cimt] Tavily Search` am Node **Websuche (Tavily)** in
+`recherche-subworkflow.json`, mit dem Platzhalter-Wert
 `REPLACE_WITH_LOCAL_CREDENTIAL_ID` statt einer echten Credential-ID), nie
 exportiert oder dupliziert. Alle Subworkflows werden über ihre feste
 Top-Level-ID referenziert; n8n übernimmt diese ID beim Import
@@ -851,38 +857,62 @@ CSV-Code) — siehe [`n8n/data/README.md`](./data/README.md) für den Import
 
 ## Recherche-Subworkflow
 
-[`recherche-subworkflow.json`](./recherche-subworkflow.json) ist ein
-eigenständiger, **technischer** n8n-Workflow mit zwei Nodes. Er kapselt
-seit der Due-Diligence-Parallelisierung (siehe
-[Due Diligence](#due-diligence-subworkflow) oben) die Recherche zu **genau
-einem** Kandidaten je Ausführung, statt intern über die gesamte Shortlist zu
-iterieren — der Fan-out/Fan-in über alle Shortlist-Kandidaten passiert jetzt
-im aufrufenden `due-diligence-subworkflow.json`:
+[`recherche-subworkflow.json`](./recherche-subworkflow.json) (feste
+Top-Level-ID `crrgOO7O8bTHnldV`, 8 Nodes) ist ein eigenständiger,
+**technischer** n8n-Workflow. Er kapselt seit der
+Due-Diligence-Parallelisierung (siehe [Due Diligence](#due-diligence-subworkflow)
+oben) die Recherche zu **genau einem** Kandidaten je Ausführung, statt intern
+über die gesamte Shortlist zu iterieren — der Fan-out/Fan-in über alle
+Shortlist-Kandidaten passiert im aufrufenden `due-diligence-subworkflow.json`.
+Seit der Story „Kandidaten-Due-Diligence parallel recherchieren und
+zusammenführen" führt dieser Subworkflow eine **echte externe Recherche**
+durch (kein deterministischer Dummy mehr):
 
 1. **Wenn von anderem Workflow aufgerufen** (Execute Workflow Trigger,
-   `inputSource: passthrough`) — nimmt das übergebene Item unverändert
-   entgegen.
-2. **Recherche-Dummy für Kandidat erzeugen** (Code) — liest
-   `researchCandidateName` aus dem übergebenen Item und erzeugt für **genau
-   diesen einen Kandidaten** einen deterministischen Dummy-Rechercheeintrag
-   (`club`, `contract`, `marketValue`, `injuries`, `news`, dazu `source`
-   (immer `"Dummy-Quelle (keine echte Web-/Qlik-Recherche)"`), `timestamp`
-   und `confidence`) unter `researchResult`. Fehlt `researchCandidateName`,
-   wirft der Node einen Fehler, den der Aufrufer (**Recherche je Kandidat
-   durchführen** in `due-diligence-subworkflow.json`, `onError:
-   continueErrorOutput`) als fehlgeschlagenen, isolierten Research-Zweig
-   dieses einen Kandidaten behandelt, ohne die übrigen Zweige zu
-   beeinträchtigen. Es wird an keiner Stelle eine echte Qlik-Analyse oder
-   Websuche behauptet oder simuliert vorgetäuscht — jeder Wert ist
-   ausdrücklich als Platzhalter gekennzeichnet.
+   `inputSource: passthrough`) — nimmt das übergebene Item (inkl.
+   `researchCandidateName`, `researchBatchId`) unverändert entgegen.
+2. **Recherche-Agent** (`@n8n/n8n-nodes-langchain.agent`, `onError:
+   continueErrorOutput`) — recherchiert **genau diesen einen Kandidaten**
+   über ein LLM mit Tool-Zugriff auf **Websuche (Tavily)** (`ai_tool`, echte
+   Tavily-Search-API-Anfrage statt simulierter Daten) und liefert strukturiert
+   (`ai_outputParser`, **Recherche-Ergebnis Output-Schema**) `club`,
+   `contract`, `marketValue`, `injuries`, `currentSituation`,
+   `transferLikelihoodNotes`, `news` sowie `source`/`confidence`. Sprachmodell
+   ist dieselbe lokale **Ollama Modell (Qwen3.8:latest)** wie in
+   `team-analysieren-subworkflow.json`/`scouting-brief-subworkflow.json`
+   (eigene Node-Instanz dieser Datei), die dafür Tool-/Function-Calling
+   unterstützen muss. Schlägt der Agent-Aufruf fehl (LLM- oder Tool-Fehler),
+   läuft der Fehlerausgang zu 3b, ohne andere parallele Research-Zweige zu
+   blockieren.
+3. Zwei Pfade konsolidieren zum fachlichen Due-Diligence-Vertrag
+   (`candidate`, `timestamp`, `confidence` in `[0,1]`, `uncertain`,
+   `uncertaintyReason`) und schreiben ihn in `researchRuntime*`-Felder:
+   - 3a. **Recherche-Ergebnis normalisieren** (Code, Erfolgspfad) — erzwingt
+     `candidate` aus `researchCandidateName` (nicht aus der LLM-Antwort),
+     setzt `timestamp` serverseitig und markiert den Eintrag als `uncertain`,
+     sobald mindestens eines der Pflichtfelder `club`/`contract`/
+     `marketValue`/`injuries`/`news` (nichtleer) fehlt — die Websuche liefert
+     nicht für jeden Kandidaten garantiert vollständige Treffer.
+   - 3b. **Recherche-Fehler als Unsicherheit markieren** (Code, Fehlerpfad)
+     — analog zum gleichnamigen Muster in `due-diligence-subworkflow.json`:
+     markiert nur diesen einen Kandidaten als `uncertain` mit
+     `confidence: 0`.
+4. **Recherche-Ergebnis speichern** (Data Table, Tabelle
+   `football_scouting_research_runtime`) — da der Aufruf aus
+   `due-diligence-subworkflow.json` Fire-and-forget ist
+   (`waitForSubWorkflow: false`), persistiert dieser Subworkflow sein eigenes
+   Ergebnis selbst in dieselbe Runtime-Tabelle, aus der der Aufrufer per
+   Fan-in liest (dieselben Spalten `batchId`/`candidate`/`status`/`payload`/
+   `completedAt` wie **Dispatch-Fehler speichern** in
+   `due-diligence-subworkflow.json`). Beide Pfade aus 3. münden hier.
 
-Aufgerufen von **Recherche je Kandidat durchführen** in
+Aufgerufen von **Recherche je Kandidat starten** in
 [`due-diligence-subworkflow.json`](./due-diligence-subworkflow.json), einmal
-separat je Shortlist-Kandidat (vor der Restrukturierung direkt aus
-`ai-sporting-director.json`). n8n übernimmt die feste Top-Level-ID
-`802fdb6b-4c0a-413f-952d-250c91ddc476` beim Import (`import:workflow`) per
-Upsert, sodass alle Workflow-Dateien nach dem Import ohne manuelle Anpassung
-verbunden sind — siehe [Import & run](#import--run).
+separat je Shortlist-Kandidat. Erfordert nach dem Import eine lokale
+`ollamaApi`-Credential (dieselbe `[cimt] Ollama` wie in den anderen beiden
+Dateien) sowie eine neue lokale `httpHeaderAuth`-Credential
+`[cimt] Tavily Search` (Header `Authorization`, Wert `Bearer <TAVILY_API_KEY>`)
+am Node **Websuche (Tavily)** — siehe [Import & run](#import--run).
 
 ## Import & run
 
@@ -906,10 +936,16 @@ verbunden sind — siehe [Import & run](#import--run).
 3. Import [`ai-sporting-director.json`](./ai-sporting-director.json) the
    same way — its Execute-Workflow nodes already reference the subworkflows'
    fixed IDs, so no manual edit is needed there.
-4. On the **Ollama Modell (Qwen3.8:latest)** node in **both**
-   `team-analysieren-subworkflow.json` and `scouting-brief-subworkflow.json`,
-   select the local `[cimt] Ollama` credential (once per file, per
-   n8n-instance).
+4. On the **Ollama Modell (Qwen3.8:latest)** node in **all three**
+   `team-analysieren-subworkflow.json`, `scouting-brief-subworkflow.json` and
+   `recherche-subworkflow.json`, select the local `[cimt] Ollama` credential
+   (once per file, per n8n-instance). The model must support tool/function
+   calling for `recherche-subworkflow.json`'s **Recherche-Agent** to actually
+   invoke the search tool.
+4a. On the **Websuche (Tavily)** node in `recherche-subworkflow.json`, create
+   and select a local `httpHeaderAuth` credential named `[cimt] Tavily Search`
+   (header `Authorization`, value `Bearer <TAVILY_API_KEY>`) once per
+   n8n-instance.
 5. Use **Test workflow** on the main workflow to obtain a test-mode form URL
    for manual testing, or activate it (toggle **Active**) to make the form
    reachable at its production URL shown on the **AI Sporting Director
@@ -955,10 +991,11 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    and submit. **Expected result:** the browser shows the **Ergebnis
    anzeigen** page with five clearly separated sections — Teamdiagnose,
    Spielerprofil, Spielersuche, Recherche, Empfehlung — with a hint
-   distinguishing the sections backed by the CSV-Analytics-Adapter and the
-   LLM interpretation (Teamdiagnose, Spielerprofil, Spielersuche) from the
-   still fully simulated one (Recherche), and the recommended candidate is
-   one of the shortlisted CSV players (not the Hamburger SV squad itself).
+   distinguishing the sections backed by the CSV-Analytics-Adapter/LLM
+   interpretation (Teamdiagnose, Spielerprofil, Spielersuche) and by a real
+   websearch-backed AI agent (Recherche, since the
+   Kandidaten-Due-Diligence-Parallelisierung), and the recommended candidate
+   is one of the shortlisted CSV players (not the Hamburger SV squad itself).
    In the n8n **Executions** list the main-workflow run is successful and
    passes all eight top-level gates (**Eingabe validieren**, **Team
    analysieren gültig?**, **Scouting Brief gültig?**, **Review-Entscheidung
@@ -1027,7 +1064,11 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    n8n-Weboberfläche mit erreichbarem Ollama-Endpunkt nötig ist — offen für
    die nächste Person (oder Session) mit interaktivem Zugriff auf eine
    importierte Instanz mit bereits über `import-scouting-data.json`
-   importierten Originaldaten.
+   importierten Originaldaten. Ebenfalls nicht ausgeführt (aus demselben
+   Grund): ein echter Aufruf von **Recherche-Agent** inkl. Tool-Calling gegen
+   das konfigurierte Ollama-Modell und die Tavily-Search-API — offen für
+   dieselbe nächste Person/Session; insbesondere ist noch zu verifizieren,
+   dass das konfigurierte Ollama-Modell Tool-Calling tatsächlich unterstützt.
 
 ### Player-Ranking-Subworkflow: gezielte Tests
 
@@ -1232,11 +1273,13 @@ Subworkflow-Dateien (`team-analysieren-subworkflow.json`, 16 Nodes;
 `empfehlung-erstellen-subworkflow.json`, 8 Nodes;
 `ergebnis-aufbereiten-subworkflow.json`, 5 Nodes) tragen die technischen
 Details je fachlicher Fähigkeit; die fünf **technischen** Subworkflow-Dateien
-(Recherche + die vier CSV-Analytics-Tools) bleiben strukturell (Tool-Verträge,
-feste IDs) unverändert bestehen — bis auf `recherche-subworkflow.json`, das
-seit der Due-Diligence-Parallelisierung nur noch einen einzelnen Kandidaten je
-Ausführung verarbeitet (siehe [Recherche-Subworkflow](#recherche-subworkflow)
-oben).
+bleiben in ihrem Tool-Vertrag (Ein-/Ausgabefelder) sowie ihren festen IDs
+unverändert — die vier CSV-Analytics-Tools zusätzlich intern unverändert;
+`recherche-subworkflow.json` verarbeitet seit der
+Due-Diligence-Parallelisierung nur noch einen einzelnen Kandidaten je
+Ausführung und führt seit der Kandidaten-Due-Diligence-Story eine echte
+externe Recherche statt eines Dummys durch (siehe
+[Recherche-Subworkflow](#recherche-subworkflow) oben).
 Beim Import (alle elf Subworkflows zuerst, `n8n/ai-sporting-director.json`
 danach, siehe [Import & run](#import--run)) öffnet sich der Hauptworkflow mit
 den 24 oben beschriebenen Nodes; jeder fachliche Subworkflow öffnet sich mit
