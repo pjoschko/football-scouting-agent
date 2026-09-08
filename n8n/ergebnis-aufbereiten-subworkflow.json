@@ -76,16 +76,18 @@
       ]
     },
     {
-      "parameters": {},
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nif (item.valid === false) {\n  throw new Error('[RESULT_PRESENTATION] ' + (item.errorMessage || 'Ergebnis aufbereiten ist fehlgeschlagen.'));\n}\nreturn [{ json: { ...item, status: 'success' } }];"
+      },
       "id": "69d809ef-d199-4034-9589-ce605498dc35",
       "name": "Ergebnis aufbereiten: Ergebnis",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         1120,
         180
       ],
-      "notes": "Konsolidierter Phase-Ergebnis-Knoten dieser Subworkflow-Datei (siehe n8n/README.md): liefert bei gueltiger finaler Validierung formattedResult, sonst valid=false + errorMessage (bereits von 'Final Validation' gesetzt) an den Hauptworkflow zurueck. Der Hauptworkflow erhaelt damit ausschliesslich das validierte Ergebnis bzw. einen kontrollierten Fehler.",
+      "notes": "Einziger Capability-Exit: gibt bei Erfolg das validierte formattedResult zurueck. Bei valid=false wird die bereits intern formulierte fachliche errorMessage als Subworkflow-Fehler geworfen; der Hauptworkflow braucht deshalb kein eigenes Ergebnis-gueltig-Gate mehr.",
       "notesInFlow": false
     }
   ],
