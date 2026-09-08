@@ -6,1040 +6,111 @@
       "parameters": {
         "formTitle": "AI Sporting Director",
         "formDescription": "Beauftragen Sie den AI Sporting Director mit einer offenen sportlichen Zielsetzung. Diagnose, Spielerprofile, Kandidaten oder eine Problemursache werden hier bewusst nicht abgefragt.",
-        "formFields": {
-          "values": [
-            {
-              "fieldLabel": "Verein",
-              "fieldType": "dropdown",
-              "fieldOptions": {
-                "values": [
-                  {
-                    "option": "FC Bayern München"
-                  },
-                  {
-                    "option": "Borussia Dortmund"
-                  },
-                  {
-                    "option": "RB Leipzig"
-                  },
-                  {
-                    "option": "VfB Stuttgart"
-                  },
-                  {
-                    "option": "TSG Hoffenheim"
-                  },
-                  {
-                    "option": "Bayer 04 Leverkusen"
-                  },
-                  {
-                    "option": "Sport-Club Freiburg"
-                  },
-                  {
-                    "option": "Eintracht Frankfurt"
-                  },
-                  {
-                    "option": "FC Augsburg"
-                  },
-                  {
-                    "option": "1. FSV Mainz 05"
-                  },
-                  {
-                    "option": "1. FC Union Berlin"
-                  },
-                  {
-                    "option": "Borussia Mönchengladbach"
-                  },
-                  {
-                    "option": "Hamburger SV"
-                  },
-                  {
-                    "option": "1. FC Köln"
-                  },
-                  {
-                    "option": "SV Werder Bremen"
-                  },
-                  {
-                    "option": "VfL Wolfsburg"
-                  },
-                  {
-                    "option": "1. FC Heidenheim 1846"
-                  },
-                  {
-                    "option": "FC St. Pauli"
-                  }
-                ]
-              },
-              "defaultValue": "FC Bayern München",
-              "requiredField": true
-            },
-            {
-              "fieldLabel": "Was soll der Sporting Director untersuchen?",
-              "fieldType": "textarea",
-              "defaultValue": "Analysiere, wo die größten Probleme liegen, und schlage vor, was wir auf dem Transfermarkt tun sollten.",
-              "requiredField": true
-            },
-            {
-              "fieldLabel": "Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?",
-              "fieldType": "textarea",
-              "requiredField": false
-            }
-          ]
-        },
-        "options": {
-          "buttonLabel": "Analyse starten"
-        }
+        "formFields": {"values": [
+          {"fieldLabel":"Verein","fieldType":"dropdown","fieldOptions":{"values":[{"option":"FC Bayern München"},{"option":"Borussia Dortmund"},{"option":"RB Leipzig"},{"option":"VfB Stuttgart"},{"option":"TSG Hoffenheim"},{"option":"Bayer 04 Leverkusen"},{"option":"Sport-Club Freiburg"},{"option":"Eintracht Frankfurt"},{"option":"FC Augsburg"},{"option":"1. FSV Mainz 05"},{"option":"1. FC Union Berlin"},{"option":"Borussia Mönchengladbach"},{"option":"Hamburger SV"},{"option":"1. FC Köln"},{"option":"SV Werder Bremen"},{"option":"VfL Wolfsburg"},{"option":"1. FC Heidenheim 1846"},{"option":"FC St. Pauli"}]},"defaultValue":"FC Bayern München","requiredField":true},
+          {"fieldLabel":"Was soll der Sporting Director untersuchen?","fieldType":"textarea","defaultValue":"Analysiere, wo die größten Probleme liegen, und schlage vor, was wir auf dem Transfermarkt tun sollten.","requiredField":true},
+          {"fieldLabel":"Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?","fieldType":"textarea","requiredField":false}
+        ]},
+        "options": {"buttonLabel":"Analyse starten"}
       },
-      "id": "a1b2c3d4-f1a2-4a2b-8c3d-4e5f6a7b8c9d",
-      "name": "AI Sporting Director beauftragen",
-      "type": "n8n-nodes-base.formTrigger",
-      "typeVersion": 2.2,
-      "position": [
-        240,
-        300
-      ],
-      "webhookId": "d4e5f6a7-a4a4-4d5e-9f6a-7b8c9d0e1f2a"
+      "id":"a1b2c3d4-f1a2-4a2b-8c3d-4e5f6a7b8c9d","name":"AI Sporting Director beauftragen","type":"n8n-nodes-base.formTrigger","typeVersion":2.2,"position":[240,300],"webhookId":"d4e5f6a7-a4a4-4d5e-9f6a-7b8c9d0e1f2a"
     },
     {
       "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "// Zentrale, einmalige Zuordnung Dropdown-Auswahl -> kanonische Team-Identifier der Analytics-Schicht.\n// Diese Zuordnung wird ausschliesslich hier gepflegt; keine Duplizierung in weiteren Nodes/Subworkflows.\n// Zwei getrennte Ziel-Identifier sind noetig, weil die beiden Analytics-Quelldateien denselben Verein\n// unterschiedlich benennen: CLUB_CANONICAL_MAP gegen bundesliga_2025_26_match_analytics.csv (Spalten\n// Heimteam/Auswärtsteam, genutzt von Team-Performance/Team-Matches), CLUB_PLAYER_DATA_MAP gegen die\n// Spalte 'Squad' in players_data-2025_2026-full.csv (genutzt von Player-Ranking fuer den\n// Eigenkader-Ausschluss). Siehe n8n/data/verify-club-canonical-map.js fuer die automatisierte\n// Verifikation aller 18 Vereine gegen beide Datensaetze.\nconst CLUB_CANONICAL_MAP = {\n  'FC Bayern München': 'Bayern Munich',\n  'Borussia Dortmund': 'Borussia Dortmund',\n  'RB Leipzig': 'RasenBallsport Leipzig',\n  'VfB Stuttgart': 'VfB Stuttgart',\n  'TSG Hoffenheim': 'Hoffenheim',\n  'Bayer 04 Leverkusen': 'Bayer Leverkusen',\n  'Sport-Club Freiburg': 'Freiburg',\n  'Eintracht Frankfurt': 'Eintracht Frankfurt',\n  'FC Augsburg': 'Augsburg',\n  '1. FSV Mainz 05': 'Mainz 05',\n  '1. FC Union Berlin': 'Union Berlin',\n  'Borussia Mönchengladbach': 'Borussia M.Gladbach',\n  'Hamburger SV': 'Hamburger SV',\n  '1. FC Köln': 'FC Cologne',\n  'SV Werder Bremen': 'Werder Bremen',\n  'VfL Wolfsburg': 'Wolfsburg',\n  '1. FC Heidenheim 1846': 'FC Heidenheim',\n  'FC St. Pauli': 'St. Pauli',\n};\n\nconst CLUB_PLAYER_DATA_MAP = {\n  'FC Bayern München': 'Bayern Munich',\n  'Borussia Dortmund': 'Dortmund',\n  'RB Leipzig': 'RB Leipzig',\n  'VfB Stuttgart': 'Stuttgart',\n  'TSG Hoffenheim': 'Hoffenheim',\n  'Bayer 04 Leverkusen': 'Leverkusen',\n  'Sport-Club Freiburg': 'Freiburg',\n  'Eintracht Frankfurt': 'Eint Frankfurt',\n  'FC Augsburg': 'Augsburg',\n  '1. FSV Mainz 05': 'Mainz 05',\n  '1. FC Union Berlin': 'Union Berlin',\n  'Borussia Mönchengladbach': 'Gladbach',\n  'Hamburger SV': 'Hamburger SV',\n  '1. FC Köln': 'Köln',\n  'SV Werder Bremen': 'Werder Bremen',\n  'VfL Wolfsburg': 'Wolfsburg',\n  '1. FC Heidenheim 1846': 'Heidenheim',\n  'FC St. Pauli': 'St. Pauli',\n};\n\nconst item = $input.item.json;\nconst selectedClub = (item['Verein'] || '').toString().trim();\nconst club = CLUB_CANONICAL_MAP[selectedClub] || '';\nconst clubPlayerData = CLUB_PLAYER_DATA_MAP[selectedClub] || '';\n\nreturn {\n  json: {\n    club,\n    clubPlayerData,\n    objective: (item['Was soll der Sporting Director untersuchen?'] || '').toString().trim(),\n    additionalContext: (item['Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?'] || '').toString().trim(),\n    requestId: Date.now() + '-' + Math.random().toString(36).slice(2, 8),\n    requestedAt: new Date().toISOString(),\n  },\n};"
+        "mode":"runOnceForEachItem",
+        "jsCode":"const CLUB_CANONICAL_MAP = {\n  'FC Bayern München': 'Bayern Munich',\n  'Borussia Dortmund': 'Borussia Dortmund',\n  'RB Leipzig': 'RasenBallsport Leipzig',\n  'VfB Stuttgart': 'VfB Stuttgart',\n  'TSG Hoffenheim': 'Hoffenheim',\n  'Bayer 04 Leverkusen': 'Bayer Leverkusen',\n  'Sport-Club Freiburg': 'Freiburg',\n  'Eintracht Frankfurt': 'Eintracht Frankfurt',\n  'FC Augsburg': 'Augsburg',\n  '1. FSV Mainz 05': 'Mainz 05',\n  '1. FC Union Berlin': 'Union Berlin',\n  'Borussia Mönchengladbach': 'Borussia M.Gladbach',\n  'Hamburger SV': 'Hamburger SV',\n  '1. FC Köln': 'FC Cologne',\n  'SV Werder Bremen': 'Werder Bremen',\n  'VfL Wolfsburg': 'Wolfsburg',\n  '1. FC Heidenheim 1846': 'FC Heidenheim',\n  'FC St. Pauli': 'St. Pauli',\n};\nconst CLUB_PLAYER_DATA_MAP = {\n  'FC Bayern München': 'Bayern Munich',\n  'Borussia Dortmund': 'Dortmund',\n  'RB Leipzig': 'RB Leipzig',\n  'VfB Stuttgart': 'Stuttgart',\n  'TSG Hoffenheim': 'Hoffenheim',\n  'Bayer 04 Leverkusen': 'Leverkusen',\n  'Sport-Club Freiburg': 'Freiburg',\n  'Eintracht Frankfurt': 'Eint Frankfurt',\n  'FC Augsburg': 'Augsburg',\n  '1. FSV Mainz 05': 'Mainz 05',\n  '1. FC Union Berlin': 'Union Berlin',\n  'Borussia Mönchengladbach': 'Gladbach',\n  'Hamburger SV': 'Hamburger SV',\n  '1. FC Köln': 'Köln',\n  'SV Werder Bremen': 'Werder Bremen',\n  'VfL Wolfsburg': 'Wolfsburg',\n  '1. FC Heidenheim 1846': 'Heidenheim',\n  'FC St. Pauli': 'St. Pauli',\n};\nconst item=$input.item.json;\nconst selectedClub=(item['Verein']||'').toString().trim();\nreturn {json:{club:CLUB_CANONICAL_MAP[selectedClub]||'',clubPlayerData:CLUB_PLAYER_DATA_MAP[selectedClub]||'',objective:(item['Was soll der Sporting Director untersuchen?']||'').toString().trim(),additionalContext:(item['Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?']||'').toString().trim(),requestId:Date.now()+'-'+Math.random().toString(36).slice(2,8),requestedAt:new Date().toISOString()}};"
       },
-      "id": "b2c3d4e5-e8e8-4b3c-9d4e-5f6a7b8c9d0e",
-      "name": "Auftrag normalisieren",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        460,
-        300
-      ]
+      "id":"b2c3d4e5-e8e8-4b3c-9d4e-5f6a7b8c9d0e","name":"Auftrag normalisieren","type":"n8n-nodes-base.code","typeVersion":2,"position":[460,300]
     },
     {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "d4e5f6a7-cond-1",
-              "leftValue": "={{ $json.club }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEmpty",
-                "singleValue": true
-              }
-            },
-            {
-              "id": "d4e5f6a7-cond-2",
-              "leftValue": "={{ $json.objective }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEmpty",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "d4e5f6a7-1122-4a1b-8c2d-3e4f5a6b7c8d",
-      "name": "Eingabe validieren",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        680,
-        300
-      ]
+      "parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":2},"conditions":[{"id":"d4e5f6a7-cond-1","leftValue":"={{ $json.club }}","rightValue":"","operator":{"type":"string","operation":"notEmpty","singleValue":true}},{"id":"d4e5f6a7-cond-2","leftValue":"={{ $json.objective }}","rightValue":"","operator":{"type":"string","operation":"notEmpty","singleValue":true}}],"combinator":"and"},"options":{}},
+      "id":"d4e5f6a7-1122-4a1b-8c2d-3e4f5a6b7c8d","name":"Eingabe validieren","type":"n8n-nodes-base.if","typeVersion":2,"position":[680,300]
     },
     {
-      "parameters": {
-        "mode": "manual",
-        "includeOtherFields": true,
-        "assignments": {
-          "assignments": [
-            {
-              "id": "e5f6a7b8-err-1",
-              "name": "errorMessage",
-              "value": "Bitte füllen Sie 'Verein' und 'Was soll der Sporting Director untersuchen?' aus, bevor Sie fortfahren.",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "e5f6a7b8-2233-4b2c-9d3e-4f5a6b7c8d9e",
-      "name": "Validierungsfehler formulieren",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        900,
-        500
-      ]
+      "parameters":{"mode":"manual","includeOtherFields":true,"assignments":{"assignments":[{"id":"e5f6a7b8-err-1","name":"errorMessage","value":"Bitte füllen Sie 'Verein' und 'Was soll der Sporting Director untersuchen?' aus, bevor Sie fortfahren.","type":"string"}]},"options":{}},
+      "id":"e5f6a7b8-2233-4b2c-9d3e-4f5a6b7c8d9e","name":"Validierungsfehler formulieren","type":"n8n-nodes-base.set","typeVersion":3.4,"position":[900,520]
     },
     {
-      "parameters": {
-        "source": "database",
-        "workflowId": {
-          "__rl": true,
-          "value": "25aeb354-a18e-4e44-b0a1-c3a7c546b19f",
-          "mode": "list",
-          "cachedResultName": "Team analysieren"
-        },
-        "options": {}
-      },
-      "id": "1b1b985f-8e74-44af-a94b-65630cd34945",
-      "name": "Execute Workflow: Team analysieren",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        900,
-        300
-      ],
-      "notesInFlow": false,
-      "notes": "Ruft den fachlichen Subworkflow n8n/team-analysieren-subworkflow.json auf (feste Top-Level-ID 25aeb354-a18e-4e44-b0a1-c3a7c546b19f). Kapselt die komplette Team-Analyse-Faehigkeit (CSV-Analytics-Abruf, LLM-Interpretation, interne Gates) und liefert teamDiagnosis + valid + errorMessage zurueck. Siehe n8n/README.md, Abschnitt \"Team analysieren\"."
+      "parameters":{"source":"database","workflowId":{"__rl":true,"value":"25aeb354-a18e-4e44-b0a1-c3a7c546b19f","mode":"list","cachedResultName":"Team analysieren"},"options":{}},
+      "id":"1b1b985f-8e74-44af-a94b-65630cd34945","name":"Execute Workflow: Team analysieren","type":"n8n-nodes-base.executeWorkflow","typeVersion":1.3,"position":[900,300],"onError":"continueErrorOutput","notesInFlow":false,"notes":"Fachliche Capability inklusive interner Validierung und Fehlerformulierung. Erfolg geht direkt in die naechste Phase; ein Capability-Fehler laeuft ueber den gemeinsamen technischen Fehlerkanal."
     },
     {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "4dae5e41-cond-1",
-              "leftValue": "={{ $json.valid }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "4dae5e41-85e3-410e-b42c-8623dcb60ae5",
-      "name": "Team analysieren gueltig?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        1120,
-        300
-      ]
+      "parameters":{"source":"database","workflowId":{"__rl":true,"value":"85a4c672-5c35-4543-98ee-1f877f955593","mode":"list","cachedResultName":"Scouting Brief erstellen"},"options":{}},
+      "id":"1d9173cb-a0d4-42a3-b1cf-a4645d27d038","name":"Execute Workflow: Scouting Brief erstellen","type":"n8n-nodes-base.executeWorkflow","typeVersion":1.3,"position":[1160,300],"onError":"continueErrorOutput","notesInFlow":false,"notes":"Fachliche Capability inklusive Spielerprofil-/Brief-Validierung. Wird bei Request Changes erneut aufgerufen; Fehler laufen einheitlich ueber den gemeinsamen Capability-Fehlerkanal."
     },
     {
-      "parameters": {
-        "source": "database",
-        "workflowId": {
-          "__rl": true,
-          "value": "85a4c672-5c35-4543-98ee-1f877f955593",
-          "mode": "list",
-          "cachedResultName": "Scouting Brief erstellen"
-        },
-        "options": {}
-      },
-      "id": "1d9173cb-a0d4-42a3-b1cf-a4645d27d038",
-      "name": "Execute Workflow: Scouting Brief erstellen",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        1340,
-        300
-      ],
-      "notesInFlow": false,
-      "notes": "Ruft den fachlichen Subworkflow n8n/scouting-brief-subworkflow.json auf (feste Top-Level-ID 85a4c672-5c35-4543-98ee-1f877f955593). Kapselt Spielerprofil-Ableitung (LLM) und Scouting-Brief-Erstellung inkl. interner Gates; liefert playerProfile + scoutingBrief + valid + errorMessage zurueck. Wird bei einer 'Request Changes'-Entscheidung im Human Review (siehe 'Review: Request Changes?') mit item.reviewFeedback erneut aufgerufen - derselbe Node, zweite Ausfuehrung in derselben Hauptworkflow-Execution. Siehe n8n/README.md, Abschnitt \"Scouting Brief erstellen\"."
+      "parameters":{"formTitle":"Scouting Brief zur Freigabe","formDescription":"=Verein: {{ $json.club }}\n\nHauptproblem (Teamdiagnose): {{ $json.scoutingBrief.problem }}\n\nZielposition / Rolle: {{ $json.scoutingBrief.targetPosition }} / {{ $json.scoutingBrief.role }}\n\nBegruendung: {{ $json.scoutingBrief.reasoning }}\n\nGewichtete Kriterien: {{ $json.scoutingBrief.weightedCriteria.map(c => c.criterion + ' (' + c.weight + ')').join(', ') }}\n\nConstraints: {{ $json.scoutingBrief.constraints.length ? $json.scoutingBrief.constraints.map(c => c.field + ' ' + c.operator + ' ' + c.value).join(', ') : '(keine)' }}\n\nUnsicherheiten: {{ $json.scoutingBrief.uncertainties.join('; ') }}\n\nUeberarbeitungsrunde: {{ $json.scoutingBrief.reviewRound }} von max. {{ $json.scoutingBrief.maxReviewRounds }}{{ $json.scoutingBrief.feedbackHistory.length ? ('\\n\\nBisheriges Feedback: ' + $json.scoutingBrief.feedbackHistory.map(f => 'Runde ' + f.round + ': ' + f.feedback).join(' | ')) : '' }}","formFields":{"values":[{"fieldLabel":"Entscheidung","fieldType":"dropdown","fieldOptions":{"values":[{"option":"Approve"},{"option":"Request Changes"},{"option":"Reject"}]},"requiredField":true},{"fieldLabel":"Feedback (Pflicht bei Request Changes)","fieldType":"textarea","requiredField":false}]},"options":{"buttonLabel":"Entscheidung uebermitteln"}},
+      "id":"b1a2c3d4-5004-4a11-9001-aa1122334404","name":"Scouting Brief zur Freigabe vorlegen","type":"n8n-nodes-base.form","typeVersion":1,"position":[1420,300]
     },
     {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "835b5017-cond-1",
-              "leftValue": "={{ $json.valid }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "835b5017-4be9-4c5d-940e-b7e40ab6484f",
-      "name": "Scouting Brief gueltig?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        1560,
-        300
-      ]
+      "parameters":{"jsCode":"const MAX_REVIEW_ROUNDS=3;\nconst submitted=$input.item.json;\nconst original=$('Execute Workflow: Scouting Brief erstellen').first().json;\nconst reviewDecision=(submitted['Entscheidung']||'').toString().trim();\nconst reviewFeedback=(submitted['Feedback (Pflicht bei Request Changes)']||'').toString().trim();\nconst errors=[];\nif(!['Approve','Request Changes','Reject'].includes(reviewDecision)) errors.push('Unbekannte Review-Entscheidung: '+reviewDecision);\nif(reviewDecision==='Request Changes'&&!reviewFeedback) errors.push('Fuer \\"Request Changes\\" ist ein Feedback-Text erforderlich.');\nconst reviewRound=(original.scoutingBrief&&original.scoutingBrief.reviewRound)||1;\nconst maxRoundsReached=reviewDecision==='Request Changes'&&reviewRound>=MAX_REVIEW_ROUNDS;\nconst reviewOutcome=maxRoundsReached?'Reject':reviewDecision;\nconst valid=errors.length===0;\nreturn [{json:{...original,reviewDecision,reviewFeedback,reviewOutcome,maxRoundsReached,valid,errorMessage:valid?undefined:'Die Review-Entscheidung ist ungueltig.\\n\\n'+errors.join('\\n')}}];"},
+      "id":"b1a2c3d4-5005-4a11-9001-aa1122334405","name":"Review-Entscheidung auswerten","type":"n8n-nodes-base.code","typeVersion":2,"position":[1680,300]
     },
     {
-      "parameters": {
-        "formTitle": "Scouting Brief zur Freigabe",
-        "formDescription": "=Verein: {{ $json.club }}\n\nHauptproblem (Teamdiagnose): {{ $json.scoutingBrief.problem }}\n\nZielposition / Rolle: {{ $json.scoutingBrief.targetPosition }} / {{ $json.scoutingBrief.role }}\n\nBegruendung: {{ $json.scoutingBrief.reasoning }}\n\nGewichtete Kriterien: {{ $json.scoutingBrief.weightedCriteria.map(c => c.criterion + ' (' + c.weight + ')').join(', ') }}\n\nConstraints: {{ $json.scoutingBrief.constraints.length ? $json.scoutingBrief.constraints.map(c => c.field + ' ' + c.operator + ' ' + c.value).join(', ') : '(keine)' }}\n\nUnsicherheiten: {{ $json.scoutingBrief.uncertainties.join('; ') }}\n\nUeberarbeitungsrunde: {{ $json.scoutingBrief.reviewRound }} von max. {{ $json.scoutingBrief.maxReviewRounds }}{{ $json.scoutingBrief.feedbackHistory.length ? ('\\n\\nBisheriges Feedback: ' + $json.scoutingBrief.feedbackHistory.map(f => 'Runde ' + f.round + ': ' + f.feedback).join(' | ')) : '' }}",
-        "formFields": {
-          "values": [
-            {
-              "fieldLabel": "Entscheidung",
-              "fieldType": "dropdown",
-              "fieldOptions": {
-                "values": [
-                  {
-                    "option": "Approve"
-                  },
-                  {
-                    "option": "Request Changes"
-                  },
-                  {
-                    "option": "Reject"
-                  }
-                ]
-              },
-              "requiredField": true
-            },
-            {
-              "fieldLabel": "Feedback (Pflicht bei Request Changes)",
-              "fieldType": "textarea",
-              "requiredField": false
-            }
-          ]
-        },
-        "options": {
-          "buttonLabel": "Entscheidung uebermitteln"
-        }
-      },
-      "id": "b1a2c3d4-5004-4a11-9001-aa1122334404",
-      "name": "Scouting Brief zur Freigabe vorlegen",
-      "type": "n8n-nodes-base.form",
-      "typeVersion": 1,
-      "position": [
-        1780,
-        300
-      ]
+      "parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":2},"conditions":[{"id":"b1a2c3d4-cond-5006","leftValue":"={{ $json.valid }}","rightValue":true,"operator":{"type":"boolean","operation":"true","singleValue":true}}],"combinator":"and"},"options":{}},
+      "id":"b1a2c3d4-5006-4a11-9001-aa1122334406","name":"Review-Entscheidung gueltig?","type":"n8n-nodes-base.if","typeVersion":2,"position":[1900,300]
     },
     {
-      "parameters": {
-        "jsCode": "const MAX_REVIEW_ROUNDS = 3;\nconst submitted = $input.item.json;\nconst original = $('Execute Workflow: Scouting Brief erstellen').first().json;\n\nconst reviewDecision = (submitted['Entscheidung'] || '').toString().trim();\nconst reviewFeedback = (submitted['Feedback (Pflicht bei Request Changes)'] || '').toString().trim();\n\nconst errors = [];\nif (!['Approve', 'Request Changes', 'Reject'].includes(reviewDecision)) {\n  errors.push('Unbekannte Review-Entscheidung: ' + reviewDecision);\n}\nif (reviewDecision === 'Request Changes' && !reviewFeedback) {\n  errors.push('Fuer \"Request Changes\" ist ein Feedback-Text erforderlich.');\n}\n\nconst reviewRound = (original.scoutingBrief && original.scoutingBrief.reviewRound) || 1;\nconst maxRoundsReached = reviewDecision === 'Request Changes' && reviewRound >= MAX_REVIEW_ROUNDS;\n// Ein begrenzter Feedback-Loop (siehe n8n/README.md): nach MAX_REVIEW_ROUNDS\n// Ueberarbeitungen wird eine weitere 'Request Changes' nicht mehr akzeptiert,\n// sondern wie ein 'Reject' kontrolliert beendet, statt endlos weiter zu ueberarbeiten.\nconst reviewOutcome = maxRoundsReached ? 'Reject' : reviewDecision;\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...original,\n    reviewDecision,\n    reviewFeedback,\n    reviewOutcome,\n    maxRoundsReached,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die Review-Entscheidung ist ungueltig.\\n\\n' + errors.join('\\n')\n  }\n}];"
-      },
-      "id": "b1a2c3d4-5005-4a11-9001-aa1122334405",
-      "name": "Review-Entscheidung auswerten",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2000,
-        300
-      ]
+      "parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":2},"conditions":[{"id":"b1a2c3d4-cond-5007","leftValue":"={{ $json.reviewOutcome }}","rightValue":"Approve","operator":{"type":"string","operation":"equals"}}],"combinator":"and"},"options":{}},
+      "id":"b1a2c3d4-5007-4a11-9001-aa1122334407","name":"Review: Approve?","type":"n8n-nodes-base.if","typeVersion":2,"position":[2120,300]
     },
     {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "b1a2c3d4-cond-5006",
-              "leftValue": "={{ $json.valid }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "b1a2c3d4-5006-4a11-9001-aa1122334406",
-      "name": "Review-Entscheidung gueltig?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        2220,
-        300
-      ]
+      "parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":2},"conditions":[{"id":"b1a2c3d4-cond-5008","leftValue":"={{ $json.reviewOutcome }}","rightValue":"Request Changes","operator":{"type":"string","operation":"equals"}}],"combinator":"and"},"options":{}},
+      "id":"b1a2c3d4-5008-4a11-9001-aa1122334408","name":"Review: Request Changes?","type":"n8n-nodes-base.if","typeVersion":2,"position":[2120,500]
     },
     {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "b1a2c3d4-cond-5007",
-              "leftValue": "={{ $json.reviewOutcome }}",
-              "rightValue": "Approve",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "b1a2c3d4-5007-4a11-9001-aa1122334407",
-      "name": "Review: Approve?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        2440,
-        300
-      ]
+      "parameters":{"jsCode":"const item=$input.item.json;\nconst reason=item.maxRoundsReached?`Die maximale Anzahl von ${item.scoutingBrief.maxReviewRounds} Ueberarbeitungsrunden fuer das Scouting Brief ist erreicht worden.`:'Der Sporting Director hat das Scouting Brief abgelehnt (Reject).';\nconst feedback=item.reviewFeedback?`\\n\\nFeedback: ${item.reviewFeedback}`:'';\nreturn [{json:{...item,errorMessage:`Die Kandidatensuche wurde nach der Human-Review kontrolliert beendet.\\n\\n${reason}${feedback}`}}];"},
+      "id":"b1a2c3d4-5009-4a11-9001-aa1122334409","name":"Scouting Brief: Ablehnung dokumentieren","type":"n8n-nodes-base.code","typeVersion":2,"position":[2380,500]
     },
     {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "b1a2c3d4-cond-5008",
-              "leftValue": "={{ $json.reviewOutcome }}",
-              "rightValue": "Request Changes",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "b1a2c3d4-5008-4a11-9001-aa1122334408",
-      "name": "Review: Request Changes?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        2440,
-        500
-      ]
+      "parameters":{"source":"database","workflowId":{"__rl":true,"value":"803a06a1-fb4b-4cb7-b502-63ab119c9996","mode":"list","cachedResultName":"Kandidaten suchen"},"options":{}},
+      "id":"d9a0e8dd-5c93-480f-a3a4-0d43d0148711","name":"Execute Workflow: Kandidaten suchen","type":"n8n-nodes-base.executeWorkflow","typeVersion":1.3,"position":[2380,300],"onError":"continueErrorOutput","notesInFlow":false,"notes":"Fachliche Kandidatensuche inklusive Ranking-, Profil- und Shortlist-Validierung."
     },
     {
-      "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst reason = item.maxRoundsReached\n  ? `Die maximale Anzahl von ${item.scoutingBrief.maxReviewRounds} Ueberarbeitungsrunden fuer das Scouting Brief ist erreicht worden.`\n  : 'Der Sporting Director hat das Scouting Brief abgelehnt (Reject).';\nconst feedback = item.reviewFeedback ? `\\n\\nFeedback: ${item.reviewFeedback}` : '';\n\nreturn [{\n  json: {\n    ...item,\n    errorMessage: `Die Kandidatensuche wurde nach der Human-Review kontrolliert beendet.\\n\\n${reason}${feedback}`\n  }\n}];"
-      },
-      "id": "b1a2c3d4-5009-4a11-9001-aa1122334409",
-      "name": "Scouting Brief: Ablehnung dokumentieren",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2660,
-        500
-      ]
+      "parameters":{"source":"database","workflowId":{"__rl":true,"value":"c2ffe3ab-e97a-4147-83a8-4fbd1b87eae6","mode":"list","cachedResultName":"Due Diligence"},"options":{}},
+      "id":"75453d5e-2a81-4822-a800-778bffc13ce3","name":"Execute Workflow: Due Diligence","type":"n8n-nodes-base.executeWorkflow","typeVersion":1.3,"position":[2640,300],"onError":"continueErrorOutput","notesInFlow":false,"notes":"Fachliche Due-Diligence-Capability inklusive Fan-out/Fan-in, interner Validierung und fachlicher Fehlerformulierung."
     },
     {
-      "parameters": {
-        "source": "database",
-        "workflowId": {
-          "__rl": true,
-          "value": "803a06a1-fb4b-4cb7-b502-63ab119c9996",
-          "mode": "list",
-          "cachedResultName": "Kandidaten suchen"
-        },
-        "options": {}
-      },
-      "id": "d9a0e8dd-5c93-480f-a3a4-0d43d0148711",
-      "name": "Execute Workflow: Kandidaten suchen",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        2660,
-        300
-      ],
-      "notesInFlow": false,
-      "notes": "Ruft den fachlichen Subworkflow n8n/kandidaten-suchen-subworkflow.json auf (feste Top-Level-ID 803a06a1-fb4b-4cb7-b502-63ab119c9996). Kapselt Player-Ranking-Abruf und Spielersuche inkl. interner Pruefung; liefert playerSearch + playerRanking + valid + errorMessage zurueck. Siehe n8n/README.md, Abschnitt \"Kandidaten suchen\"."
+      "parameters":{"source":"database","workflowId":{"__rl":true,"value":"7e29c7d7-ef3b-488c-9d1e-2fdd4dad6bf1","mode":"list","cachedResultName":"Empfehlung erstellen"},"options":{}},
+      "id":"830eab47-1196-4d08-b114-3ac49065f93e","name":"Execute Workflow: Empfehlung erstellen","type":"n8n-nodes-base.executeWorkflow","typeVersion":1.3,"position":[2900,300],"onError":"continueErrorOutput","notesInFlow":false,"notes":"Fachliche Empfehlungs-Capability inklusive technischer Ergebnisvalidierung und Feasibility-Bewertung."
     },
     {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "d78a6007-cond-1",
-              "leftValue": "={{ $json.valid }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "d78a6007-4c82-4c18-9dce-422bf960f3f9",
-      "name": "Kandidaten suchen gueltig?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        2880,
-        300
-      ]
+      "parameters":{"source":"database","workflowId":{"__rl":true,"value":"6306c333-15f1-48ed-a006-0d2812a9c7a7","mode":"list","cachedResultName":"Ergebnis aufbereiten"},"options":{}},
+      "id":"b684d182-eec3-4069-aee0-5f891cba8347","name":"Execute Workflow: Ergebnis aufbereiten","type":"n8n-nodes-base.executeWorkflow","typeVersion":1.3,"position":[3160,300],"onError":"continueErrorOutput","notesInFlow":false,"notes":"Kapselt Final Validation und Praesentationsaufbereitung; Fehler werden innerhalb der Capability formuliert."
     },
     {
-      "parameters": {
-        "source": "database",
-        "workflowId": {
-          "__rl": true,
-          "value": "c2ffe3ab-e97a-4147-83a8-4fbd1b87eae6",
-          "mode": "list",
-          "cachedResultName": "Due Diligence"
-        },
-        "options": {}
-      },
-      "id": "75453d5e-2a81-4822-a800-778bffc13ce3",
-      "name": "Execute Workflow: Due Diligence",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        3100,
-        300
-      ],
-      "notesInFlow": false,
-      "notes": "Ruft den fachlichen Subworkflow n8n/due-diligence-subworkflow.json auf (feste Top-Level-ID c2ffe3ab-e97a-4147-83a8-4fbd1b87eae6). Kapselt die Recherche (ruft ihrerseits recherche-subworkflow.json auf) inkl. interner Pruefung; liefert research + valid + errorMessage zurueck. Siehe n8n/README.md, Abschnitt \"Due Diligence\"."
+      "parameters":{"operation":"completion","completionTitle":"Ergebnis (Simulation)","completionMessage":"={{ $json.formattedResult }}","options":{}},
+      "id":"c9d0e1f2-6677-4f6a-9b7c-8d9e0f1a2b3c","name":"Ergebnis anzeigen","type":"n8n-nodes-base.form","typeVersion":1,"position":[3420,300]
     },
     {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "fe9c5c7c-cond-1",
-              "leftValue": "={{ $json.valid }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "fe9c5c7c-f68f-4348-98af-48bf4558f8ae",
-      "name": "Due Diligence gueltig?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        3320,
-        300
-      ]
+      "parameters":{"jsCode":"const item=$input.item.json||{};\nconst rawError=item.error;\nconst errorMessage=typeof rawError==='string'?rawError:(rawError&&rawError.message)?rawError.message:(item.errorMessage||'Es ist ein unbekannter Capability-Fehler aufgetreten.');\nreturn [{json:{...item,errorMessage}}];"},
+      "id":"8b2c1f44-5f30-4c72-9fd2-4b785b813c01","name":"Capability-Fehler normalisieren","type":"n8n-nodes-base.code","typeVersion":2,"position":[2900,700],"notes":"Einziger technischer Fehleradapter fuer fachliche Subworkflows. Die fachliche Fehlerformulierung bleibt in der jeweiligen Capability; hier wird nur der n8n-Error-Output auf errorMessage normalisiert.","notesInFlow":false
     },
     {
-      "parameters": {
-        "source": "database",
-        "workflowId": {
-          "__rl": true,
-          "value": "7e29c7d7-ef3b-488c-9d1e-2fdd4dad6bf1",
-          "mode": "list",
-          "cachedResultName": "Empfehlung erstellen"
-        },
-        "options": {}
-      },
-      "id": "830eab47-1196-4d08-b114-3ac49065f93e",
-      "name": "Execute Workflow: Empfehlung erstellen",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        3540,
-        300
-      ],
-      "notesInFlow": false,
-      "notes": "Ruft den fachlichen Subworkflow n8n/empfehlung-erstellen-subworkflow.json auf (feste Top-Level-ID 7e29c7d7-ef3b-488c-9d1e-2fdd4dad6bf1). Kapselt Empfehlungserzeugung, Player-Profil-Abruf/Anreicherung und die finale Gesamtvalidierung; liefert recommendation + valid + errorMessage zurueck. Siehe n8n/README.md, Abschnitt \"Empfehlung erstellen\"."
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "1a19b50d-cond-1",
-              "leftValue": "={{ $json.valid }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "1a19b50d-96da-454f-9538-7b1a065ac19a",
-      "name": "Empfehlung gueltig?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        3760,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "source": "database",
-        "workflowId": {
-          "__rl": true,
-          "value": "6306c333-15f1-48ed-a006-0d2812a9c7a7",
-          "mode": "list",
-          "cachedResultName": "Ergebnis aufbereiten"
-        },
-        "options": {}
-      },
-      "id": "b684d182-eec3-4069-aee0-5f891cba8347",
-      "name": "Execute Workflow: Ergebnis aufbereiten",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        3980,
-        300
-      ],
-      "notesInFlow": false,
-      "notes": "Ruft den fachlichen Subworkflow n8n/ergebnis-aufbereiten-subworkflow.json auf (feste Top-Level-ID 6306c333-15f1-48ed-a006-0d2812a9c7a7). Kapselt die uebergreifende Final Validation (Teamdiagnose, Spielerprofil, Shortlist, Recherche UND Empfehlung zusammen) und die Praesentationsaufbereitung (formattedResult); liefert bei Erfolg formattedResult, sonst valid=false + errorMessage zurueck. Der Hauptworkflow erhaelt dadurch nur noch das validierte Ergebnis bzw. einen kontrollierten Fehler. Siehe n8n/README.md, Abschnitt \"Ergebnis aufbereiten\"."
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "8204c7bb-cond-1",
-              "leftValue": "={{ $json.valid }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "8204c7bb-3f2a-4ed9-8af7-d2e8955e4973",
-      "name": "Ergebnis aufbereiten gueltig?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        4200,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "completion",
-        "completionTitle": "Ergebnis (Simulation)",
-        "completionMessage": "={{ $json.formattedResult }}",
-        "options": {}
-      },
-      "id": "c9d0e1f2-6677-4f6a-9b7c-8d9e0f1a2b3c",
-      "name": "Ergebnis anzeigen",
-      "type": "n8n-nodes-base.form",
-      "typeVersion": 1,
-      "position": [
-        4420,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "completion",
-        "completionTitle": "Fehler",
-        "completionMessage": "={{ $json.errorMessage || 'Es ist ein unbekannter Fehler aufgetreten.' }}",
-        "options": {}
-      },
-      "id": "d0e1f2a3-7788-4a7b-8c8d-9e0f1a2b3c4d",
-      "name": "Fehler anzeigen",
-      "type": "n8n-nodes-base.form",
-      "typeVersion": 1,
-      "position": [
-        2440,
-        700
-      ]
+      "parameters":{"operation":"completion","completionTitle":"Fehler","completionMessage":"={{ $json.errorMessage || 'Es ist ein unbekannter Fehler aufgetreten.' }}","options":{}},
+      "id":"d0e1f2a3-7788-4a7b-8c8d-9e0f1a2b3c4d","name":"Fehler anzeigen","type":"n8n-nodes-base.form","typeVersion":1,"position":[3160,700]
     }
   ],
   "connections": {
-    "AI Sporting Director beauftragen": {
-      "main": [
-        [
-          {
-            "node": "Auftrag normalisieren",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Auftrag normalisieren": {
-      "main": [
-        [
-          {
-            "node": "Eingabe validieren",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Eingabe validieren": {
-      "main": [
-        [
-          {
-            "node": "Execute Workflow: Team analysieren",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Validierungsfehler formulieren",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validierungsfehler formulieren": {
-      "main": [
-        [
-          {
-            "node": "Fehler anzeigen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Execute Workflow: Team analysieren": {
-      "main": [
-        [
-          {
-            "node": "Team analysieren gueltig?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Team analysieren gueltig?": {
-      "main": [
-        [
-          {
-            "node": "Execute Workflow: Scouting Brief erstellen",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Fehler anzeigen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Execute Workflow: Scouting Brief erstellen": {
-      "main": [
-        [
-          {
-            "node": "Scouting Brief gueltig?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Scouting Brief gueltig?": {
-      "main": [
-        [
-          {
-            "node": "Scouting Brief zur Freigabe vorlegen",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Fehler anzeigen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Scouting Brief zur Freigabe vorlegen": {
-      "main": [
-        [
-          {
-            "node": "Review-Entscheidung auswerten",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Review-Entscheidung auswerten": {
-      "main": [
-        [
-          {
-            "node": "Review-Entscheidung gueltig?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Review-Entscheidung gueltig?": {
-      "main": [
-        [
-          {
-            "node": "Review: Approve?",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Fehler anzeigen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Review: Approve?": {
-      "main": [
-        [
-          {
-            "node": "Execute Workflow: Kandidaten suchen",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Review: Request Changes?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Review: Request Changes?": {
-      "main": [
-        [
-          {
-            "node": "Execute Workflow: Scouting Brief erstellen",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Scouting Brief: Ablehnung dokumentieren",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Scouting Brief: Ablehnung dokumentieren": {
-      "main": [
-        [
-          {
-            "node": "Fehler anzeigen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Execute Workflow: Kandidaten suchen": {
-      "main": [
-        [
-          {
-            "node": "Kandidaten suchen gueltig?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Kandidaten suchen gueltig?": {
-      "main": [
-        [
-          {
-            "node": "Execute Workflow: Due Diligence",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Fehler anzeigen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Execute Workflow: Due Diligence": {
-      "main": [
-        [
-          {
-            "node": "Due Diligence gueltig?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Due Diligence gueltig?": {
-      "main": [
-        [
-          {
-            "node": "Execute Workflow: Empfehlung erstellen",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Fehler anzeigen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Execute Workflow: Empfehlung erstellen": {
-      "main": [
-        [
-          {
-            "node": "Empfehlung gueltig?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Empfehlung gueltig?": {
-      "main": [
-        [
-          {
-            "node": "Execute Workflow: Ergebnis aufbereiten",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Fehler anzeigen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Execute Workflow: Ergebnis aufbereiten": {
-      "main": [
-        [
-          {
-            "node": "Ergebnis aufbereiten gueltig?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Ergebnis aufbereiten gueltig?": {
-      "main": [
-        [
-          {
-            "node": "Ergebnis anzeigen",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Fehler anzeigen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "AI Sporting Director beauftragen":{"main":[[{"node":"Auftrag normalisieren","type":"main","index":0}]]},
+    "Auftrag normalisieren":{"main":[[{"node":"Eingabe validieren","type":"main","index":0}]]},
+    "Eingabe validieren":{"main":[[{"node":"Execute Workflow: Team analysieren","type":"main","index":0}],[{"node":"Validierungsfehler formulieren","type":"main","index":0}]]},
+    "Validierungsfehler formulieren":{"main":[[{"node":"Fehler anzeigen","type":"main","index":0}]]},
+    "Execute Workflow: Team analysieren":{"main":[[{"node":"Execute Workflow: Scouting Brief erstellen","type":"main","index":0}],[{"node":"Capability-Fehler normalisieren","type":"main","index":0}]]},
+    "Execute Workflow: Scouting Brief erstellen":{"main":[[{"node":"Scouting Brief zur Freigabe vorlegen","type":"main","index":0}],[{"node":"Capability-Fehler normalisieren","type":"main","index":0}]]},
+    "Scouting Brief zur Freigabe vorlegen":{"main":[[{"node":"Review-Entscheidung auswerten","type":"main","index":0}]]},
+    "Review-Entscheidung auswerten":{"main":[[{"node":"Review-Entscheidung gueltig?","type":"main","index":0}]]},
+    "Review-Entscheidung gueltig?":{"main":[[{"node":"Review: Approve?","type":"main","index":0}],[{"node":"Fehler anzeigen","type":"main","index":0}]]},
+    "Review: Approve?":{"main":[[{"node":"Execute Workflow: Kandidaten suchen","type":"main","index":0}],[{"node":"Review: Request Changes?","type":"main","index":0}]]},
+    "Review: Request Changes?":{"main":[[{"node":"Execute Workflow: Scouting Brief erstellen","type":"main","index":0}],[{"node":"Scouting Brief: Ablehnung dokumentieren","type":"main","index":0}]]},
+    "Scouting Brief: Ablehnung dokumentieren":{"main":[[{"node":"Fehler anzeigen","type":"main","index":0}]]},
+    "Execute Workflow: Kandidaten suchen":{"main":[[{"node":"Execute Workflow: Due Diligence","type":"main","index":0}],[{"node":"Capability-Fehler normalisieren","type":"main","index":0}]]},
+    "Execute Workflow: Due Diligence":{"main":[[{"node":"Execute Workflow: Empfehlung erstellen","type":"main","index":0}],[{"node":"Capability-Fehler normalisieren","type":"main","index":0}]]},
+    "Execute Workflow: Empfehlung erstellen":{"main":[[{"node":"Execute Workflow: Ergebnis aufbereiten","type":"main","index":0}],[{"node":"Capability-Fehler normalisieren","type":"main","index":0}]]},
+    "Execute Workflow: Ergebnis aufbereiten":{"main":[[{"node":"Ergebnis anzeigen","type":"main","index":0}],[{"node":"Capability-Fehler normalisieren","type":"main","index":0}]]},
+    "Capability-Fehler normalisieren":{"main":[[{"node":"Fehler anzeigen","type":"main","index":0}]]}
   },
-  "pinData": {},
-  "meta": {
-    "templateCredsSetupCompleted": false
-  },
-  "settings": {
-    "executionOrder": "v1"
-  }
+  "pinData":{},
+  "meta":{"templateCredsSetupCompleted":false},
+  "settings":{"executionOrder":"v1"}
 }
