@@ -510,10 +510,13 @@ def download(config: Config, *, dry_run: bool) -> None:
                 raise SyncError(f"Multiple local files have workflow name {name!r}; cannot choose download target")
 
         if target is None:
+            # Neither ID nor name matched an existing local file, so any file
+            # already sitting at the slugified path belongs to an unrelated
+            # workflow and must never be treated as this workflow's target.
             base = _slugify(name)
             target = config.workflow_dir / f"{base}.json"
             suffix = 2
-            while target in reserved or (target.exists() and target not in existing_by_id.values()):
+            while target in reserved or target.exists():
                 target = config.workflow_dir / f"{base}-{suffix}.json"
                 suffix += 1
 
