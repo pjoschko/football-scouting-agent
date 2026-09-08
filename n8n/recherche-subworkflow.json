@@ -16,6 +16,83 @@
       }
     },
     {
+      "id": "7c1f9e2a-3b4d-4e5f-8a6b-1c2d3e4f5a6b",
+      "name": "Recherche-Start markieren",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        128,
+        0
+      ],
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "football_scouting_research_runtime"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "batchId": "={{ $json.researchBatchId }}",
+            "candidate": "={{ $json.researchCandidateName }}",
+            "status": "started",
+            "payload": "",
+            "completedAt": "={{ $now.toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "batchId",
+              "displayName": "batchId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "candidate",
+              "displayName": "candidate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "completedAt",
+              "displayName": "completedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "date",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notes": "Live-Diagnose-Marker (siehe Review): persistiert VOR dem Agent-Aufruf einen 'started'-Datensatz mit batchId+candidate, damit ein naechster Live-Lauf eindeutig unterscheiden kann: kein 'started' = Dispatch-/Input-Problem (Kandidat hat den Child nie erreicht); 'started' ohne Terminalstatus ('success'/'uncertain'/'agent_error') = Agent-/Ollama-/Tavily-Problem; Terminalstatus vorhanden, aber Parent sieht ihn nicht = Fan-in-/Filter-Problem. 'Research-Fortschritt und Fan-in pruefen' in due-diligence-subworkflow.json filtert 'started'-Zeilen bewusst aus der Vollstaendigkeits-/Latest-Bestimmung heraus, damit dieser Marker den Fan-in nicht faelschlich als abgeschlossen erscheinen laesst.",
+      "notesInFlow": false
+    },
+    {
       "id": "d4d27501-134b-4a8f-a0f6-74c12cf349aa",
       "name": "Recherche-Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
@@ -38,7 +115,7 @@
     },
     {
       "id": "ee5904d6-8d13-4070-aed4-3fa3c310f5fe",
-      "name": "Ollama Modell (Qwen3.8:latest)",
+      "name": "Ollama Modell (qwen3.8-agent-128k:latest)",
       "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
       "position": [
@@ -46,7 +123,7 @@
         240
       ],
       "parameters": {
-        "model": "Qwen3.8:latest",
+        "model": "qwen3.8-agent-128k:latest",
         "options": {
           "think": true
         }
@@ -57,7 +134,7 @@
           "name": "[cimt] Ollama"
         }
       },
-      "notes": "Eigene Node-Instanz dieser Subworkflow-Datei (technische Utility-Node, bewusst dupliziert statt geteilt - siehe n8n/README.md). Versorgt 'Recherche-Agent' ueber ai_languageModel. Setzt voraus, dass das konfigurierte lokale Ollama-Modell Tool-/Function-Calling unterstuetzt, damit 'Recherche-Agent' das Websuche-Tool tatsaechlich aufrufen kann; andernfalls Modell in n8n gegen eine tool-faehige Variante tauschen.",
+      "notes": "Eigene Node-Instanz dieser Subworkflow-Datei (technische Utility-Node, bewusst dupliziert statt geteilt - siehe n8n/README.md). Versorgt 'Recherche-Agent' ueber ai_languageModel. Nutzt 'qwen3.8-agent-128k:latest' statt 'Qwen3.8:latest' (wie in team-analysieren-subworkflow.json/scouting-brief-subworkflow.json), da dieses Modell laut Live-UAT-Review auf der Zielinstanz bereits nachweislich fuer Tool-/Function-Calling in einem Agent-Workflow im Einsatz ist; 'Recherche-Agent' braucht das, um das Websuche-Tool tatsaechlich aufzurufen.",
       "notesInFlow": false
     },
     {
@@ -216,7 +293,7 @@
       "main": [
         [
           {
-            "node": "Recherche-Agent",
+            "node": "Recherche-Start markieren",
             "type": "main",
             "index": 0
           }
@@ -236,17 +313,6 @@
           {
             "node": "Recherche-Fehler als Unsicherheit markieren",
             "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Ollama Modell (Qwen3.8:latest)": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Recherche-Agent",
-            "type": "ai_languageModel",
             "index": 0
           }
         ]
@@ -290,6 +356,28 @@
         [
           {
             "node": "Recherche-Ergebnis speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Modell (qwen3.8-agent-128k:latest)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Recherche-Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recherche-Start markieren": {
+      "main": [
+        [
+          {
+            "node": "Recherche-Agent",
             "type": "main",
             "index": 0
           }
