@@ -155,6 +155,31 @@ assert.strictEqual(round2.scoutingBrief.feedbackHistory.length, 1);
 assert.strictEqual(round2.scoutingBrief.feedbackHistory[0].feedback, 'Bitte juengeren Kandidaten vorschlagen.');
 assert.strictEqual(round2.scoutingBrief.role, 'Zielspieler (juenger)');
 
+// 7a. Reviewer-Feedback mit konkretem Alters-/Budgetlimit ("max. 10 Mio.
+// Marktwert") muss laut Prompt von "Spielerprofil LLM" (siehe
+// n8n/ai-sporting-director.json) in playerProfile.constraints landen -
+// hier simuliert durch die dadurch erzeugte LLM-Ausgabe der Folgerunde -
+// und muss von "Scouting Brief erstellen" unveraendert in
+// scoutingBrief.constraints uebernommen werden, damit es downstream (ueber
+// playerProfile.constraints -> Player-Ranking-Anfrage, siehe README.md)
+// tatsaechlich wirksam wird.
+const requestBudgetLimit = evaluateReview(
+  { Entscheidung: 'Request Changes', 'Feedback (Pflicht bei Request Changes)': 'Bitte nur Kandidaten unter 10 Mio. Marktwert vorschlagen.' },
+  round1
+);
+const itemForBudgetRound = {
+  ...requestBudgetLimit,
+  playerProfile: {
+    ...baseItem.playerProfile,
+    constraints: [{ field: 'marketValueMEUR', operator: 'max', value: 10 }]
+  }
+};
+const budgetRound = buildScoutingBrief(itemForBudgetRound);
+assert.strictEqual(budgetRound.scoutingBrief.reviewRound, 2);
+assert.deepStrictEqual(budgetRound.scoutingBrief.constraints, [{ field: 'marketValueMEUR', operator: 'max', value: 10 }]);
+const checkedBudgetRound = checkScoutingBrief(budgetRound);
+assert.strictEqual(checkedBudgetRound.valid, true);
+
 // 8. Dritte Runde erreicht: eine weitere "Request Changes" auf reviewRound 3
 // muss ueber maxRoundsReached zu reviewOutcome 'Reject' gezwungen werden.
 const request2 = evaluateReview(

@@ -227,9 +227,10 @@ das Gate-Muster danach bleibt aber identisch.
     (Liste strukturierter, tatsächlich filterbarer Objekte `{ field:
     'age'|'marketValueMEUR', operator: 'max'|'min', value: <Zahl> }` — nur
     wenn ein konkreter Alters- oder Budget-/Marktwertrahmen aus dem
-    zusätzlichen Kontext ableitbar ist, sonst ein leeres Array statt eines
-    erfundenen Rahmens) und `reasoning` (muss sich auf
-    `teamDiagnosis.mainProblem` beziehen). Gleiches `onError:
+    zusätzlichen Kontext **und/oder** aus einer vorliegenden
+    Reviewer-Rückmeldung (`reviewFeedback`, s. u.) ableitbar ist, sonst ein
+    leeres Array statt eines erfundenen Rahmens) und `reasoning` (muss sich
+    auf `teamDiagnosis.mainProblem` beziehen). Gleiches `onError:
     continueErrorOutput` → **LLM-Fehler normalisieren** wie bei
     **Teamdiagnose LLM**. **Neu:** ist `$json.reviewFeedback` gesetzt (dieser
     Lauf folgt auf eine **Request Changes**-Entscheidung im
@@ -237,8 +238,15 @@ das Gate-Muster danach bleibt aber identisch.
     unten), wird der Prompt um genau dieses Freitext-Feedback ergänzt und das
     LLM angewiesen, Rolle/Kriterien/Constraints/Begründung entsprechend zu
     überarbeiten, ohne den erlaubten Positionspool oder die zulässigen
-    Kriteriennamen zu verletzen; ist `reviewFeedback` leer (Erstlauf), bleibt
-    der Prompt unverändert.
+    Kriteriennamen zu verletzen; die `constraints`-Instruktion nennt
+    `additionalContext` und `reviewFeedback` dabei ausdrücklich als
+    gleichberechtigte, alternative Quellen für einen konkreten
+    Alters-/Budgetwert (z. B. „max. 10 Mio. Marktwert“ oder „nur unter 24“ im
+    Feedback), sodass ein vom Reviewer genanntes Limit zuverlässig ins
+    überarbeitete `playerProfile.constraints` übernommen wird, statt vom
+    Widerspruch zur ursprünglichen, auf `additionalContext` beschränkten
+    Formulierung abzuhängen; ist `reviewFeedback` leer (Erstlauf), bleibt der
+    Prompt unverändert.
 16. **Spielerprofil Output-Schema** (`@n8n/n8n-nodes-langchain.outputParserStructured`)
     — erzwingt den unter 15. genannten JSON-Vertrag für **Spielerprofil
     LLM**, inkl. des strukturierten `constraints`-Objektvertrags.
@@ -727,7 +735,14 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    ohne Feedback-Text, setzt `reviewOutcome` korrekt für `Approve`/`Reject`,
    und erzwingt nach drei erreichten Überarbeitungsrunden `reviewOutcome:
    'Reject'` (`maxRoundsReached: true`) statt eine vierte `Request
-   Changes`-Runde zuzulassen.
+   Changes`-Runde zuzulassen; zusätzlich verifiziert dieselbe Datei, dass ein
+   konkretes Reviewer-Alters-/Budgetlimit aus `reviewFeedback` (z. B. „max.
+   10 Mio. Marktwert“) — simuliert über die dadurch ausgelöste
+   **Spielerprofil LLM**-Folgerunde — unverändert in
+   `playerProfile.constraints` und von dort in `scoutingBrief.constraints`
+   der Folgerunde landet und ein gültiges Brief ergibt, statt am
+   ursprünglichen Widerspruch zwischen der `additionalContext`- und der
+   `reviewFeedback`-Instruktion im Prompt zu scheitern (siehe 15. oben).
    Zusätzlich:
    `node n8n/data/verify-import-architecture.js` (grün) sowie eine
    Konsistenzprüfung aller `n8n/*.json`-Workflow-Dateien (gültiges JSON, keine
@@ -872,6 +887,20 @@ wird der positive Testfall erneut ausgeführt.
     diese über **Fehler anzeigen** statt einer Empfehlung — keine der
     nachfolgenden Stufen (Player-Ranking, Spielersuche, Recherche,
     Empfehlung) wird erreicht.
+14. **Review: Request Changes?** (Reviewer-Alters-/Budgetlimit wird wirksam) —
+    im Formular **Scouting Brief zur Freigabe vorlegen** `Entscheidung` =
+    `Request Changes` waehlen und im `Feedback`-Feld ein konkretes Limit ohne
+    Bezug zum urspruenglichen `additionalContext` angeben (z. B. „bitte nur
+    Kandidaten unter 10 Mio. Marktwert vorschlagen“). **Erwartet:** die
+    Folgerunde von **Spielerprofil LLM** liefert ein `playerProfile.constraints`
+    mit genau diesem Limit (`{ field: 'marketValueMEUR', operator: 'max',
+    value: 10 }`), **Scouting Brief erstellen** übernimmt es unverändert in
+    `scoutingBrief.constraints` der Folgerunde, und nach **Approve** wendet
+    **Player-Ranking-Anfrage vorbereiten**/der Player-Ranking-Subworkflow es
+    tatsächlich an (`appliedConstraints` enthält es, `ignoredConstraints`
+    bleibt leer) — das vom Reviewer genannte Limit darf nicht folgenlos
+    bleiben, nur weil es nicht aus `additionalContext`, sondern aus
+    `reviewFeedback` stammt.
 
 **Ausgeführt (gezielte Node.js-Verifikation):** Fälle 1–8 wurden bereits vor
 dieser Story mit dem inzwischen entfernten Offline-Simulator gegen die
@@ -884,9 +913,16 @@ zur Ablösung dieses Simulators); Fall 9 wurde isoliert mit Node.js gegen
 verifiziert (siehe oben, Abschnitt "Positiver Testfall"); Fall 13 (Reject)
 teilt sich denselben `evaluateReview`-Codepfad wie Fall 12 und wurde dort mit
 verifiziert (`reviewOutcome: 'Reject'` bei direkter Reject-Entscheidung ohne
-`maxRoundsReached`). Nicht ausgeführt: das manuelle Editieren der Nodes bzw.
-Ausfüllen des Freigabe-Formulars und Beobachten der **Executions**-Liste in
-einer laufenden n8n-Instanz — offen für die nächste Person (oder Session) mit
+`maxRoundsReached`); Fall 14 (Reviewer-Alters-/Budgetlimit) wurde für den Teil
+bis einschließlich `scoutingBrief.constraints` ebenfalls isoliert mit Node.js
+in `n8n/data/verify-scouting-brief-review.js` verifiziert (siehe oben) — der
+Teil ab **Player-Ranking-Anfrage vorbereiten** deckt sich mit der bereits
+bestehenden, isolierten Constraint-Filterung des Player-Ranking-Subworkflows
+(siehe unten, Abschnitt „Player-Ranking-Subworkflow: gezielte Tests“) und
+wurde nicht erneut end-to-end durchgespielt. Nicht ausgeführt: das manuelle
+Editieren der Nodes bzw. Ausfüllen des Freigabe-Formulars und Beobachten der
+**Executions**-Liste in einer laufenden n8n-Instanz — offen für die nächste
+Person (oder Session) mit
 interaktivem Zugriff.
 
 ### Negativer Testfall (Validierung des Startformulars)
