@@ -10,7 +10,7 @@ zeigt der Hauptworkflow auf oberster Ebene **nur noch die fachlichen Phasen**
 des Sporting-Director-Ablaufs plus das zentrale Routing/Review (Formulare,
 Validierungs-/Review-Entscheidungen, der eine zentrale Fehlerpfad). Jede
 fachliche Phase (Team analysieren, Scouting Brief erstellen, Kandidaten
-suchen, Due Diligence, Empfehlung erstellen) ist ein eigener,
+suchen, Due Diligence, Empfehlung erstellen, Ergebnis aufbereiten) ist ein eigener,
 in sich abgeschlossener **fachlicher Subworkflow** mit eigenen internen
 Transformationen, Validierungen und Gates — der Hauptworkflow ruft sie über
 je einen **Execute Workflow**-Node auf und hat danach genau **ein** `<Phase>
@@ -21,7 +21,7 @@ verschwunden und nur noch beim Öffnen der jeweiligen Subworkflow-Datei
 sichtbar — der Hauptworkflow selbst liest sich als Business-/Agentenprozess:
 **Detect → Diagnose → Decide → Research → Act**.
 
-Neben den fünf neuen fachlichen Subworkflows bleiben die bereits zuvor
+Neben den sechs neuen fachlichen Subworkflows bleiben die bereits zuvor
 existierenden **rein technischen, nicht-fachlichen** Subworkflows unverändert
 bestehen (weiterhin über **Execute Workflow**-Nodes aufgerufen, jetzt aus den
 fachlichen Subworkflows heraus statt direkt aus dem Hauptworkflow): die
@@ -38,7 +38,8 @@ Insgesamt gilt: **`ai-sporting-director.json`** ist der einzige Hauptworkflow
 in diesem Repository. Alle übrigen `n8n/*.json`-Dateien sind Subworkflows,
 entweder **fachlich** (`team-analysieren-subworkflow.json`,
 `scouting-brief-subworkflow.json`, `kandidaten-suchen-subworkflow.json`,
-`due-diligence-subworkflow.json`, `empfehlung-erstellen-subworkflow.json` —
+`due-diligence-subworkflow.json`, `empfehlung-erstellen-subworkflow.json`,
+`ergebnis-aufbereiten-subworkflow.json` —
 je eine vollständige fachliche Fähigkeit inkl. eigener Validierung/
 Fehlerbehandlung) oder **technisch** (`recherche-subworkflow.json`, die vier
 `analytics-*-subworkflow.json`) — bewusst **keine** Zwischengröße: kein
@@ -103,6 +104,7 @@ Start (Formular)
   → Kandidaten suchen            [Execute Workflow] → Kandidaten suchen gültig?      --nein--> Fehler anzeigen
   → Due Diligence                [Execute Workflow] → Due Diligence gültig?          --nein--> Fehler anzeigen
   → Empfehlung erstellen         [Execute Workflow] → Empfehlung gültig?             --nein--> Fehler anzeigen
+  → Ergebnis aufbereiten          [Execute Workflow] → Ergebnis aufbereiten gültig?  --nein--> Fehler anzeigen
   → Ergebnis anzeigen
 ```
 
@@ -124,7 +126,7 @@ bei `false` in den weiterhin einzigen zentralen Fehlerpfad **Fehler
 anzeigen**. Siehe die Abschnitte je Subworkflow unten für die jeweilige
 interne Gate-Kette.
 
-## Hauptworkflow (`ai-sporting-director.json`, 23 Nodes)
+## Hauptworkflow (`ai-sporting-director.json`, 24 Nodes)
 
 1. **AI Sporting Director beauftragen** (Form Trigger) — unverändert:
    Formular mit `Verein` (Dropdown, alle 18 Bundesliga-Vereine der Saison
@@ -204,31 +206,34 @@ interne Gate-Kette.
     (siehe [Empfehlung erstellen](#empfehlung-erstellen-subworkflow) unten).
     Reichert das Item um `recommendation` sowie `valid`/`errorMessage` an.
 19. **Empfehlung gültig?** (IF, prüft `$json.valid`) — **falsch** →
-    **Fehler anzeigen**; **wahr** → **Ergebnisseiten aufbereiten**.
-20. **Ergebnisseiten aufbereiten** (Code) — unverändert (liest weiterhin
-    `item.teamDiagnosis`/`playerProfile`/`playerSearch`/`research`/
-    `recommendation` — dieselben Feldnamen, jetzt aus den fachlichen
-    Subworkflows statt direkt im Hauptworkflow befüllt): baut
-    `formattedResult`, einen Text, der Teamdiagnose, Spielerprofil,
-    Spielersuche, Recherche und Empfehlung (inkl. `candidateProfile`, falls
-    vorhanden) als klar getrennte Abschnitte darstellt, mit einem Hinweis,
-    welche Abschnitte auf dem CSV-Analytics-Adapter bzw. der
-    LLM-Interpretation beruhen und welche weiterhin vollständig simuliert
-    sind.
-21. **Ergebnis anzeigen** (Form, Completion) — unverändert: zeigt
+    **Fehler anzeigen**; **wahr** → **Execute Workflow: Ergebnis
+    aufbereiten**.
+20. **Execute Workflow: Ergebnis aufbereiten** (Execute Workflow) — ruft den
+    fachlichen Subworkflow
+    [`ergebnis-aufbereiten-subworkflow.json`](./ergebnis-aufbereiten-subworkflow.json)
+    über dessen feste Top-Level-ID `6306c333-15f1-48ed-a006-0d2812a9c7a7` auf
+    (siehe [Ergebnis aufbereiten](#ergebnis-aufbereiten-subworkflow) unten).
+    Kapselt die abschließende, phasenübergreifende Gesamtvalidierung (Final
+    Validation) sowie die Praesentationsaufbereitung (`formattedResult`);
+    liefert bei Erfolg `formattedResult`, sonst nur `valid: false` +
+    `errorMessage` zurück. Der Hauptworkflow selbst enthält damit keine
+    technische Präsentationslogik mehr.
+21. **Ergebnis aufbereiten gültig?** (IF, prüft `$json.valid`) — **falsch** →
+    **Fehler anzeigen**; **wahr** → **Ergebnis anzeigen**.
+22. **Ergebnis anzeigen** (Form, Completion) — unverändert: zeigt
     `formattedResult` an.
-22. **Fehler anzeigen** (Form, Completion) — unverändert der eine zentrale
+23. **Fehler anzeigen** (Form, Completion) — unverändert der eine zentrale
     Fehlerpfad für **alle** Gates: die eingangs- und Human-Review-Gates des
     Hauptworkflows selbst (**Eingabe validieren**, **Review-Entscheidung
     gültig?**, ein **Reject**/ausgeschöpfter Review-Loop über **Scouting
-    Brief: Ablehnung dokumentieren**) sowie die fünf neuen
+    Brief: Ablehnung dokumentieren**) sowie die sechs neuen
     `<Phase> gültig?`-Gates nach jedem Execute-Workflow-Aufruf (**Team
     analysieren gültig?**, **Scouting Brief gültig?**, **Kandidaten suchen
-    gültig?**, **Due Diligence gültig?**, **Empfehlung gültig?**): zeigt
-    `errorMessage` an; ein ungültiges Ergebnis wird nie als fachliche
-    Empfehlung dargestellt.
+    gültig?**, **Due Diligence gültig?**, **Empfehlung gültig?**, **Ergebnis
+    aufbereiten gültig?**): zeigt `errorMessage` an; ein ungültiges Ergebnis
+    wird nie als fachliche Empfehlung dargestellt.
 
-Nodes 4./15./17./19. tragen jeweils die technische Bezeichnung `Execute
+Nodes 4./15./17./19./20. tragen jeweils die technische Bezeichnung `Execute
 Workflow: <Phase>` statt des reinen Phasennamens, um sie im n8n-Editor
 eindeutig vom internen `<Stufe> gültig?`-Gate desselben Subworkflows zu
 unterscheiden (z. B. gibt es sowohl ein Hauptworkflow-Gate **Scouting Brief
@@ -516,11 +521,12 @@ sowie `valid`/`errorMessage`.
 ## Kandidaten suchen (Subworkflow)
 
 [`kandidaten-suchen-subworkflow.json`](./kandidaten-suchen-subworkflow.json)
-(feste Top-Level-ID `803a06a1-fb4b-4cb7-b502-63ab119c9996`, 7 Nodes) kapselt
-den Player-Ranking-Abruf und die Ableitung der Spielersuche/Shortlist.
-Eingang: das Item mit `playerProfile` (aus **Scouting Brief erstellen**) und
-`clubPlayerData` (aus **Auftrag normalisieren**). Ausgang: dasselbe Item,
-angereichert um `playerRanking`, `playerSearch` sowie
+(feste Top-Level-ID `803a06a1-fb4b-4cb7-b502-63ab119c9996`, 11 Nodes) kapselt
+den Player-Ranking-Abruf, den fachlichen Kandidatenvergleich über
+`get_player_profile` und die Ableitung der validierten Spielersuche/
+Shortlist. Eingang: das Item mit `playerProfile` (aus **Scouting Brief
+erstellen**) und `clubPlayerData` (aus **Auftrag normalisieren**). Ausgang:
+dasselbe Item, angereichert um `playerRanking`, `playerSearch` sowie
 `valid`/`errorMessage`.
 
 1. **Player-Ranking-Anfrage vorbereiten** (Code) — übersetzt `playerProfile`
@@ -534,73 +540,133 @@ angereichert um `playerRanking`, `playerSearch` sowie
    `playerProfile.position`/`weightedCriteria`, `limit: 5`.
 2. **Player-Ranking abrufen** (Execute Workflow) — ruft
    [`analytics-player-ranking-subworkflow.json`](./analytics-player-ranking-subworkflow.json)
-   auf (Tool „Player-Ranking", siehe [CSV-Analytics-Adapter](#csv-analytics-adapter))
-   und reichert das Item um `playerRanking` an.
+   auf (Tool „Player-Ranking" / `rank_players`, siehe
+   [CSV-Analytics-Adapter](#csv-analytics-adapter)) und reichert das Item um
+   `playerRanking` an.
 3. **Spielersuche durchführen** (Code) — leitet `longlistSize` und eine
-   `shortlist` von bis zu fünf Kandidaten (`score`, `strengths`,
+   analytische `shortlist` von bis zu fünf Kandidaten (`score`, `strengths`,
    `weaknesses`, `evidence` jeweils aus echten, importierten Spielerwerten
    gegenüber dem Pool-Durchschnitt) aus `playerRanking` ab
    (`playerSearch.simulated: false`). Liefert der Adapter keine Kandidaten,
    bleibt `shortlist` leer statt Kandidaten zu erfinden.
-4. **Spielersuche prüfen** (Code) — prüft `longlistSize > 0`, `shortlist`
-   nichtleer und **höchstens fünf** Kandidaten, sowie dass jeder Kandidat
-   alle Pflichtfelder hat. Prüft zusätzlich, dass
-   `playerRanking.ignoredConstraints` und `playerRanking.ignoredCriteria`
-   leer sind (sonst wurde ein vom Spielerprofil gefordertes Constraint/
-   Kriterium stillschweigend nicht angewendet) sowie dass
-   `playerRanking.positionFallbackApplied` nicht gesetzt ist (sonst wäre die
-   angeforderte Position komplett verlorengegangen und der Pool ungefiltert
-   geblieben).
-5. **Spielersuche gültig?** (IF, **intern**) — **falsch**/**wahr** → jeweils
-   **Kandidaten suchen: Ergebnis** (`valid` ist bereits von 4. gesetzt).
-6. **Kandidaten suchen: Ergebnis** (`n8n-nodes-base.noOp`) — konsolidierter
-   Phase-Ergebnis-Knoten dieser Datei.
+4. **Shortlist vorhanden?** (IF, **intern**) — nur mit nichtleerer,
+   analytisch verfügbarer Shortlist lohnt sich der fachliche Profilabgleich;
+   **falsch** → direkt weiter zu **Spielersuche prüfen** (7., meldet den
+   bestehenden Leer-Shortlist-Fehlerfall); **wahr** → **Kandidaten für
+   Profilabgleich aufteilen**.
+5. **Kandidaten für Profilabgleich aufteilen** (Code) — teilt die analytische
+   Shortlist in ein Item je Kandidat auf (`playerName` = Kandidatenname),
+   damit jeder Kandidat einzeln über `get_player_profile` nachgeschlagen
+   werden kann, statt dieses Tool nur einmal für den bereits feststehenden
+   Sieger aufzurufen (siehe **Empfehlung erstellen** unten).
+6. **Player-Profil je Kandidat abrufen** (Execute Workflow) — ruft
+   [`analytics-player-profile-subworkflow.json`](./analytics-player-profile-subworkflow.json)
+   auf (Tool „Player-Profil" / `get_player_profile`, siehe
+   [CSV-Analytics-Adapter](#csv-analytics-adapter)); läuft je eingehendem
+   Item separat und reichert jedes Item um `playerProfileLookup` **für genau
+   diesen Kandidaten** an.
+7. **Kandidatenvergleich validieren** (Code, `runOnceForAllItems`) — führt
+   den analytischen Rang mit dem fachlichen Spielerprofil je Kandidat
+   zusammen: nur Kandidaten mit gefundenem, fehlerfreiem Profil
+   (`playerProfileLookup.found && !profile.dataError`) gelten als fachlich
+   validiert und bilden die finale `playerSearch.shortlist`
+   (`playerSearch.profileValidated: true`); nicht validierte Kandidaten
+   landen namentlich in `playerSearch.candidatesWithoutValidProfile` und
+   fallen aus der Shortlist. Reichert jeden verbleibenden Kandidaten
+   zusätzlich um `profile` sowie einen CSV-Analytics-Profil-Eintrag in
+   `evidence` an.
+8. **Spielersuche prüfen** (Code) — prüft `longlistSize > 0`, `shortlist`
+   nichtleer und **höchstens fünf** Kandidaten, dass jeder Kandidat alle
+   Pflichtfelder hat und dass `playerSearch.profileValidated` gesetzt ist
+   (sonst wurde die Shortlist nicht über `get_player_profile` fachlich
+   validiert). Prüft zusätzlich, dass `playerRanking.ignoredConstraints` und
+   `playerRanking.ignoredCriteria` leer sind (sonst wurde ein vom
+   Spielerprofil gefordertes Constraint/Kriterium stillschweigend nicht
+   angewendet) sowie dass `playerRanking.positionFallbackApplied` nicht
+   gesetzt ist (sonst wäre die angeforderte Position komplett
+   verlorengegangen und der Pool ungefiltert geblieben).
+9. **Spielersuche gültig?** (IF, **intern**) — **falsch**/**wahr** → jeweils
+   **Kandidaten suchen: Ergebnis** (`valid` ist bereits von 8. gesetzt).
+10. **Kandidaten suchen: Ergebnis** (`n8n-nodes-base.noOp`) — konsolidierter
+    Phase-Ergebnis-Knoten dieser Datei.
 
 ## Due Diligence (Subworkflow)
 
 [`due-diligence-subworkflow.json`](./due-diligence-subworkflow.json) (feste
-Top-Level-ID `c2ffe3ab-e97a-4147-83a8-4fbd1b87eae6`, 5 Nodes) kapselt die
-Recherche zu den Shortlist-Kandidaten. Eingang: das Item mit
+Top-Level-ID `c2ffe3ab-e97a-4147-83a8-4fbd1b87eae6`, 8 Nodes) kapselt die
+Recherche zu den Shortlist-Kandidaten als **echte, je Kandidat unabhängige
+Research-Zweige** mit anschließendem Fan-in. Eingang: das Item mit
 `playerSearch.shortlist` (aus **Kandidaten suchen**). Ausgang: dasselbe Item,
 angereichert um `research` sowie `valid`/`errorMessage`.
 
-1. **Recherche durchführen** (Execute Workflow) — unverändert: ruft den
-   technischen Subworkflow
-   [`recherche-subworkflow.json`](./recherche-subworkflow.json) auf und
-   übergibt das aktuelle Item (inkl. `playerSearch.shortlist`) unverändert
-   weiter (`Passthrough`). Der Subworkflow liefert je Kandidat aus der
-   Shortlist `club`, `contract`, `marketValue`, `injuries` und `news`,
-   jeweils mit `source` (Dummy-Quelle), `timestamp` und `confidence` — siehe
-   [Recherche-Subworkflow](#recherche-subworkflow).
-2. **Recherche prüfen** (Code) — prüft die Kandidatenabdeckung per
+1. **Shortlist vorhanden?** (IF, **intern**) — nur mit nichtleerer Shortlist
+   gibt es Kandidaten für eigene Research-Zweige; **falsch** → direkt weiter
+   zu **Recherche prüfen** (5., meldet den bestehenden `research fehlt`-
+   Fehlerfall); **wahr** → **Kandidaten für Recherche aufteilen**.
+2. **Kandidaten für Recherche aufteilen** (Code) — teilt die validierte
+   Shortlist in ein Item je Kandidat auf (`researchCandidateName`), damit
+   jeder Kandidat einen eigenen, unabhängigen Research-Zweig erhält.
+3. **Recherche je Kandidat durchführen** (Execute Workflow,
+   `onError: continueErrorOutput`) — ruft den technischen Subworkflow
+   [`recherche-subworkflow.json`](./recherche-subworkflow.json) auf; läuft je
+   eingehendem Item (also je Kandidat) als eigener, unabhängiger
+   Research-Zweig. Der Subworkflow liefert für genau diesen Kandidaten
+   `club`, `contract`, `marketValue`, `injuries` und `news`, jeweils mit
+   `source` (Dummy-Quelle), `timestamp` und `confidence` — siehe
+   [Recherche-Subworkflow](#recherche-subworkflow). Schlägt ein einzelner
+   Zweig fehl, läuft er über den zweiten Node-Output (Fehlerausgang) statt
+   die gesamte Due Diligence abzubrechen.
+4. **Recherche-Ergebnisse zusammenführen** (Code, `runOnceForAllItems`,
+   **Fan-in**) — führt alle parallelen Research-Zweige zu einem einzigen
+   `research`-Array zusammen. Ein erfolgreicher Zweig übernimmt Quelle und
+   Konfidenz unverändert (`uncertain: false`); ein fehlgeschlagener Zweig
+   wird **nicht verworfen**, sondern als Unsicherheit am betroffenen
+   Kandidaten erhalten (`uncertain: true`, `confidence: 0`,
+   `uncertaintyReason` mit der Fehlermeldung) statt die gesamte Due Diligence
+   hart ungültig zu machen.
+5. **Recherche prüfen** (Code) — prüft die Kandidatenabdeckung per
    Set-Gleichheit (jeder Shortlist-Name kommt in `research` vor und
    umgekehrt) plus Duplikatprüfung, sodass `research` **genau einen**
-   Eintrag je Shortlist-Kandidat enthält, und dass jeder Eintrag alle
-   Pflichtfelder hat.
-3. **Recherche gültig?** (IF, **intern**) — **falsch**/**wahr** → jeweils
-   **Due Diligence: Ergebnis** (`valid` ist bereits von 2. gesetzt).
-4. **Due Diligence: Ergebnis** (`n8n-nodes-base.noOp`) — konsolidierter
+   Eintrag je Shortlist-Kandidat enthält. Ein als `uncertain` markierter
+   Eintrag muss nur `confidence`/`source`/`timestamp`/`news` (Array) haben;
+   ein erfolgreicher Eintrag muss zusätzlich alle fachlichen Detailfelder
+   (`club`, `contract`, `marketValue`, `injuries`, nichtleere `news`)
+   liefern. Sind **alle** Zweige `uncertain`, gilt das weiterhin als
+   ungültig (keine verwertbare Recherche für die gesamte Shortlist).
+6. **Recherche gültig?** (IF, **intern**) — **falsch**/**wahr** → jeweils
+   **Due Diligence: Ergebnis** (`valid` ist bereits von 5. gesetzt).
+7. **Due Diligence: Ergebnis** (`n8n-nodes-base.noOp`) — konsolidierter
    Phase-Ergebnis-Knoten dieser Datei.
 
 ## Empfehlung erstellen (Subworkflow)
 
 [`empfehlung-erstellen-subworkflow.json`](./empfehlung-erstellen-subworkflow.json)
 (feste Top-Level-ID `7e29c7d7-ef3b-488c-9d1e-2fdd4dad6bf1`, 8 Nodes) kapselt
-die Erzeugung der Empfehlung, die Anreicherung mit dem Kandidatenprofil und
-die abschließende Gesamtvalidierung über den kompletten Ablauf. Eingang: das
-Item mit `teamDiagnosis`, `playerProfile`, `playerSearch`, `research` (aus
-den vorherigen Phasen). Ausgang: dasselbe Item, angereichert um
-`recommendation` sowie `valid`/`errorMessage`.
+die Erzeugung der Empfehlung (unter Einbeziehung der Due-Diligence-Ergebnisse)
+sowie die Anreicherung mit dem Kandidatenprofil. Die phasenübergreifende
+Gesamtvalidierung (Final Validation) und die Präsentationsaufbereitung sind
+**nicht** mehr Teil dieser Datei — sie leben in der eigenständigen Capability
+[Ergebnis aufbereiten](#ergebnis-aufbereiten-subworkflow). Eingang: das Item
+mit `teamDiagnosis`, `playerProfile`, `playerSearch`, `research` (aus den
+vorherigen Phasen). Ausgang: dasselbe Item, angereichert um `recommendation`
+sowie `valid`/`errorMessage`.
 
-1. **Empfehlung erzeugen** (Code) — wählt den Kandidaten mit dem höchsten
-   `score` aus `playerSearch.shortlist` als bevorzugten Kandidaten (damit
-   stammt er per Konstruktion aus der validierten Shortlist), die übrigen
-   Shortlist-Namen werden `alternatives`; dazu `reasoning`, `risks`,
-   `uncertainties`, `nextStep`. Ist `playerRanking.
+1. **Empfehlung erzeugen** (Code) — kombiniert je Kandidat aus
+   `playerSearch.shortlist` den analytischen Fit (`score`, Gewicht 0,6) mit
+   der Transferrealisierbarkeit aus der Due Diligence (`research[].
+   confidence` des Kandidaten, Gewicht 0,4; ein Kandidat ohne erfolgreichen
+   Research-Zweig — `research[].uncertain` — geht mit Feasibility-Score `0`
+   ein) zu einem `combinedScore`. Der Kandidat mit dem höchsten
+   `combinedScore` wird bevorzugter Kandidat (damit stammt er per
+   Konstruktion aus der validierten Shortlist), die übrigen Shortlist-Namen
+   (absteigend nach `combinedScore`) werden `alternatives`; `reasoning` und
+   `risks` zitieren bei erfolgreicher Recherche explizit Vertrag, Marktwert
+   und Verletzungshistorie des Siegers. Ist `playerRanking.
    positionApproximationApplied` gesetzt (angeforderte Position nur grob auf
    eine Positionsgruppe DF/MF/FW/GK angenähert statt exakt gematcht — mit der
-   FBref-Datengrundlage der Regelfall), wird das explizit als zusätzlicher
-   Eintrag in `recommendation.uncertainties` ausgewiesen.
+   FBref-Datengrundlage der Regelfall) oder liegt für den Sieger keine
+   belastbare Recherche vor, wird das explizit als zusätzlicher Eintrag in
+   `recommendation.uncertainties` ausgewiesen.
 2. **Player-Profil-Anfrage vorbereiten** (Code) — setzt `playerName` auf
    `recommendation.candidate`.
 3. **Player-Profil abrufen** (Execute Workflow) — ruft
@@ -612,16 +678,51 @@ den vorherigen Phasen). Ausgang: dasselbe Item, angereichert um
 4. **Empfehlung anreichern** (Code) — setzt `recommendation.candidateProfile`
    auf `playerProfileLookup.profile` (bzw. `null`, falls nicht gefunden),
    ohne die übrigen `recommendation`-Felder zu verändern.
-5. **Final Validation** (Code) — prüft alle vorherigen Stufenergebnisse noch
+5. **Empfehlung technisch prüfen** (Code) — nur ein leichtgewichtiger,
+   struktureller Check dieser Capability: `candidate`, `alternatives`
+   (Array), `reasoning`, `risks` (nichtleeres Array), `uncertainties`
+   (nichtleeres Array) und `nextStep` müssen vorhanden sein. Die tiefere,
+   phasenübergreifende Prüfung (Final Validation) läuft erst in **Ergebnis
+   aufbereiten**.
+6. **Empfehlung technisch gültig?** (IF, **intern**) — **falsch**/**wahr** →
+   jeweils **Empfehlung erstellen: Ergebnis** (`valid` ist bereits von 5.
+   gesetzt).
+7. **Empfehlung erstellen: Ergebnis** (`n8n-nodes-base.noOp`) —
+   konsolidierter Phase-Ergebnis-Knoten dieser Datei.
+
+## Ergebnis aufbereiten (Subworkflow)
+
+[`ergebnis-aufbereiten-subworkflow.json`](./ergebnis-aufbereiten-subworkflow.json)
+(feste Top-Level-ID `6306c333-15f1-48ed-a006-0d2812a9c7a7`, 5 Nodes) kapselt
+die abschließende, phasenübergreifende Gesamtvalidierung (Final Validation)
+und die Präsentationsaufbereitung. Der Hauptworkflow erhält aus dieser
+Capability ausschließlich das validierte Ergebnis (`formattedResult`) bzw.
+einen kontrollierten Fehler (`valid: false` + `errorMessage`) — keine
+technische Präsentationslogik bleibt im Hauptworkflow selbst. Eingang: das
+Item mit `teamDiagnosis`, `playerProfile`, `playerSearch`, `research`,
+`recommendation` (aus allen vorherigen Phasen). Ausgang: dasselbe Item,
+angereichert um `valid`/`errorMessage` sowie (bei Erfolg) `formattedResult`.
+
+1. **Final Validation** (Code) — prüft alle vorherigen Stufenergebnisse noch
    einmal im Zusammenhang (u. a. dass `recommendation.candidate` tatsächlich
    Teil der validierten `playerSearch.shortlist` ist) sowie den vollständigen
    Empfehlungsvertrag: `candidate`, `alternatives` (Array), `reasoning`,
    `risks` (nichtleeres Array), `uncertainties` (nichtleeres Array) und
    `nextStep`. `candidateProfile` ist kein Pflichtfeld dieser Prüfung.
-6. **Final Validation gültig?** (IF, **intern**) — **falsch**/**wahr** →
-   jeweils **Empfehlung erstellen: Ergebnis** (`valid` ist bereits von 5.
-   gesetzt).
-7. **Empfehlung erstellen: Ergebnis** (`n8n-nodes-base.noOp`) —
+2. **Final Validation gültig?** (IF, **intern**) — **falsch** → direkt
+   **Ergebnis aufbereiten: Ergebnis** (`valid` ist bereits von 1. gesetzt);
+   **wahr** → **Ergebnisseiten aufbereiten**.
+3. **Ergebnisseiten aufbereiten** (Code) — liest `item.teamDiagnosis`/
+   `playerProfile`/`playerSearch`/`research`/`recommendation` und baut
+   `formattedResult`, einen Text, der Teamdiagnose, Spielerprofil,
+   Spielersuche, Recherche und Empfehlung (inkl. `candidateProfile`, falls
+   vorhanden) als klar getrennte Abschnitte darstellt, mit einem Hinweis,
+   welche Abschnitte auf dem CSV-Analytics-Adapter bzw. der
+   LLM-Interpretation beruhen und welche weiterhin vollständig simuliert
+   sind. Ein als `uncertain` markierter Recherche-Eintrag wird im
+   Recherche-Abschnitt explizit als fehlgeschlagen/unsicher ausgewiesen statt
+   `null`-Felder auszugeben.
+4. **Ergebnis aufbereiten: Ergebnis** (`n8n-nodes-base.noOp`) —
    konsolidierter Phase-Ergebnis-Knoten dieser Datei.
 
 Die Struktur erlaubt weiterhin, jeden `<Stufe> erzeugen`/`durchführen`-Node
@@ -736,8 +837,11 @@ unten) nicht in Aggregation oder Ranking-Score ein.
    bewusst `playerProfileLookup`, nicht `playerProfile` — Letzteres
    bezeichnet im Scouting-Brief-Subworkflow bereits das simulierte
    Bedarfsprofil, beide Verträge bleiben dadurch unabhängig voneinander
-   stabil. Aufgerufen von **Player-Profil abrufen** in
-   `empfehlung-erstellen-subworkflow.json`.
+   stabil. Aufgerufen von **Player-Profil je Kandidat abrufen** in
+   `kandidaten-suchen-subworkflow.json` (je Shortlist-Kandidat, für den
+   fachlichen Kandidatenvergleich) sowie von **Player-Profil abrufen** in
+   `empfehlung-erstellen-subworkflow.json` (einmal für den bereits gewählten
+   Sieger, zur Anreicherung der Empfehlung).
 
 Die vier Subworkflows lesen die importierten Originalzeilen aus der
 persistenten Data Table `football_scouting_raw` (kein eingebetteter
@@ -748,32 +852,42 @@ CSV-Code) — siehe [`n8n/data/README.md`](./data/README.md) für den Import
 ## Recherche-Subworkflow
 
 [`recherche-subworkflow.json`](./recherche-subworkflow.json) ist ein
-eigenständiger, **technischer** n8n-Workflow mit zwei Nodes, unverändert
-gegenüber der Zeit vor der Restrukturierung:
+eigenständiger, **technischer** n8n-Workflow mit zwei Nodes. Er kapselt
+seit der Due-Diligence-Parallelisierung (siehe
+[Due Diligence](#due-diligence-subworkflow) oben) die Recherche zu **genau
+einem** Kandidaten je Ausführung, statt intern über die gesamte Shortlist zu
+iterieren — der Fan-out/Fan-in über alle Shortlist-Kandidaten passiert jetzt
+im aufrufenden `due-diligence-subworkflow.json`:
 
 1. **Wenn von anderem Workflow aufgerufen** (Execute Workflow Trigger,
    `inputSource: passthrough`) — nimmt das übergebene Item unverändert
    entgegen.
-2. **Recherche-Dummy je Kandidat erzeugen** (Code) — liest
-   `playerSearch.shortlist` aus dem übergebenen Item und erzeugt je
-   Kandidat einen deterministischen Dummy-Rechercheeintrag (`club`,
-   `contract`, `marketValue`, `injuries`, `news`, dazu `source` (immer
-   `"Dummy-Quelle (keine echte Web-/Qlik-Recherche)"`), `timestamp` und
-   `confidence`). Es wird an keiner Stelle eine echte Qlik-Analyse oder
+2. **Recherche-Dummy für Kandidat erzeugen** (Code) — liest
+   `researchCandidateName` aus dem übergebenen Item und erzeugt für **genau
+   diesen einen Kandidaten** einen deterministischen Dummy-Rechercheeintrag
+   (`club`, `contract`, `marketValue`, `injuries`, `news`, dazu `source`
+   (immer `"Dummy-Quelle (keine echte Web-/Qlik-Recherche)"`), `timestamp`
+   und `confidence`) unter `researchResult`. Fehlt `researchCandidateName`,
+   wirft der Node einen Fehler, den der Aufrufer (**Recherche je Kandidat
+   durchführen** in `due-diligence-subworkflow.json`, `onError:
+   continueErrorOutput`) als fehlgeschlagenen, isolierten Research-Zweig
+   dieses einen Kandidaten behandelt, ohne die übrigen Zweige zu
+   beeinträchtigen. Es wird an keiner Stelle eine echte Qlik-Analyse oder
    Websuche behauptet oder simuliert vorgetäuscht — jeder Wert ist
    ausdrücklich als Platzhalter gekennzeichnet.
 
-Aufgerufen von **Recherche durchführen** in
-[`due-diligence-subworkflow.json`](./due-diligence-subworkflow.json) (vor der
-Restrukturierung direkt aus `ai-sporting-director.json`). n8n übernimmt die
-feste Top-Level-ID `802fdb6b-4c0a-413f-952d-250c91ddc476` beim Import
-(`import:workflow`) per Upsert, sodass alle Workflow-Dateien nach dem Import
-ohne manuelle Anpassung verbunden sind — siehe [Import & run](#import--run).
+Aufgerufen von **Recherche je Kandidat durchführen** in
+[`due-diligence-subworkflow.json`](./due-diligence-subworkflow.json), einmal
+separat je Shortlist-Kandidat (vor der Restrukturierung direkt aus
+`ai-sporting-director.json`). n8n übernimmt die feste Top-Level-ID
+`802fdb6b-4c0a-413f-952d-250c91ddc476` beim Import (`import:workflow`) per
+Upsert, sodass alle Workflow-Dateien nach dem Import ohne manuelle Anpassung
+verbunden sind — siehe [Import & run](#import--run).
 
 ## Import & run
 
 1. Open your n8n instance.
-2. Import **alle neun Subworkflows** zuerst — Reihenfolge untereinander egal,
+2. Import **alle elf Subworkflows** zuerst — Reihenfolge untereinander egal,
    nur "vor dem Hauptworkflow" zählt — (**Workflows** → **Add workflow** →
    **Import from File**):
    - die fünf **technischen** Subworkflows:
@@ -782,12 +896,13 @@ ohne manuelle Anpassung verbunden sind — siehe [Import & run](#import--run).
      [`analytics-team-matches-subworkflow.json`](./analytics-team-matches-subworkflow.json),
      [`analytics-player-ranking-subworkflow.json`](./analytics-player-ranking-subworkflow.json),
      [`analytics-player-profile-subworkflow.json`](./analytics-player-profile-subworkflow.json);
-   - die fünf **fachlichen** Subworkflows:
+   - die sechs **fachlichen** Subworkflows:
      [`team-analysieren-subworkflow.json`](./team-analysieren-subworkflow.json),
      [`scouting-brief-subworkflow.json`](./scouting-brief-subworkflow.json),
      [`kandidaten-suchen-subworkflow.json`](./kandidaten-suchen-subworkflow.json),
      [`due-diligence-subworkflow.json`](./due-diligence-subworkflow.json),
-     [`empfehlung-erstellen-subworkflow.json`](./empfehlung-erstellen-subworkflow.json).
+     [`empfehlung-erstellen-subworkflow.json`](./empfehlung-erstellen-subworkflow.json),
+     [`ergebnis-aufbereiten-subworkflow.json`](./ergebnis-aufbereiten-subworkflow.json).
 3. Import [`ai-sporting-director.json`](./ai-sporting-director.json) the
    same way — its Execute-Workflow nodes already reference the subworkflows'
    fixed IDs, so no manual edit is needed there.
@@ -814,6 +929,7 @@ n8n import:workflow --input=n8n/scouting-brief-subworkflow.json
 n8n import:workflow --input=n8n/kandidaten-suchen-subworkflow.json
 n8n import:workflow --input=n8n/due-diligence-subworkflow.json
 n8n import:workflow --input=n8n/empfehlung-erstellen-subworkflow.json
+n8n import:workflow --input=n8n/ergebnis-aufbereiten-subworkflow.json
 n8n import:workflow --input=n8n/ai-sporting-director.json
 ```
 
@@ -844,13 +960,14 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    still fully simulated one (Recherche), and the recommended candidate is
    one of the shortlisted CSV players (not the Hamburger SV squad itself).
    In the n8n **Executions** list the main-workflow run is successful and
-   passes all seven top-level gates (**Eingabe validieren**, **Team
+   passes all eight top-level gates (**Eingabe validieren**, **Team
    analysieren gültig?**, **Scouting Brief gültig?**, **Review-Entscheidung
    gültig?**, **Kandidaten suchen gültig?**, **Due Diligence gültig?**,
-   **Empfehlung gültig?**), plus the routing IF **Review: Approve?** in its
-   true branch; each of the three additional Execute-Workflow calls (**Team
-   analysieren**, **Scouting Brief erstellen**, **Kandidaten suchen**, **Due
-   Diligence**, **Empfehlung erstellen**) shows as its own successful nested
+   **Empfehlung gültig?**, **Ergebnis aufbereiten gültig?**), plus the
+   routing IF **Review: Approve?** in its true branch; each of the six
+   Execute-Workflow calls (**Team analysieren**, **Scouting Brief
+   erstellen**, **Kandidaten suchen**, **Due Diligence**, **Empfehlung
+   erstellen**, **Ergebnis aufbereiten**) shows as its own successful nested
    sub-execution, internally passing its own gates (see the per-subworkflow
    sections above).
 
@@ -899,7 +1016,7 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
 
    Eine eigene JSON-Konsistenzprüfung (siehe
    [Regressionstest: alle Workflow-Dateien sind in sich konsistent](#regressionstest-alle-workflow-dateien-sind-in-sich-konsistent)
-   unten) bestätigt für **alle zwölf** `n8n/*.json`-Dateien: gültiges JSON,
+   unten) bestätigt für **alle dreizehn** `n8n/*.json`-Dateien: gültiges JSON,
    keine doppelten Node-Namen/-IDs innerhalb einer Datei, alle Connections
    referenzieren existierende Nodes, genau ein Trigger-Node je Datei, sowie
    dass keine zwei Nodes derselben Datei dieselbe `position` teilen.
@@ -973,27 +1090,61 @@ positive Testfall erneut ausgeführt.
    bleibt. **Erwartet:** **Spielersuche prüfen** setzt trotz gültiger
    Shortlist `valid: false` mit einer Fehlermeldung, die
    `positionFallbackApplied` nennt.
-4. **Recherche gültig?** (intern in `due-diligence-subworkflow.json`) — im
-   Recherche-Subworkflow `research` auf ein leeres Array setzen. **Erwartet:**
+4. **Recherche gültig?** (intern in `due-diligence-subworkflow.json`) — vor
+   **Due Diligence** `playerSearch.shortlist` auf ein leeres Array setzen.
+   **Erwartet:** **Shortlist vorhanden?** routet direkt zu **Recherche
+   prüfen**, die den Fehlerfall "research fehlt oder ist leer" erkennt;
    Fehlermeldung "Die Recherche ist ungültig …", ausgelöst über **Due
    Diligence gültig?**.
+4a. **Recherche gültig?** (alle Research-Zweige fehlgeschlagen) — im
+   Recherche-Subworkflow (**Recherche-Dummy für Kandidat erzeugen**) für
+   jeden Kandidaten `researchCandidateName` leeren, sodass jeder
+   Research-Zweig über den Fehlerausgang von **Recherche je Kandidat
+   durchführen** läuft. **Erwartet:** **Recherche-Ergebnisse
+   zusammenführen** markiert jeden Kandidaten als `uncertain: true`;
+   **Recherche prüfen** erkennt, dass **alle** Zweige unsicher sind, und
+   setzt trotzdem `valid: false` (keine verwertbare Recherche für die
+   gesamte Shortlist) statt eine Empfehlung ohne jede belastbare Due
+   Diligence durchzulassen.
+4b. **Recherche gültig?** (ein einzelner Zweig fehlgeschlagen, Rest bleibt
+   gültig) — nur für **einen** Kandidaten der Shortlist
+   `researchCandidateName` leeren. **Erwartet:** nur dieser eine
+   Research-Zweig läuft über den Fehlerausgang und wird als `uncertain:
+   true` markiert; die übrigen Zweige bleiben erfolgreich; **Recherche
+   prüfen** akzeptiert das Ergebnis weiterhin als `valid: true` (ein
+   fehlgeschlagener Zweig bleibt Unsicherheit am betroffenen Kandidaten,
+   macht aber nicht die gesamte Due Diligence ungültig); **Empfehlung
+   erzeugen** vergibt diesem Kandidaten anschließend einen
+   Feasibility-Score von `0`.
 5. **Final Validation gültig?** (intern in
-   `empfehlung-erstellen-subworkflow.json`) — in **Empfehlung erzeugen**
-   `recommendation.candidate` auf einen Namen setzen, der nicht Teil der
-   Shortlist ist. **Erwartet:** Fehlermeldung "Die finale Validierung ist
-   fehlgeschlagen …", ausgelöst über **Empfehlung gültig?** (fängt damit auch
-   einen Fehler ab, der die einzelnen Stufen-Gates unbeschädigt durchlaufen
-   hat).
-6. **Recherche gültig?** (Kandidatenabdeckung) — im Recherche-Subworkflow
-   den `research`-Eintrag des letzten Shortlist-Kandidaten durch ein Duplikat
-   des ersten Kandidaten ersetzen. **Erwartet:** **Recherche prüfen** erkennt
-   sowohl das Duplikat als auch den fehlenden Kandidaten und setzt
-   `valid: false`.
+   `ergebnis-aufbereiten-subworkflow.json`) — in **Empfehlung erzeugen**
+   (`empfehlung-erstellen-subworkflow.json`) `recommendation.candidate` auf
+   einen Namen setzen, der nicht Teil der Shortlist ist. **Erwartet:** die
+   leichtgewichtige **Empfehlung technisch gültig?**-Prüfung im
+   `empfehlung-erstellen-subworkflow.json` bleibt `true` (rein struktureller
+   Check), aber **Final Validation** in **Ergebnis aufbereiten** erkennt,
+   dass `recommendation.candidate` nicht Teil der validierten Shortlist ist,
+   und setzt `valid: false`; Fehlermeldung "Die finale Validierung ist
+   fehlgeschlagen …", ausgelöst über das Hauptworkflow-Gate **Ergebnis
+   aufbereiten gültig?** (fängt damit auch einen Fehler ab, der die
+   einzelnen Stufen-Gates unbeschädigt durchlaufen hat).
+6. **Recherche gültig?** (Kandidatenabdeckung) — in **Kandidaten für
+   Recherche aufteilen** (`due-diligence-subworkflow.json`) den Fan-out so
+   verändern, dass für den letzten Shortlist-Kandidaten kein eigenes Item
+   entsteht, sondern stattdessen ein zweites Item für den ersten Kandidaten.
+   **Erwartet:** **Recherche prüfen** erkennt sowohl das Duplikat als auch
+   den fehlenden Kandidaten und setzt `valid: false`.
 7. **Final Validation gültig?** (vollständiger Empfehlungsvertrag) — in
    **Empfehlung erzeugen** einzeln `alternatives`, `risks` bzw.
    `uncertainties` aus der Empfehlung entfernen oder auf ein leeres Array
-   setzen. **Erwartet:** **Final Validation** setzt in jedem der drei Fälle
-   `valid: false`.
+   setzen. **Erwartet:** **Empfehlung technisch gültig?**
+   (`empfehlung-erstellen-subworkflow.json`) erkennt bereits denselben
+   fehlenden Pflicht-Vertrag und setzt `valid: false`, ausgelöst über das
+   Hauptworkflow-Gate **Empfehlung gültig?** (Ergebnis aufbereiten wird in
+   diesem Fall gar nicht mehr erreicht); **Final Validation** in **Ergebnis
+   aufbereiten** prüft denselben Vertrag zusätzlich noch einmal
+   phasenübergreifend ab, für den Fall, dass ein künftiger Ersatz von
+   **Empfehlung erzeugen** die leichtgewichtige Prüfung umgeht.
 8. **Spielerprofil gültig?** (Positions-/Diagnose-Konsistenz) —
    **Spielerprofil LLM** liefert eine `position` außerhalb des durch
    `teamDiagnosis.diagnosisCategory` vorgegebenen Pools. **Erwartet:**
@@ -1041,9 +1192,11 @@ positive Testfall erneut ausgeführt.
     Player-Ranking-Subworkflow (jetzt in `kandidaten-suchen-subworkflow.json`)
     es tatsaechlich an.
 
-**Ausgeführt (gezielte Node.js-Verifikation):** Fälle 1–8 wurden isoliert
-gegen die 1:1 aus den jeweiligen Subworkflow-Dateien übernommenen
-Code-Node-Funktionen verifiziert (siehe „Positiver Testfall" oben); Fall 9
+**Ausgeführt (gezielte Node.js-Verifikation):** Fälle 1–8 (inkl. 3a–3c,
+4a–4b) wurden isoliert gegen die 1:1 aus den jeweiligen Subworkflow-Dateien
+übernommenen Code-Node-Funktionen verifiziert (siehe „Positiver Testfall"
+oben, sowie die Simulation der neuen Fan-out-/Fan-in-Nodes in **Kandidaten
+suchen** und **Due Diligence**); Fall 9
 wurde isoliert mit Node.js gegen **Teamdiagnose: Datengrundlage prüfen**
 verifiziert; die Fälle 10–12 wurden isoliert mit Node.js gegen die 1:1 aus
 `scouting-brief-subworkflow.json`/`ai-sporting-director.json` übernommenen
@@ -1070,23 +1223,28 @@ angezeigt.
 
 ### Regressionstest: alle Workflow-Dateien sind in sich konsistent
 
-Der Hauptworkflow (`ai-sporting-director.json`, 23 Nodes) trägt seit der
+Der Hauptworkflow (`ai-sporting-director.json`, 24 Nodes) trägt seit der
 Restrukturierung nur noch die **fachlichen Phasen plus zentrales
-Routing/Review** der HSV-Formular-Story; die fünf **fachlichen**
+Routing/Review** der HSV-Formular-Story; die sechs **fachlichen**
 Subworkflow-Dateien (`team-analysieren-subworkflow.json`, 16 Nodes;
 `scouting-brief-subworkflow.json`, 13 Nodes; `kandidaten-suchen-subworkflow.json`,
-7 Nodes; `due-diligence-subworkflow.json`, 5 Nodes;
-`empfehlung-erstellen-subworkflow.json`, 8 Nodes) tragen die technischen
+11 Nodes; `due-diligence-subworkflow.json`, 8 Nodes;
+`empfehlung-erstellen-subworkflow.json`, 8 Nodes;
+`ergebnis-aufbereiten-subworkflow.json`, 5 Nodes) tragen die technischen
 Details je fachlicher Fähigkeit; die fünf **technischen** Subworkflow-Dateien
-(Recherche + die vier CSV-Analytics-Tools) bleiben unverändert bestehen.
-Beim Import (alle neun Subworkflows zuerst, `n8n/ai-sporting-director.json`
+(Recherche + die vier CSV-Analytics-Tools) bleiben strukturell (Tool-Verträge,
+feste IDs) unverändert bestehen — bis auf `recherche-subworkflow.json`, das
+seit der Due-Diligence-Parallelisierung nur noch einen einzelnen Kandidaten je
+Ausführung verarbeitet (siehe [Recherche-Subworkflow](#recherche-subworkflow)
+oben).
+Beim Import (alle elf Subworkflows zuerst, `n8n/ai-sporting-director.json`
 danach, siehe [Import & run](#import--run)) öffnet sich der Hauptworkflow mit
-den 23 oben beschriebenen Nodes; jeder fachliche Subworkflow öffnet sich mit
+den 24 oben beschriebenen Nodes; jeder fachliche Subworkflow öffnet sich mit
 seinen eigenen Nodes (siehe die jeweiligen Abschnitte oben); jeder der fünf
-technischen Subworkflows öffnet sich unveraendert mit seinen bisherigen
-Nodes.
+technischen Subworkflows öffnet sich mit seinen (bei `recherche-subworkflow.json`
+angepassten) Nodes.
 
-Alle zwölf Workflow-Dateien wurden außerhalb von n8n als wohlgeformtes JSON
+Alle dreizehn Workflow-Dateien wurden außerhalb von n8n als wohlgeformtes JSON
 mit eindeutigen Node-Namen/-IDs innerhalb jeder Datei, Connections, die
 ausschließlich existierende Nodes referenzieren, jeweils genau einem
 erwarteten Trigger-Node (Form Trigger bzw. Execute Workflow Trigger) und
@@ -1186,9 +1344,10 @@ jeweilige Node aktuell liegt (siehe die Abschnitte oben).
 
 `ai-sporting-director.json` ist damit weiterhin der einzige Hauptworkflow in
 diesem Repository. Alle übrigen `n8n/*.json`-Dateien sind Subworkflows: die
-fünf fachlichen Subworkflows (`team-analysieren-subworkflow.json`,
+sechs fachlichen Subworkflows (`team-analysieren-subworkflow.json`,
 `scouting-brief-subworkflow.json`, `kandidaten-suchen-subworkflow.json`,
-`due-diligence-subworkflow.json`, `empfehlung-erstellen-subworkflow.json`)
+`due-diligence-subworkflow.json`, `empfehlung-erstellen-subworkflow.json`,
+`ergebnis-aufbereiten-subworkflow.json`)
 sowie die fünf technischen Subworkflows (`recherche-subworkflow.json` und die
 vier `analytics-*-subworkflow.json`-Dateien des
 [CSV-Analytics-Adapters](#csv-analytics-adapter)) — zusammen mit

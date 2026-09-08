@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst shortlist = item.playerSearch.shortlist;\nconst best = [...shortlist].sort((a, b) => b.score - a.score)[0];\nconst alternatives = shortlist.filter((c) => c.name !== best.name).map((c) => c.name);\n\nconst uncertainties = [\n  'Empfehlung basiert vollstaendig auf simulierten Daten, keine echte Qlik-/Web-Recherche.'\n];\n// 'Spielersuche pruefen' (im Subworkflow \"Kandidaten suchen\") blockt bereits\n// den kompletten Fallback auf einen ungefilterten Pool\n// (positionFallbackApplied). Ein grober Positionsgruppen-Match (DF/MF/FW/GK\n// statt der exakt angeforderten Position, siehe\n// analytics-player-ranking-subworkflow.json posMatch()) ist dagegen mit der\n// FBref-Datengrundlage die Regel und wird deshalb nicht geblockt, aber hier\n// explizit als Unsicherheit ausgewiesen statt stillschweigend uebernommen.\nif (item.playerRanking && item.playerRanking.positionApproximationApplied) {\n  uncertainties.push('Die angeforderte Position (' + (item.playerRanking.position || item.playerProfile.position) + ') konnte im Kandidatenpool nur grob auf eine Positionsgruppe (DF/MF/FW/GK) angenaehert werden, kein exakter Positionsabgleich.');\n}\n\nconst recommendation = {\n  simulated: true,\n  candidate: best.name,\n  alternatives,\n  reasoning: `Simulierte Begruendung: ${best.name} hat in der simulierten Spielersuche den hoechsten Score (${best.score}).`,\n  risks: [\n    'Simuliertes Risiko, das bei einer echten Analyse zu pruefen waere',\n    'Simuliertes Risiko aus der noch unvollstaendigen echten Recherche'\n  ],\n  uncertainties,\n  nextStep: 'Naechster Schritt: die Dummy-Stufen schrittweise durch die echte AI-, Qlik- und Web-Anbindung ersetzen.'\n};\n\nreturn [{ json: { ...item, recommendation } }];"
+        "jsCode": "const item = $input.item.json;\nconst shortlist = item.playerSearch.shortlist;\nconst research = Array.isArray(item.research) ? item.research : [];\nconst researchByCandidate = new Map(research.map((r) => [r.candidate, r]));\n\n// Kombiniert analytischen Fit (playerSearch.shortlist[].score aus dem\n// CSV-Analytics-Ranking) mit Transferrealisierbarkeit aus der Due Diligence\n// (research[].confidence als Mass fuer die Belastbarkeit der Recherche; ein\n// Kandidat ohne erfolgreichen Research-Zweig - research[].uncertain - gilt\n// als schwer beurteilbar, weil vertragliche/marktwertbezogene Fakten fehlen).\n// Ein reiner Analytics-Score wuerde Transferrealisierbarkeit vollstaendig\n// ignorieren - das widerspraeche dem Checklist-Ziel \"analytischen Fit und\n// Transferrealisierbarkeit zusammenfuehren\".\nconst ANALYTICS_WEIGHT = 0.6;\nconst FEASIBILITY_WEIGHT = 0.4;\n\nconst evaluated = shortlist.map((candidate) => {\n  const r = researchByCandidate.get(candidate.name) || null;\n  const feasibilityScore = (r && !r.uncertain && typeof r.confidence === 'number') ? r.confidence * 100 : 0;\n  const combinedScore = (ANALYTICS_WEIGHT * candidate.score) + (FEASIBILITY_WEIGHT * feasibilityScore);\n  return { candidate, research: r, feasibilityScore, combinedScore };\n});\n\nconst ranked = [...evaluated].sort((a, b) => b.combinedScore - a.combinedScore);\nconst bestEntry = ranked[0];\nconst best = bestEntry.candidate;\nconst bestResearch = bestEntry.research;\nconst alternatives = ranked.slice(1).map((e) => e.candidate.name);\n\nconst uncertainties = [\n  'Empfehlung basiert vollstaendig auf simulierten Recherche-Daten, keine echte Web-Recherche.'\n];\n// 'Spielersuche pruefen' (im Subworkflow \"Kandidaten suchen\") blockt bereits\n// den kompletten Fallback auf einen ungefilterten Pool\n// (positionFallbackApplied). Ein grober Positionsgruppen-Match (DF/MF/FW/GK\n// statt der exakt angeforderten Position, siehe\n// analytics-player-ranking-subworkflow.json posMatch()) ist dagegen mit der\n// FBref-Datengrundlage die Regel und wird deshalb nicht geblockt, aber hier\n// explizit als Unsicherheit ausgewiesen statt stillschweigend uebernommen.\nif (item.playerRanking && item.playerRanking.positionApproximationApplied) {\n  uncertainties.push('Die angeforderte Position (' + (item.playerRanking.position || item.playerProfile.position) + ') konnte im Kandidatenpool nur grob auf eine Positionsgruppe (DF/MF/FW/GK) angenaehert werden, kein exakter Positionsabgleich.');\n}\nif (!bestResearch || bestResearch.uncertain) {\n  uncertainties.push(`Fuer den bevorzugten Kandidaten ${best.name} liegt keine belastbare Due-Diligence-Recherche vor (Research-Zweig als Unsicherheit markiert) - die Transferrealisierbarkeit ist ungeprueft.`);\n} else if (typeof bestResearch.confidence === 'number' && bestResearch.confidence < 0.5) {\n  uncertainties.push(`Die Due-Diligence-Recherche zu ${best.name} hat eine niedrige Konfidenz (${bestResearch.confidence}).`);\n}\n\nconst risks = ['Simuliertes Risiko, das bei einer echten Analyse zu pruefen waere'];\nif (bestResearch && !bestResearch.uncertain) {\n  risks.push(`Vertragslage laut Due Diligence: ${bestResearch.contract}. Marktwert: ${bestResearch.marketValue}. Verletzungshistorie: ${bestResearch.injuries}.`);\n} else {\n  risks.push('Simuliertes Risiko aus einer fehlgeschlagenen bzw. unvollstaendigen Due-Diligence-Recherche');\n}\n\nconst reasoning = (bestResearch && !bestResearch.uncertain)\n  ? `${best.name} kombiniert den besten analytischen Fit (Score ${best.score}) mit der hoechsten Transferrealisierbarkeit laut Due Diligence (Konfidenz ${bestResearch.confidence}, ${bestResearch.club}, ${bestResearch.contract}).`\n  : `${best.name} hat unter den Kandidaten mit belastbarer Due-Diligence-Recherche den besten kombinierten Fit aus analytischem Score (${best.score}) und Transferrealisierbarkeit (Due-Diligence-Konfidenz ${bestResearch ? bestResearch.confidence : 0}).`;\n\nconst recommendation = {\n  simulated: true,\n  candidate: best.name,\n  alternatives,\n  reasoning,\n  risks,\n  uncertainties,\n  nextStep: 'Naechster Schritt: die Dummy-Stufen schrittweise durch die echte AI-, Qlik- und Web-Anbindung ersetzen.'\n};\n\nreturn [{ json: { ...item, recommendation } }];"
       },
       "id": "3b16c55f-b9b3-402c-986d-39a9273a96d6",
       "name": "Empfehlung erzeugen",
@@ -78,10 +78,10 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst errors = [];\n\nconst d = item.teamDiagnosis;\nif (!d || !d.mainProblem) errors.push('teamDiagnosis.mainProblem fehlt in der finalen Pruefung.');\n\nconst p = item.playerProfile;\nif (!p || !p.position || !p.role) errors.push('playerProfile.position/role fehlt in der finalen Pruefung.');\n\nconst s = item.playerSearch;\nconst shortlistNames = (s && Array.isArray(s.shortlist)) ? s.shortlist.map((c) => c.name) : [];\nif (!s || shortlistNames.length === 0) errors.push('playerSearch.shortlist fehlt in der finalen Pruefung.');\n\nconst research = item.research;\nif (!Array.isArray(research) || research.length === 0) errors.push('research fehlt in der finalen Pruefung.');\n\nconst r = item.recommendation;\nif (!r || !r.candidate) {\n  errors.push('recommendation.candidate fehlt in der finalen Pruefung.');\n} else if (!shortlistNames.includes(r.candidate)) {\n  errors.push('recommendation.candidate stammt nicht aus der validierten Shortlist.');\n}\nif (!r || !Array.isArray(r.alternatives)) errors.push('recommendation.alternatives fehlt in der finalen Pruefung.');\nif (!r || !r.reasoning) errors.push('recommendation.reasoning fehlt in der finalen Pruefung.');\nif (!r || !Array.isArray(r.risks) || r.risks.length === 0) errors.push('recommendation.risks fehlt oder ist leer in der finalen Pruefung.');\nif (!r || !Array.isArray(r.uncertainties) || r.uncertainties.length === 0) errors.push('recommendation.uncertainties fehlt oder ist leer in der finalen Pruefung.');\nif (!r || !r.nextStep) errors.push('recommendation.nextStep fehlt in der finalen Pruefung.');\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die finale Validierung ist fehlgeschlagen, es wird keine fachliche Empfehlung angezeigt.\\n\\n' + errors.join('\\n')\n  }\n}];"
+        "jsCode": "const item = $input.item.json;\nconst r = item.recommendation;\nconst errors = [];\n\n// Nur ein leichtgewichtiger, technischer Struktur-Check dieser Capability\n// (\"hat 'Empfehlung erzeugen' ueberhaupt eine schema-gueltige Empfehlung\n// geliefert?\"). Die fachlich uebergreifende Gesamtvalidierung (Teamdiagnose,\n// Spielerprofil, Shortlist, Recherche UND diese Empfehlung zusammen) ist\n// bewusst Teil der eigenstaendigen \"Ergebnis aufbereiten\"-Capability\n// (n8n/ergebnis-aufbereiten-subworkflow.json), die auch die\n// Praesentationsausgabe kapselt - siehe n8n/README.md.\nif (!r || !r.candidate) errors.push('recommendation.candidate fehlt.');\nif (!r || !Array.isArray(r.alternatives)) errors.push('recommendation.alternatives fehlt.');\nif (!r || !r.reasoning) errors.push('recommendation.reasoning fehlt.');\nif (!r || !Array.isArray(r.risks) || r.risks.length === 0) errors.push('recommendation.risks fehlt oder ist leer.');\nif (!r || !Array.isArray(r.uncertainties) || r.uncertainties.length === 0) errors.push('recommendation.uncertainties fehlt oder ist leer.');\nif (!r || !r.nextStep) errors.push('recommendation.nextStep fehlt.');\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die Empfehlung ist technisch ungueltig.\\n\\n' + errors.join('\\n')\n  }\n}];"
       },
-      "id": "eadba09a-500d-463c-a41c-32450750710e",
-      "name": "Final Validation",
+      "id": "c3c08ae4-37e9-4f6c-814a-a809c92a550d",
+      "name": "Empfehlung technisch pruefen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -100,7 +100,7 @@
           },
           "conditions": [
             {
-              "id": "3fbae35f-932a-483e-b7f0-57074e39a01c",
+              "id": "1d4e1ed6-cond-1",
               "leftValue": "={{ $json.valid }}",
               "rightValue": true,
               "operator": {
@@ -114,8 +114,8 @@
         },
         "options": {}
       },
-      "id": "f3b1e405-9784-44f3-bf75-be17ae5f6256",
-      "name": "Final Validation gueltig?",
+      "id": "1d4e1ed6-1ff5-42d3-b121-8dda019195ca",
+      "name": "Empfehlung technisch gueltig?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
@@ -133,7 +133,7 @@
         1780,
         180
       ],
-      "notes": "Konsolidierter Phase-Ergebnis-Knoten dieser Subworkflow-Datei (siehe n8n/README.md): liefert recommendation + valid + errorMessage (bereits von 'Final Validation' gesetzt) an den Hauptworkflow zurueck.",
+      "notes": "Konsolidierter Phase-Ergebnis-Knoten dieser Subworkflow-Datei (siehe n8n/README.md): liefert recommendation + valid + errorMessage (bereits von 'Empfehlung technisch pruefen' gesetzt) an den Hauptworkflow zurueck. Die fachlich uebergreifende Gesamtvalidierung (Final Validation) laeuft erst in der nachgelagerten Capability 'Ergebnis aufbereiten'.",
       "notesInFlow": false
     }
   ],
@@ -186,25 +186,25 @@
       "main": [
         [
           {
-            "node": "Final Validation",
+            "node": "Empfehlung technisch pruefen",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Final Validation": {
+    "Empfehlung technisch pruefen": {
       "main": [
         [
           {
-            "node": "Final Validation gueltig?",
+            "node": "Empfehlung technisch gueltig?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Final Validation gueltig?": {
+    "Empfehlung technisch gueltig?": {
       "main": [
         [
           {

@@ -17,6 +17,55 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "11993539-cond-1",
+              "leftValue": "={{ Array.isArray($json.playerSearch && $json.playerSearch.shortlist) && $json.playerSearch.shortlist.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "11993539-567c-4568-80e3-bb10f22458d1",
+      "name": "Shortlist vorhanden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ],
+      "notesInFlow": false,
+      "notes": "Nur mit einer nicht-leeren Shortlist gibt es Kandidaten, fuer die parallele Research-Zweige aufgemacht werden koennen. Bleibt sie leer, geht das Item direkt an 'Recherche pruefen', die den bereits vorhandenen Fehlerfall (research fehlt) unveraendert meldet."
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst shortlist = item.playerSearch.shortlist;\n\n// Teilt die validierte Shortlist in ein Item je Kandidat auf, damit jeder\n// Kandidat einen eigenen, unabhaengigen Research-Zweig erhaelt (naechste\n// Nodes: 'Recherche je Kandidat durchfuehren' laeuft separat je Item).\nreturn shortlist.map((candidate) => ({\n  json: {\n    ...item,\n    researchCandidateName: candidate.name\n  }\n}));"
+      },
+      "id": "f1877233-d35f-4255-a30b-d8a7fee815d1",
+      "name": "Kandidaten fuer Recherche aufteilen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        180
+      ]
+    },
+    {
+      "parameters": {
         "source": "database",
         "workflowId": {
           "__rl": true,
@@ -26,28 +75,42 @@
         },
         "options": {}
       },
-      "id": "935367ba-dd5d-4930-8ea9-5fb23ff9a874",
-      "name": "Recherche durchfuehren",
+      "id": "1ff7c055-5a41-4702-ba2a-531b4f7a024e",
+      "name": "Recherche je Kandidat durchfuehren",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
+      "onError": "continueErrorOutput",
       "position": [
-        460,
+        900,
         180
       ],
       "notesInFlow": false,
-      "notes": "Ruft den technischen Subworkflow n8n/recherche-subworkflow.json auf (einzige erlaubte Ausnahme vom Grundsatz 'kein neuer Hauptworkflow'). Referenziert dessen feste Top-Level-ID 802fdb6b-4c0a-413f-952d-250c91ddc476; n8n uebernimmt diese ID beim Import (import:workflow) unveraendert, sodass beide Workflows nach dem Import ohne manuelle Anpassung verbunden sind."
+      "notes": "Ruft den technischen Subworkflow n8n/recherche-subworkflow.json auf (einzige erlaubte Ausnahme vom Grundsatz 'kein neuer Hauptworkflow'). Referenziert dessen feste Top-Level-ID 802fdb6b-4c0a-413f-952d-250c91ddc476; n8n uebernimmt diese ID beim Import (import:workflow) unveraendert. Laeuft je eingehendem Item (also je Kandidat) als eigener, unabhaengiger Research-Zweig. onError: continueErrorOutput sorgt dafuer, dass ein fehlgeschlagener Zweig als Unsicherheit am betroffenen Kandidaten erhalten bleibt (zweiter Output, siehe 'Recherche-Ergebnisse zusammenfuehren') statt die gesamte Due Diligence hart abzubrechen."
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst research = item.research;\nconst shortlistNames = (item.playerSearch && Array.isArray(item.playerSearch.shortlist))\n  ? item.playerSearch.shortlist.map((c) => c.name)\n  : [];\nconst errors = [];\n\nif (!Array.isArray(research) || research.length === 0) {\n  errors.push('research fehlt oder ist leer.');\n} else {\n  const researchedNames = research.map((r) => r.candidate).filter((name) => !!name);\n  const uniqueResearchedNames = new Set(researchedNames);\n  const shortlistSet = new Set(shortlistNames);\n\n  if (researchedNames.length !== uniqueResearchedNames.size) {\n    errors.push('research enthaelt denselben Kandidaten mehrfach.');\n  }\n  const missing = shortlistNames.filter((name) => !uniqueResearchedNames.has(name));\n  if (missing.length > 0) {\n    errors.push(`research deckt folgende Shortlist-Kandidaten nicht ab: ${missing.join(', ')}.`);\n  }\n  const unexpected = [...uniqueResearchedNames].filter((name) => !shortlistSet.has(name));\n  if (unexpected.length > 0) {\n    errors.push(`research enthaelt Kandidaten ausserhalb der Shortlist: ${unexpected.join(', ')}.`);\n  }\n\n  research.forEach((r, idx) => {\n    if (!r.candidate || !shortlistSet.has(r.candidate)) errors.push(`research[${idx}].candidate fehlt oder ist nicht Teil der Shortlist.`);\n    if (!r.club) errors.push(`research[${idx}].club (Verein) fehlt.`);\n    if (!r.contract) errors.push(`research[${idx}].contract (Vertrag) fehlt.`);\n    if (!r.marketValue) errors.push(`research[${idx}].marketValue (Marktwert) fehlt.`);\n    if (!r.injuries) errors.push(`research[${idx}].injuries (Verletzungen) fehlt.`);\n    if (!Array.isArray(r.news) || r.news.length === 0) errors.push(`research[${idx}].news (Meldungen) fehlt oder ist leer.`);\n    if (!r.source) errors.push(`research[${idx}].source (Dummy-Quelle) fehlt.`);\n    if (!r.timestamp) errors.push(`research[${idx}].timestamp (Zeitpunkt) fehlt.`);\n    if (typeof r.confidence !== 'number') errors.push(`research[${idx}].confidence (Konfidenz) fehlt oder ist keine Zahl.`);\n  });\n}\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die Recherche ist ungueltig und wird nicht fuer die Empfehlung verwendet.\\n\\n' + errors.join('\\n')\n  }\n}];"
+        "jsCode": "const items = $input.all();\nconst contextItem = items.find((it) => it.json && it.json.playerSearch) || items[0];\nconst context = { ...(contextItem ? contextItem.json : {}) };\ndelete context.researchCandidateName;\ndelete context.researchResult;\n\n// Fan-in der parallelen Research-Zweige (ein Zweig je Kandidat, siehe\n// 'Recherche je Kandidat durchfuehren'). Ein erfolgreicher Zweig liefert\n// researchResult mit Quelle/Konfidenz; ein fehlgeschlagener Zweig laeuft ueber\n// den Execute-Workflow-Fehlerausgang ein und wird hier NICHT verworfen,\n// sondern als Unsicherheit (uncertain: true, confidence 0) am betroffenen\n// Kandidaten erhalten, statt die komplette Due Diligence hart ungueltig zu\n// machen.\nconst research = items.map((it) => {\n  const j = it.json || {};\n  if (j.researchResult) {\n    return { ...j.researchResult, uncertain: false, uncertaintyReason: null };\n  }\n\n  const candidateName = j.researchCandidateName\n    || (j.rankingCandidate && j.rankingCandidate.name)\n    || 'unbekannter Kandidat';\n  const reason = (j.error && (j.error.message || j.error)) || 'Der Research-Zweig fuer diesen Kandidaten ist fehlgeschlagen.';\n\n  return {\n    candidate: candidateName,\n    club: null,\n    contract: null,\n    marketValue: null,\n    injuries: null,\n    news: [],\n    source: 'Recherche fehlgeschlagen (keine Quelle verfuegbar)',\n    timestamp: new Date().toISOString(),\n    confidence: 0,\n    uncertain: true,\n    uncertaintyReason: reason\n  };\n});\n\nreturn [{ json: { ...context, research } }];"
+      },
+      "id": "5c6294f2-c7dd-4df2-8815-0a7d5b13ff4c",
+      "name": "Recherche-Ergebnisse zusammenfuehren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst research = item.research;\nconst shortlistNames = (item.playerSearch && Array.isArray(item.playerSearch.shortlist))\n  ? item.playerSearch.shortlist.map((c) => c.name)\n  : [];\nconst errors = [];\n\nif (!Array.isArray(research) || research.length === 0) {\n  errors.push('research fehlt oder ist leer.');\n} else {\n  const researchedNames = research.map((r) => r.candidate).filter((name) => !!name);\n  const uniqueResearchedNames = new Set(researchedNames);\n  const shortlistSet = new Set(shortlistNames);\n\n  if (researchedNames.length !== uniqueResearchedNames.size) {\n    errors.push('research enthaelt denselben Kandidaten mehrfach.');\n  }\n  const missing = shortlistNames.filter((name) => !uniqueResearchedNames.has(name));\n  if (missing.length > 0) {\n    errors.push(`research deckt folgende Shortlist-Kandidaten nicht ab: ${missing.join(', ')}.`);\n  }\n  const unexpected = [...uniqueResearchedNames].filter((name) => !shortlistSet.has(name));\n  if (unexpected.length > 0) {\n    errors.push(`research enthaelt Kandidaten ausserhalb der Shortlist: ${unexpected.join(', ')}.`);\n  }\n\n  research.forEach((r, idx) => {\n    if (!r.candidate || !shortlistSet.has(r.candidate)) errors.push(`research[${idx}].candidate fehlt oder ist nicht Teil der Shortlist.`);\n    if (typeof r.confidence !== 'number') errors.push(`research[${idx}].confidence (Konfidenz) fehlt oder ist keine Zahl.`);\n    if (!r.source) errors.push(`research[${idx}].source (Quelle) fehlt.`);\n    if (!r.timestamp) errors.push(`research[${idx}].timestamp (Zeitpunkt) fehlt.`);\n    if (!Array.isArray(r.news)) errors.push(`research[${idx}].news (Meldungen) ist kein Array.`);\n\n    // Ein fehlgeschlagener Research-Zweig bleibt als Unsicherheit am\n    // Kandidaten erhalten (r.uncertain = true) statt die gesamte Due\n    // Diligence hart ungueltig zu machen - nur ein erfolgreicher Zweig muss\n    // die vollen fachlichen Detailfelder liefern.\n    if (!r.uncertain) {\n      if (!r.club) errors.push(`research[${idx}].club (Verein) fehlt.`);\n      if (!r.contract) errors.push(`research[${idx}].contract (Vertrag) fehlt.`);\n      if (!r.marketValue) errors.push(`research[${idx}].marketValue (Marktwert) fehlt.`);\n      if (!r.injuries) errors.push(`research[${idx}].injuries (Verletzungen) fehlt.`);\n      if (Array.isArray(r.news) && r.news.length === 0) errors.push(`research[${idx}].news (Meldungen) ist leer.`);\n    }\n  });\n\n  if (research.length > 0 && research.every((r) => r.uncertain)) {\n    errors.push('Fuer keinen Kandidaten der Shortlist konnte eine Recherche erfolgreich durchgefuehrt werden (alle Research-Zweige sind als Unsicherheit markiert).');\n  }\n}\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die Recherche ist ungueltig und wird nicht fuer die Empfehlung verwendet.\\n\\n' + errors.join('\\n')\n  }\n}];"
       },
       "id": "1afa764e-232e-40fd-b760-fabc4644e349",
       "name": "Recherche pruefen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        680,
-        180
+        1340,
+        300
       ]
     },
     {
@@ -80,8 +143,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        900,
-        180
+        1560,
+        300
       ]
     },
     {
@@ -91,8 +154,8 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        1120,
-        180
+        1780,
+        300
       ],
       "notes": "Konsolidierter Phase-Ergebnis-Knoten dieser Subworkflow-Datei (siehe n8n/README.md): liefert research + valid + errorMessage (bereits von 'Recherche pruefen' gesetzt) an den Hauptworkflow zurueck.",
       "notesInFlow": false
@@ -103,14 +166,61 @@
       "main": [
         [
           {
-            "node": "Recherche durchfuehren",
+            "node": "Shortlist vorhanden?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Recherche durchfuehren": {
+    "Shortlist vorhanden?": {
+      "main": [
+        [
+          {
+            "node": "Kandidaten fuer Recherche aufteilen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Recherche pruefen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kandidaten fuer Recherche aufteilen": {
+      "main": [
+        [
+          {
+            "node": "Recherche je Kandidat durchfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recherche je Kandidat durchfuehren": {
+      "main": [
+        [
+          {
+            "node": "Recherche-Ergebnisse zusammenfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Recherche-Ergebnisse zusammenfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recherche-Ergebnisse zusammenfuehren": {
       "main": [
         [
           {

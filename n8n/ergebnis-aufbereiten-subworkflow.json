@@ -1,0 +1,152 @@
+{
+  "id": "6306c333-15f1-48ed-a006-0d2812a9c7a7",
+  "name": "Ergebnis aufbereiten",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "1382feec-d83f-482e-935a-cf1c27b3b85f",
+      "name": "Wenn von anderem Workflow aufgerufen",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst errors = [];\n\nconst d = item.teamDiagnosis;\nif (!d || !d.mainProblem) errors.push('teamDiagnosis.mainProblem fehlt in der finalen Pruefung.');\n\nconst p = item.playerProfile;\nif (!p || !p.position || !p.role) errors.push('playerProfile.position/role fehlt in der finalen Pruefung.');\n\nconst s = item.playerSearch;\nconst shortlistNames = (s && Array.isArray(s.shortlist)) ? s.shortlist.map((c) => c.name) : [];\nif (!s || shortlistNames.length === 0) errors.push('playerSearch.shortlist fehlt in der finalen Pruefung.');\n\nconst research = item.research;\nif (!Array.isArray(research) || research.length === 0) errors.push('research fehlt in der finalen Pruefung.');\n\nconst r = item.recommendation;\nif (!r || !r.candidate) {\n  errors.push('recommendation.candidate fehlt in der finalen Pruefung.');\n} else if (!shortlistNames.includes(r.candidate)) {\n  errors.push('recommendation.candidate stammt nicht aus der validierten Shortlist.');\n}\nif (!r || !Array.isArray(r.alternatives)) errors.push('recommendation.alternatives fehlt in der finalen Pruefung.');\nif (!r || !r.reasoning) errors.push('recommendation.reasoning fehlt in der finalen Pruefung.');\nif (!r || !Array.isArray(r.risks) || r.risks.length === 0) errors.push('recommendation.risks fehlt oder ist leer in der finalen Pruefung.');\nif (!r || !Array.isArray(r.uncertainties) || r.uncertainties.length === 0) errors.push('recommendation.uncertainties fehlt oder ist leer in der finalen Pruefung.');\nif (!r || !r.nextStep) errors.push('recommendation.nextStep fehlt in der finalen Pruefung.');\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die finale Validierung ist fehlgeschlagen, es wird keine fachliche Empfehlung angezeigt.\\n\\n' + errors.join('\\n')\n  }\n}];"
+      },
+      "id": "eadba09a-500d-463c-a41c-32450750710e",
+      "name": "Final Validation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3fbae35f-932a-483e-b7f0-57074e39a01c",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f3b1e405-9784-44f3-bf75-be17ae5f6256",
+      "name": "Final Validation gueltig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst d = item.teamDiagnosis;\nconst p = item.playerProfile;\nconst s = item.playerSearch;\nconst research = item.research || [];\nconst r = item.recommendation;\n\nconst section = (title, lines) => `— ${title} —\\n${lines.join('\\n')}`;\n\nconst researchLines = research.map((x) => x.uncertain\n  ? `${x.candidate}: Recherche fehlgeschlagen / unsicher (${x.uncertaintyReason || 'kein Grund angegeben'}).`\n  : `${x.candidate}: ${x.club}, ${x.contract}, ${x.marketValue}, ${x.injuries} (Quelle: ${x.source}, ${x.timestamp}, Konfidenz ${x.confidence})`);\n\nconst empfehlungLines = [`Bevorzugter Kandidat: ${r.candidate}`, `Begruendung: ${r.reasoning}`, `Naechster Schritt: ${r.nextStep}`];\nif (r.candidateProfile) {\n  const cp = r.candidateProfile;\n  empfehlungLines.push(`CSV-Analytics-Profil (Data Table football_scouting_raw): ${cp.club}, ${cp.position}, Alter ${cp.age}, Rating ${cp.rating}, ${cp.goals} Tore, ${cp.assists} Vorlagen in ${cp.appearances} Einsaetzen.`);\n}\n\nconst formattedResult = [\n  `Verein: ${item.club}`,\n  `Auftrag: ${item.objective}`,\n  item.additionalContext ? `Zusaetzlicher Kontext: ${item.additionalContext}` : null,\n  '',\n  '⚠ Hinweis: Teamdiagnose und Spielerprofil (Bedarfsermittlung) werden von einem lokalen LLM auf Basis des CSV-Analytics-Adapters (Referenzdaten, siehe n8n/data/README.md) interpretiert, nicht simuliert. Spielersuche greift ebenfalls real auf diese Daten zu. Nur Recherche ist weiterhin ein vollstaendig simuliertes Dummy-Ergebnis, da hierfuer noch keine reale Implementierung existiert.',\n  '',\n  section('Teamdiagnose', [`Hauptproblem: ${d.mainProblem}`, ...d.hypotheses.map((h) => `Hypothese: ${h}`)]),\n  '',\n  section('Spielerprofil', [`Position: ${p.position}`, `Rolle: ${p.role}`, `Begruendung: ${p.reasoning}`]),\n  '',\n  section('Spielersuche', [`Longlist-Groesse: ${s.longlistSize}`, ...s.shortlist.map((c) => `${c.name} (Score ${c.score})`)]),\n  '',\n  section('Recherche', researchLines),\n  '',\n  section('Empfehlung', empfehlungLines)\n].filter((line) => line !== null).join('\\n');\n\nreturn [{ json: { ...item, formattedResult } }];\n"
+      },
+      "id": "d916f616-e4b5-4778-bfb9-062631952b76",
+      "name": "Ergebnisseiten aufbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        60
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "69d809ef-d199-4034-9589-ce605498dc35",
+      "name": "Ergebnis aufbereiten: Ergebnis",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        180
+      ],
+      "notes": "Konsolidierter Phase-Ergebnis-Knoten dieser Subworkflow-Datei (siehe n8n/README.md): liefert bei gueltiger finaler Validierung formattedResult, sonst valid=false + errorMessage (bereits von 'Final Validation' gesetzt) an den Hauptworkflow zurueck. Der Hauptworkflow erhaelt damit ausschliesslich das validierte Ergebnis bzw. einen kontrollierten Fehler.",
+      "notesInFlow": false
+    }
+  ],
+  "connections": {
+    "Wenn von anderem Workflow aufgerufen": {
+      "main": [
+        [
+          {
+            "node": "Final Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Validation": {
+      "main": [
+        [
+          {
+            "node": "Final Validation gueltig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Validation gueltig?": {
+      "main": [
+        [
+          {
+            "node": "Ergebnisseiten aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ergebnis aufbereiten: Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ergebnisseiten aufbereiten": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis aufbereiten: Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

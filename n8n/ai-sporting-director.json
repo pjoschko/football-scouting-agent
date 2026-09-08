@@ -634,14 +634,57 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst d = item.teamDiagnosis;\nconst p = item.playerProfile;\nconst s = item.playerSearch;\nconst research = item.research || [];\nconst r = item.recommendation;\n\nconst section = (title, lines) => `— ${title} —\\n${lines.join('\\n')}`;\n\nconst researchLines = research.map((x) => `${x.candidate}: ${x.club}, ${x.contract}, ${x.marketValue}, ${x.injuries} (Quelle: ${x.source}, ${x.timestamp}, Konfidenz ${x.confidence})`);\n\nconst empfehlungLines = [`Bevorzugter Kandidat: ${r.candidate}`, `Begruendung: ${r.reasoning}`, `Naechster Schritt: ${r.nextStep}`];\nif (r.candidateProfile) {\n  const cp = r.candidateProfile;\n  empfehlungLines.push(`CSV-Analytics-Profil (Data Table football_scouting_raw): ${cp.club}, ${cp.position}, Alter ${cp.age}, Rating ${cp.rating}, ${cp.goals} Tore, ${cp.assists} Vorlagen in ${cp.appearances} Einsaetzen.`);\n}\n\nconst formattedResult = [\n  `Verein: ${item.club}`,\n  `Auftrag: ${item.objective}`,\n  item.additionalContext ? `Zusaetzlicher Kontext: ${item.additionalContext}` : null,\n  '',\n  '⚠ Hinweis: Teamdiagnose und Spielerprofil (Bedarfsermittlung) werden von einem lokalen LLM auf Basis des CSV-Analytics-Adapters (Referenzdaten, siehe n8n/data/README.md) interpretiert, nicht simuliert. Spielersuche greift ebenfalls real auf diese Daten zu. Nur Recherche ist weiterhin ein vollstaendig simuliertes Dummy-Ergebnis, da hierfuer noch keine reale Implementierung existiert.',\n  '',\n  section('Teamdiagnose', [`Hauptproblem: ${d.mainProblem}`, ...d.hypotheses.map((h) => `Hypothese: ${h}`)]),\n  '',\n  section('Spielerprofil', [`Position: ${p.position}`, `Rolle: ${p.role}`, `Begruendung: ${p.reasoning}`]),\n  '',\n  section('Spielersuche', [`Longlist-Groesse: ${s.longlistSize}`, ...s.shortlist.map((c) => `${c.name} (Score ${c.score})`)]),\n  '',\n  section('Recherche', researchLines),\n  '',\n  section('Empfehlung', empfehlungLines)\n].filter((line) => line !== null).join('\\n');\n\nreturn [{ json: { ...item, formattedResult } }];\n"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "6306c333-15f1-48ed-a006-0d2812a9c7a7",
+          "mode": "list",
+          "cachedResultName": "Ergebnis aufbereiten"
+        },
+        "options": {}
       },
-      "id": "d916f616-e4b5-4778-bfb9-062631952b76",
-      "name": "Ergebnisseiten aufbereiten",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "b684d182-eec3-4069-aee0-5f891cba8347",
+      "name": "Execute Workflow: Ergebnis aufbereiten",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
       "position": [
         3980,
+        300
+      ],
+      "notesInFlow": false,
+      "notes": "Ruft den fachlichen Subworkflow n8n/ergebnis-aufbereiten-subworkflow.json auf (feste Top-Level-ID 6306c333-15f1-48ed-a006-0d2812a9c7a7). Kapselt die uebergreifende Final Validation (Teamdiagnose, Spielerprofil, Shortlist, Recherche UND Empfehlung zusammen) und die Praesentationsaufbereitung (formattedResult); liefert bei Erfolg formattedResult, sonst valid=false + errorMessage zurueck. Der Hauptworkflow erhaelt dadurch nur noch das validierte Ergebnis bzw. einen kontrollierten Fehler. Siehe n8n/README.md, Abschnitt \"Ergebnis aufbereiten\"."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8204c7bb-cond-1",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8204c7bb-3f2a-4ed9-8af7-d2e8955e4973",
+      "name": "Ergebnis aufbereiten gueltig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4200,
         300
       ]
     },
@@ -657,7 +700,7 @@
       "type": "n8n-nodes-base.form",
       "typeVersion": 1,
       "position": [
-        4200,
+        4420,
         300
       ]
     },
@@ -948,7 +991,7 @@
       "main": [
         [
           {
-            "node": "Ergebnisseiten aufbereiten",
+            "node": "Execute Workflow: Ergebnis aufbereiten",
             "type": "main",
             "index": 0
           }
@@ -962,11 +1005,29 @@
         ]
       ]
     },
-    "Ergebnisseiten aufbereiten": {
+    "Execute Workflow: Ergebnis aufbereiten": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis aufbereiten gueltig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ergebnis aufbereiten gueltig?": {
       "main": [
         [
           {
             "node": "Ergebnis anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler anzeigen",
             "type": "main",
             "index": 0
           }
