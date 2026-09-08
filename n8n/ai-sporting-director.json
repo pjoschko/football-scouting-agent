@@ -433,12 +433,12 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "=Verein: {{ $json.club }}\nZielsetzung des Auftrags: {{ $json.objective }}\nZusaetzlicher Kontext: {{ $json.additionalContext || '(keiner)' }}\n\nTeamdiagnose (bereits erstellt):\nHauptproblem: {{ $json.teamDiagnosis.mainProblem }}\nDiagnosekategorie: {{ $json.teamDiagnosis.diagnosisCategory }}\nHypothesen: {{ $json.teamDiagnosis.hypotheses.join('; ') }}\nGegenhypothesen: {{ $json.teamDiagnosis.counterHypotheses.join('; ') || '(keine)' }}\nLigavergleich: {{ $json.teamDiagnosis.leagueComparison }}\nUnsicherheiten: {{ $json.teamDiagnosis.uncertainties.join('; ') }}\n\nErlaubter Positionspool fuer diese Diagnose - waehle 'position' AUSSCHLIESSLICH aus dieser Liste, keine andere Position: {{ $json.allowedPositions.join(', ') }}\n\nLeite aus der Teamdiagnose ein strukturiertes Anforderungsprofil fuer die Spielersuche ab: die gesuchte 'position' (nur aus obiger Liste), eine kurze taktische 'role'-Beschreibung, 'weightedCriteria' (Gewichtung jeweils zwischen 0 und 1) ausschliesslich mit den Kriteriennamen goals, assists, rating, appearances, age, minutesPlayed, marketValueMEUR, 'constraints' als Liste strukturierter Objekte { field: 'age'|'marketValueMEUR', operator: 'max'|'min', value: Zahl } - NUR wenn ein konkreter Alters- oder Budget-/Marktwertrahmen aus dem zusaetzlichen Kontext ableitbar ist (z. B. ein explizites Alterslimit oder eine Marktwert-/Budgetobergrenze in Mio. EUR); ist kein konkreter Zahlenwert ableitbar, liefere ein leeres Array statt einen erfundenen Rahmen und eine 'reasoning', die sich explizit auf das Hauptproblem der Teamdiagnose bezieht.",
+        "text": "=Verein: {{ $json.club }}\nZielsetzung des Auftrags: {{ $json.objective }}\nZusaetzlicher Kontext: {{ $json.additionalContext || '(keiner)' }}\n\nTeamdiagnose (bereits erstellt):\nHauptproblem: {{ $json.teamDiagnosis.mainProblem }}\nDiagnosekategorie: {{ $json.teamDiagnosis.diagnosisCategory }}\nHypothesen: {{ $json.teamDiagnosis.hypotheses.join('; ') }}\nGegenhypothesen: {{ $json.teamDiagnosis.counterHypotheses.join('; ') || '(keine)' }}\nLigavergleich: {{ $json.teamDiagnosis.leagueComparison }}\nUnsicherheiten: {{ $json.teamDiagnosis.uncertainties.join('; ') }}\n\nErlaubter Positionspool fuer diese Diagnose - waehle 'position' AUSSCHLIESSLICH aus dieser Liste, keine andere Position: {{ $json.allowedPositions.join(', ') }}\n\nLeite aus der Teamdiagnose ein strukturiertes Anforderungsprofil fuer die Spielersuche ab: die gesuchte 'position' (nur aus obiger Liste), eine kurze taktische 'role'-Beschreibung, 'weightedCriteria' (Gewichtung jeweils zwischen 0 und 1) ausschliesslich mit den Kriteriennamen goals, assists, rating, appearances, age, minutesPlayed, marketValueMEUR, 'constraints' als Liste strukturierter Objekte { field: 'age'|'marketValueMEUR', operator: 'max'|'min', value: Zahl } - NUR wenn ein konkreter Alters- oder Budget-/Marktwertrahmen aus dem zusaetzlichen Kontext UND/ODER aus einer weiter unten vorliegenden Reviewer-Rueckmeldung (reviewFeedback) ableitbar ist (z. B. ein explizites Alterslimit oder eine Marktwert-/Budgetobergrenze in Mio. EUR aus einer dieser beiden Quellen); ist aus keiner der beiden Quellen ein konkreter Zahlenwert ableitbar, liefere ein leeres Array statt einen erfundenen Rahmen und eine 'reasoning', die sich explizit auf das Hauptproblem der Teamdiagnose bezieht.\n\n{{ $json.reviewFeedback ? ('Rueckmeldung eines menschlichen Reviewers zu einer vorherigen Fassung dieses Profils (Request Changes) - ueberarbeite Rolle, Kriterien, Constraints und/oder Begruendung entsprechend, ohne den erlaubten Positionspool oder die zulaessigen Kriteriennamen zu verletzen:\\n' + $json.reviewFeedback) : '' }}",
         "hasOutputParser": true,
         "messages": {
           "messageValues": [
             {
-              "message": "Du bist ein erfahrener Sporting-Director-Analyst fuer Kaderplanung. Du leitest Anforderungsprofile ausschliesslich aus der dir gegebenen Teamdiagnose ab und haeltst dich strikt an den vorgegebenen Positionspool - du erfindest keine Position ausserhalb dieser Liste."
+              "message": "Du bist ein erfahrener Sporting-Director-Analyst fuer Kaderplanung. Fachliche Grundlage fuer Position, Rolle, Kriterien und Begruendung ist die dir gegebene Teamdiagnose; du haeltst dich strikt an den vorgegebenen Positionspool - du erfindest keine Position ausserhalb dieser Liste. Fuer 'constraints' (Alters-/Budgetrahmen) darfst du zusaetzlich einen im User-Prompt vorliegenden zusaetzlichen Kontext (additionalContext) und/oder eine Reviewer-Rueckmeldung (reviewFeedback) heranziehen, wenn diese einen konkreten Alters- oder Marktwert-/Budgetgrenzwert vorgeben; auch dabei erfindest du keinen Zahlenwert, der aus keiner dieser beiden Quellen ableitbar ist."
             }
           ]
         },
@@ -905,6 +905,236 @@
         2420,
         340
       ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const MAX_REVIEW_ROUNDS = 3;\nconst item = $input.item.json;\nconst priorBrief = item.scoutingBrief;\nconst feedbackHistory = Array.isArray(priorBrief && priorBrief.feedbackHistory)\n  ? [...priorBrief.feedbackHistory]\n  : [];\n\n// Nach einer 'Request Changes'-Runde hat 'Spielerprofil LLM' das Profil\n// bereits unter Beruecksichtigung von reviewFeedback neu erzeugt (siehe\n// dortiger Prompt); hier wird das Feedback der vorherigen Runde in die\n// Historie uebernommen, bevor das ueberarbeitete Brief erneut vorgelegt wird.\nif (item.reviewDecision === 'Request Changes' && priorBrief) {\n  feedbackHistory.push({ round: priorBrief.reviewRound, feedback: item.reviewFeedback || '' });\n}\n\nconst teamDiagnosis = item.teamDiagnosis || {};\nconst playerProfile = item.playerProfile || {};\n\nconst scoutingBrief = {\n  problem: teamDiagnosis.mainProblem,\n  targetPosition: playerProfile.position,\n  role: playerProfile.role,\n  reasoning: playerProfile.reasoning,\n  weightedCriteria: playerProfile.weightedCriteria,\n  constraints: playerProfile.constraints,\n  uncertainties: Array.isArray(teamDiagnosis.uncertainties) ? teamDiagnosis.uncertainties : [],\n  reviewRound: feedbackHistory.length + 1,\n  maxReviewRounds: MAX_REVIEW_ROUNDS,\n  feedbackHistory\n};\n\nreturn [{ json: { ...item, scoutingBrief } }];"
+      },
+      "id": "b1a2c3d4-5001-4a11-9001-aa1122334401",
+      "name": "Scouting Brief erstellen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3180,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst b = item.scoutingBrief;\nconst errors = [];\n\nif (!b || typeof b !== 'object') {\n  errors.push('scoutingBrief fehlt oder ist kein Objekt.');\n} else {\n  if (!b.problem) errors.push('scoutingBrief.problem fehlt.');\n  if (!b.targetPosition) errors.push('scoutingBrief.targetPosition fehlt.');\n  if (!b.role) errors.push('scoutingBrief.role fehlt.');\n  if (!b.reasoning) errors.push('scoutingBrief.reasoning fehlt.');\n  if (!Array.isArray(b.weightedCriteria) || b.weightedCriteria.length === 0) {\n    errors.push('scoutingBrief.weightedCriteria fehlt oder ist leer.');\n  }\n  if (!Array.isArray(b.constraints)) errors.push('scoutingBrief.constraints fehlt oder ist kein Array.');\n  if (!Array.isArray(b.uncertainties)) errors.push('scoutingBrief.uncertainties fehlt oder ist kein Array.');\n}\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Das Scouting Brief ist ungueltig und wird nicht zur Freigabe vorgelegt.\\n\\n' + errors.join('\\n')\n  }\n}];"
+      },
+      "id": "b1a2c3d4-5002-4a11-9001-aa1122334402",
+      "name": "Scouting Brief pruefen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3370,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b1a2c3d4-cond-5003",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1a2c3d4-5003-4a11-9001-aa1122334403",
+      "name": "Scouting Brief gueltig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3560,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "formTitle": "Scouting Brief zur Freigabe",
+        "formDescription": "=Verein: {{ $json.club }}\n\nHauptproblem (Teamdiagnose): {{ $json.scoutingBrief.problem }}\n\nZielposition / Rolle: {{ $json.scoutingBrief.targetPosition }} / {{ $json.scoutingBrief.role }}\n\nBegruendung: {{ $json.scoutingBrief.reasoning }}\n\nGewichtete Kriterien: {{ $json.scoutingBrief.weightedCriteria.map(c => c.criterion + ' (' + c.weight + ')').join(', ') }}\n\nConstraints: {{ $json.scoutingBrief.constraints.length ? $json.scoutingBrief.constraints.map(c => c.field + ' ' + c.operator + ' ' + c.value).join(', ') : '(keine)' }}\n\nUnsicherheiten: {{ $json.scoutingBrief.uncertainties.join('; ') }}\n\nUeberarbeitungsrunde: {{ $json.scoutingBrief.reviewRound }} von max. {{ $json.scoutingBrief.maxReviewRounds }}{{ $json.scoutingBrief.feedbackHistory.length ? ('\\n\\nBisheriges Feedback: ' + $json.scoutingBrief.feedbackHistory.map(f => 'Runde ' + f.round + ': ' + f.feedback).join(' | ')) : '' }}",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Entscheidung",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Approve"
+                  },
+                  {
+                    "option": "Request Changes"
+                  },
+                  {
+                    "option": "Reject"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Feedback (Pflicht bei Request Changes)",
+              "fieldType": "textarea",
+              "requiredField": false
+            }
+          ]
+        },
+        "options": {
+          "buttonLabel": "Entscheidung uebermitteln"
+        }
+      },
+      "id": "b1a2c3d4-5004-4a11-9001-aa1122334404",
+      "name": "Scouting Brief zur Freigabe vorlegen",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        3750,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const MAX_REVIEW_ROUNDS = 3;\nconst submitted = $input.item.json;\nconst original = $('Scouting Brief erstellen').first().json;\n\nconst reviewDecision = (submitted['Entscheidung'] || '').toString().trim();\nconst reviewFeedback = (submitted['Feedback (Pflicht bei Request Changes)'] || '').toString().trim();\n\nconst errors = [];\nif (!['Approve', 'Request Changes', 'Reject'].includes(reviewDecision)) {\n  errors.push('Unbekannte Review-Entscheidung: ' + reviewDecision);\n}\nif (reviewDecision === 'Request Changes' && !reviewFeedback) {\n  errors.push('Fuer \"Request Changes\" ist ein Feedback-Text erforderlich.');\n}\n\nconst reviewRound = (original.scoutingBrief && original.scoutingBrief.reviewRound) || 1;\nconst maxRoundsReached = reviewDecision === 'Request Changes' && reviewRound >= MAX_REVIEW_ROUNDS;\n// Ein begrenzter Feedback-Loop (siehe n8n/README.md): nach MAX_REVIEW_ROUNDS\n// Ueberarbeitungen wird eine weitere 'Request Changes' nicht mehr akzeptiert,\n// sondern wie ein 'Reject' kontrolliert beendet, statt endlos weiter zu ueberarbeiten.\nconst reviewOutcome = maxRoundsReached ? 'Reject' : reviewDecision;\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...original,\n    reviewDecision,\n    reviewFeedback,\n    reviewOutcome,\n    maxRoundsReached,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die Review-Entscheidung ist ungueltig.\\n\\n' + errors.join('\\n')\n  }\n}];"
+      },
+      "id": "b1a2c3d4-5005-4a11-9001-aa1122334405",
+      "name": "Review-Entscheidung auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3940,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b1a2c3d4-cond-5006",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1a2c3d4-5006-4a11-9001-aa1122334406",
+      "name": "Review-Entscheidung gueltig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4130,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b1a2c3d4-cond-5007",
+              "leftValue": "={{ $json.reviewOutcome }}",
+              "rightValue": "Approve",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1a2c3d4-5007-4a11-9001-aa1122334407",
+      "name": "Review: Approve?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4320,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b1a2c3d4-cond-5008",
+              "leftValue": "={{ $json.reviewOutcome }}",
+              "rightValue": "Request Changes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1a2c3d4-5008-4a11-9001-aa1122334408",
+      "name": "Review: Request Changes?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4320,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst reason = item.maxRoundsReached\n  ? `Die maximale Anzahl von ${item.scoutingBrief.maxReviewRounds} Ueberarbeitungsrunden fuer das Scouting Brief ist erreicht worden.`\n  : 'Der Sporting Director hat das Scouting Brief abgelehnt (Reject).';\nconst feedback = item.reviewFeedback ? `\\n\\nFeedback: ${item.reviewFeedback}` : '';\n\nreturn [{\n  json: {\n    ...item,\n    errorMessage: `Die Kandidatensuche wurde nach der Human-Review kontrolliert beendet.\\n\\n${reason}${feedback}`\n  }\n}];"
+      },
+      "id": "b1a2c3d4-5009-4a11-9001-aa1122334409",
+      "name": "Scouting Brief: Ablehnung dokumentieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4510,
+        620
+      ]
     }
   ],
   "connections": {
@@ -1145,7 +1375,7 @@
       "main": [
         [
           {
-            "node": "Player-Ranking-Anfrage vorbereiten",
+            "node": "Scouting Brief erstellen",
             "type": "main",
             "index": 0
           }
@@ -1403,6 +1633,133 @@
             "index": 0
           }
         ],
+        [
+          {
+            "node": "Fehler anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scouting Brief erstellen": {
+      "main": [
+        [
+          {
+            "node": "Scouting Brief pruefen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scouting Brief pruefen": {
+      "main": [
+        [
+          {
+            "node": "Scouting Brief gueltig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scouting Brief gueltig?": {
+      "main": [
+        [
+          {
+            "node": "Scouting Brief zur Freigabe vorlegen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scouting Brief zur Freigabe vorlegen": {
+      "main": [
+        [
+          {
+            "node": "Review-Entscheidung auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review-Entscheidung auswerten": {
+      "main": [
+        [
+          {
+            "node": "Review-Entscheidung gueltig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review-Entscheidung gueltig?": {
+      "main": [
+        [
+          {
+            "node": "Review: Approve?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review: Approve?": {
+      "main": [
+        [
+          {
+            "node": "Player-Ranking-Anfrage vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Review: Request Changes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review: Request Changes?": {
+      "main": [
+        [
+          {
+            "node": "Spielerprofil: Positionspool ermitteln",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Scouting Brief: Ablehnung dokumentieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scouting Brief: Ablehnung dokumentieren": {
+      "main": [
         [
           {
             "node": "Fehler anzeigen",
