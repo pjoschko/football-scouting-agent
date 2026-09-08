@@ -294,7 +294,16 @@ Routings/Reviews", nicht als eigener Subworkflow:
    ursprünglichen `scoutingBrief` übernimmt, dessen Inhaltsfelder aber exakt
    den zuletzt im Formular sichtbaren (ggf. vom Reviewer bearbeiteten) Werten
    entsprechen — die ursprünglichen, unbearbeiteten KI-Werte überschreiben
-   die Bearbeitung des Reviewers also nicht mehr. Erzwingt außerdem den
+   die Bearbeitung des Reviewers also nicht mehr. Hält außerdem `playerProfile`
+   (`position`/`role`/`reasoning`/`weightedCriteria`/`constraints`) mit diesem
+   freigegebenen `scoutingBrief` synchron: **Player-Ranking-Anfrage
+   vorbereiten** im Subworkflow **Kandidaten suchen** (siehe unten) bevorzugt
+   ausdrücklich `item.playerProfile` und verwendet `scoutingBrief` nur als
+   Fallback, falls `playerProfile` fehlt — ohne diese Synchronisierung würden
+   Reviewer-Edits an Zielposition/Rolle/Begründung/gewichteten
+   Kriterien/Constraints nach `Approve` von der Kandidatensuche stillschweigend
+   ignoriert und durch die ursprünglichen KI-Werte aus `playerProfile` ersetzt.
+   Erzwingt außerdem den
    **begrenzten** Feedback-Loop: ist `scoutingBrief.reviewRound` bereits
    `maxReviewRounds` (3) erreicht und die Entscheidung erneut `Request
    Changes`, wird `reviewOutcome` trotzdem auf `'Reject'` gesetzt
@@ -321,8 +330,12 @@ Routings/Reviews", nicht als eigener Subworkflow:
     Kandidatensuche damit kontrolliert, ohne eine Empfehlung zu erzeugen.
 
 Position und Profil werden dabei weiterhin ausschließlich vom Agenten
-hergeleitet — der Reviewer entscheidet nur über Freigabe, Überarbeitung oder
-Ablehnung, gibt aber keine eigene Position/kein eigenes Profil vor.
+hergeleitet und initial vorgeschlagen — der Reviewer gibt kein eigenes
+Profil "aus dem Nichts" vor, kann die vorgeschlagenen Werte im Formular
+(`Zielposition`, `Rolle`, `Begruendung`, gewichtete Kriterien, Constraints)
+aber vor der Freigabe korrigieren; diese Korrekturen werden bei `Approve`
+mit `playerProfile` synchronisiert und sind damit für die nachfolgende
+Kandidatensuche maßgeblich (siehe **Review-Entscheidung auswerten** oben).
 
 ## Team analysieren (Subworkflow)
 
@@ -1031,7 +1044,13 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    (`reviewRound`, `feedbackHistory`) davon berührt werden; ein leeres
    Pflichtfeld sowie ein ungültiges JSON-Array in einem der drei
    JSON-Array-Felder liefern `valid: false` mit einer feldspezifischen
-   Fehlermeldung.
+   Fehlermeldung. Zusätzlich verifiziert dieselbe Datei per
+   `playerRankingRequestFromItem()` (1:1 aus **Player-Ranking-Anfrage
+   vorbereiten** im Subworkflow **Kandidaten suchen** übernommen) end-to-end,
+   dass eine bei `Approve` editierte `Zielposition`/gewichtete
+   Kriterien/Constraints tatsächlich im an die Kandidatensuche übergebenen
+   `position`/`criteria`/`constraints` ankommt und nicht durch das
+   ursprüngliche, unveränderte `playerProfile` überschrieben wird.
 
    `node n8n/data/verify-import-architecture.js` (grün) verifiziert zusätzlich
    die vier `analytics-*-subworkflow.json`-Dateien sowie

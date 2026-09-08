@@ -112,15 +112,64 @@ function evaluateReview(submitted, original) {
     ? { ...original.scoutingBrief, problem, targetPosition, role, reasoning, weightedCriteria, constraints, uncertainties }
     : original.scoutingBrief;
 
+  // Der freigegebene Formularstand ist die einzige massgebliche Quelle:
+  // playerProfile wird mit dem (ggf. vom Reviewer bearbeiteten) scoutingBrief
+  // synchron gehalten, weil "Player-Ranking-Anfrage vorbereiten" (Kandidaten
+  // suchen) ausdruecklich playerProfile bevorzugt und scoutingBrief nur als
+  // Fallback verwendet (siehe playerRankingRequestFromItem() unten).
+  const playerProfile = valid
+    ? { ...original.playerProfile, position: targetPosition, role, reasoning, weightedCriteria, constraints }
+    : original.playerProfile;
+
   return {
     ...original,
     scoutingBrief,
+    playerProfile,
     reviewDecision,
     reviewFeedback,
     reviewOutcome,
     maxRoundsReached,
     valid,
     errorMessage: valid ? undefined : 'Die Review-Entscheidung ist ungueltig.\n\n' + errors.join('\n')
+  };
+}
+
+// 1:1 aus "Player-Ranking-Anfrage vorbereiten"
+// (n8n/kandidaten-suchen-subworkflow.json) uebernommen, nur mit $input.item.json
+// durch ein uebergebenes item-Argument ersetzt, um zu pruefen, welches
+// playerProfile die Kandidatensuche nach einem Human-Review-Durchlauf
+// tatsaechlich verwendet.
+function playerRankingRequestFromItem(item) {
+  const p = item.playerProfile || (
+    item.scoutingBrief
+      ? {
+          simulated: false,
+          position: item.scoutingBrief.targetPosition,
+          role: item.scoutingBrief.role,
+          weightedCriteria: item.scoutingBrief.weightedCriteria,
+          constraints: item.scoutingBrief.constraints || [],
+          reasoning: item.scoutingBrief.reasoning
+        }
+      : null
+  );
+
+  if (!p) {
+    throw new Error('Weder playerProfile noch scoutingBrief sind vorhanden. Die Kandidatensuche kann nicht vorbereitet werden.');
+  }
+  if (!p.position) {
+    throw new Error('playerProfile.position fehlt.');
+  }
+  if (!Array.isArray(p.weightedCriteria) || p.weightedCriteria.length === 0) {
+    throw new Error('playerProfile.weightedCriteria fehlt oder ist leer.');
+  }
+
+  return {
+    ...item,
+    playerProfile: p,
+    position: p.position,
+    criteria: p.weightedCriteria,
+    constraints: p.constraints || [],
+    limit: 5
   };
 }
 
@@ -204,6 +253,35 @@ assert.strictEqual(approveEdited.scoutingBrief.reasoning, 'Vom Reviewer ergaenzt
 assert.strictEqual(approveEdited.scoutingBrief.targetPosition, round1.scoutingBrief.targetPosition);
 assert.strictEqual(approveEdited.scoutingBrief.reviewRound, round1.scoutingBrief.reviewRound);
 assert.deepStrictEqual(approveEdited.scoutingBrief.feedbackHistory, round1.scoutingBrief.feedbackHistory);
+
+// 4a-regression. Nach Approve mit editierter Zielposition/gewichteten
+// Kriterien/Constraints muss "Kandidaten suchen" (ueber
+// "Player-Ranking-Anfrage vorbereiten") tatsaechlich die freigegebenen
+// Reviewer-Werte verwenden statt der urspruenglichen KI-Werte aus
+// playerProfile: playerRankingRequestFromItem() bevorzugt playerProfile und
+// faellt nur auf scoutingBrief zurueck, falls playerProfile fehlt (siehe
+// n8n/kandidaten-suchen-subworkflow.json); "Review-Entscheidung auswerten"
+// muss playerProfile deshalb mit dem freigegebenen scoutingBrief synchron
+// halten, statt das ursprüngliche, unveraenderte playerProfile
+// durchzureichen.
+const approveEditedCriteria = evaluateReview(
+  {
+    ...unchangedBriefFields(round1),
+    Zielposition: 'Linksaussen',
+    'Gewichtete Kriterien (JSON-Array)': JSON.stringify([{ criterion: 'dribbling', weight: 0.9 }]),
+    'Constraints (JSON-Array)': JSON.stringify([{ field: 'age', operator: 'max', value: 23 }]),
+    Entscheidung: 'Approve',
+    'Feedback (Pflicht bei Request Changes)': ''
+  },
+  round1
+);
+assert.strictEqual(approveEditedCriteria.valid, true);
+const rankingRequest = playerRankingRequestFromItem(approveEditedCriteria);
+assert.strictEqual(rankingRequest.position, 'Linksaussen');
+assert.deepStrictEqual(rankingRequest.criteria, [{ criterion: 'dribbling', weight: 0.9 }]);
+assert.deepStrictEqual(rankingRequest.constraints, [{ field: 'age', operator: 'max', value: 23 }]);
+assert.strictEqual(rankingRequest.playerProfile.position, 'Linksaussen');
+assert.notStrictEqual(rankingRequest.position, baseItem.playerProfile.position);
 
 // 4b. Review-Entscheidung auswerten: leeres Pflichtfeld (Zielposition) ->
 // ungueltig.
