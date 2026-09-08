@@ -672,7 +672,14 @@ sowie `valid`/`errorMessage`.
    eine Positionsgruppe DF/MF/FW/GK angenähert statt exakt gematcht — mit der
    FBref-Datengrundlage der Regelfall) oder liegt für den Sieger keine
    belastbare Recherche vor, wird das explizit als zusätzlicher Eintrag in
-   `recommendation.uncertainties` ausgewiesen.
+   `recommendation.uncertainties` ausgewiesen. `uncertainties` beginnt dabei
+   immer mit einem sachlichen Basis-Hinweis, dass die Empfehlung auf zum
+   Recherchezeitpunkt extern verfügbaren Web-Informationen beruht, deren
+   Aktualität/Vollständigkeit nicht garantiert ist — dadurch ist das Array
+   auch auf dem vollständig erfolgreichen Happy Path (keine
+   Positionsapproximation, Feasibility bekannt, Recherche vorhanden und
+   nicht `uncertain`, Konfidenz ≥ 0,5) nie leer, wie es **Empfehlung
+   technisch prüfen** (siehe unten) verlangt.
 2. **Player-Profil-Anfrage vorbereiten** (Code) — setzt `playerName` auf
    `recommendation.candidate`.
 3. **Player-Profil abrufen** (Execute Workflow) — ruft
