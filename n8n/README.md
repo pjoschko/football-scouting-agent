@@ -31,7 +31,14 @@ leitet aus dieser LLM-Teamdiagnose ein strukturiertes Anforderungsprofil ab.
 Daten zu (weiterhin deterministisch ausgewertet, siehe unten). Nur
 **Recherche** bleibt ein deterministischer, sichtbar als Simulation
 gekennzeichneter Dummy, da hierfür noch keine reale Implementierung möglich
-ist.
+ist. Zwischen **Spielerprofil** und **Spielersuche** steht jetzt ein echtes
+**Human-Review-Gate** (siehe [Scouting Brief Human-Review](#scouting-brief-human-review)
+unten): der bisherige Dummy-Gate an dieser Stelle (automatische Weiterleitung
+ohne menschliche Beteiligung) ist durch eine echte Formular-Vorlage des
+strukturierten **Scouting Briefs** ersetzt, die ein Mensch **Approve**,
+**Request Changes** (mit Freitext-Feedback, das über **Spielerprofil LLM** in
+eine Überarbeitung einfließt) oder **Reject** entscheiden kann; nur **Approve**
+setzt den bestehenden Hauptworkflow fort.
 
 Credentials werden ausschließlich referenziert (`[cimt] Ollama` am Node
 **Ollama Modell (Qwen3.8:latest)**, mit dem Platzhalter-Wert
@@ -54,8 +61,16 @@ Formular → [Team-Performance, Team-Matches]
         → Teamdiagnose: Datengrundlage ausreichend? --nein--> Fehler anzeigen
                  |ja
                  v
-        → Spielerprofil-Positionspool ermitteln → Spielerprofil-LLM (Ollama)
-        → Spielerprofil zusammenfuehren → Spielerprofil pruefen → Gate
+        → Spielerprofil-Positionspool ermitteln → Spielerprofil-LLM (Ollama) <---------+
+        → Spielerprofil zusammenfuehren → Spielerprofil pruefen → Gate                 |
+        → Scouting Brief erstellen → Scouting Brief pruefen → Gate                     |
+        → Scouting Brief zur Freigabe vorlegen (Human Review: Form)                    |
+        → Review-Entscheidung auswerten → Gate                                         |
+        → Approve? --nein--> Request Changes? --ja--> (zurueck zu Spielerprofil-LLM) --+
+                 |                    |nein
+                 |ja                  v
+                 |            Scouting Brief: Ablehnung dokumentieren --> Fehler anzeigen
+                 v
         → [Player-Ranking] → Spielersuche → Gate
         → Recherche → Gate
         → Empfehlung → [Player-Profil] → Empfehlung anreichern
@@ -212,11 +227,33 @@ das Gate-Muster danach bleibt aber identisch.
     (Liste strukturierter, tatsächlich filterbarer Objekte `{ field:
     'age'|'marketValueMEUR', operator: 'max'|'min', value: <Zahl> }` — nur
     wenn ein konkreter Alters- oder Budget-/Marktwertrahmen aus dem
-    zusätzlichen Kontext ableitbar ist, sonst ein leeres Array statt eines
-    erfundenen Rahmens) und `reasoning` (muss sich auf
-    `teamDiagnosis.mainProblem` beziehen). Gleiches `onError:
+    zusätzlichen Kontext **und/oder** aus einer vorliegenden
+    Reviewer-Rückmeldung (`reviewFeedback`, s. u.) ableitbar ist, sonst ein
+    leeres Array statt eines erfundenen Rahmens) und `reasoning` (muss sich
+    auf `teamDiagnosis.mainProblem` beziehen). Gleiches `onError:
     continueErrorOutput` → **LLM-Fehler normalisieren** wie bei
-    **Teamdiagnose LLM**.
+    **Teamdiagnose LLM**. **Neu:** ist `$json.reviewFeedback` gesetzt (dieser
+    Lauf folgt auf eine **Request Changes**-Entscheidung im
+    [Scouting-Brief-Human-Review](#scouting-brief-human-review), siehe 19a./19h.
+    unten), wird der Prompt um genau dieses Freitext-Feedback ergänzt und das
+    LLM angewiesen, Rolle/Kriterien/Constraints/Begründung entsprechend zu
+    überarbeiten, ohne den erlaubten Positionspool oder die zulässigen
+    Kriteriennamen zu verletzen; die `constraints`-Instruktion nennt
+    `additionalContext` und `reviewFeedback` dabei ausdrücklich als
+    gleichberechtigte, alternative Quellen für einen konkreten
+    Alters-/Budgetwert (z. B. „max. 10 Mio. Marktwert“ oder „nur unter 24“ im
+    Feedback), sodass ein vom Reviewer genanntes Limit zuverlässig ins
+    überarbeitete `playerProfile.constraints` übernommen wird, statt vom
+    Widerspruch zur ursprünglichen, auf `additionalContext` beschränkten
+    Formulierung abzuhängen; ist `reviewFeedback` leer (Erstlauf), bleibt der
+    Prompt unverändert. Die zusätzlich konfigurierte Chat-Message (in n8n
+    **2.35.7** als `SystemMessage` vor den User-Prompt gestellt) ist mit
+    dieser Constraints-Instruktion abgestimmt: sie nennt die Teamdiagnose als
+    fachliche Grundlage für Position/Rolle/Kriterien, erlaubt aber ausdrücklich
+    `additionalContext`/`reviewFeedback` als Quelle für einen konkreten
+    Alters-/Budgetgrenzwert — andernfalls würde die System-Message dem
+    User-Prompt widersprechen und das LLM könnte ein Reviewer-Limit trotz
+    korrekter Instruktion im `text`-Prompt ignorieren.
 16. **Spielerprofil Output-Schema** (`@n8n/n8n-nodes-langchain.outputParserStructured`)
     — erzwingt den unter 15. genannten JSON-Vertrag für **Spielerprofil
     LLM**, inkl. des strukturierten `constraints`-Objektvertrags.
@@ -244,7 +281,98 @@ das Gate-Muster danach bleibt aber identisch.
     (20.) die Constraints tatsächlich anwenden statt sie als Dead Data
     mitzuführen.
 19. **Spielerprofil gültig?** (IF) — **falsch** → **Fehler anzeigen**;
-    **wahr** → **Player-Ranking-Anfrage vorbereiten**.
+    **wahr** → **Scouting Brief erstellen**.
+
+**Scouting Brief Human-Review**
+
+Nach einem gültigen Spielerprofil folgt jetzt ein echtes Human-Review-Gate
+statt der bisherigen automatischen Weiterleitung an die Spielersuche. Ein
+Mensch prüft dabei ein aus **Teamdiagnose** und **Spielerprofil**
+abgeleitetes, strukturiertes **Scouting Brief** und kann es **Approve**,
+mit Freitext-Feedback **Request Changes** verlangen (der Agent überarbeitet
+das Spielerprofil daraufhin über einen erneuten **Spielerprofil LLM**-Aufruf
+und legt das Brief erneut vor) oder **Reject**. Position und Profil werden
+dabei weiterhin ausschließlich vom Agenten hergeleitet — der Reviewer
+entscheidet nur über Freigabe, Überarbeitung oder Ablehnung, gibt aber keine
+eigene Position/kein eigenes Profil vor.
+
+19a. **Scouting Brief erstellen** (Code) — baut `scoutingBrief` aus dem
+    bereits validierten `teamDiagnosis.mainProblem` (→ `problem`) und
+    `playerProfile.position`/`role`/`reasoning`/`weightedCriteria`/
+    `constraints` (→ `targetPosition`/`role`/`reasoning`/`weightedCriteria`/
+    `constraints`) sowie `teamDiagnosis.uncertainties` (→ `uncertainties`)
+    zusammen — rein deklarativ aus bereits vorhandenen, validierten Feldern,
+    ohne neue Werte zu erfinden. Führt zusätzlich eine begrenzte
+    Überarbeitungshistorie: folgt dieser Lauf auf eine **Request
+    Changes**-Entscheidung (`item.reviewDecision === 'Request Changes'`),
+    wird das Feedback der vorherigen Runde (aus dem vorherigen
+    `scoutingBrief.reviewRound`) an `scoutingBrief.feedbackHistory`
+    angehängt; `scoutingBrief.reviewRound` zählt ab 1 hoch,
+    `scoutingBrief.maxReviewRounds` ist auf `3` fest verdrahtet (siehe
+    **Review-Entscheidung auswerten** unten).
+19b. **Scouting Brief prüfen** (Code) — Gate nach demselben Muster wie die
+    übrigen Stufen: prüft, dass `problem`, `targetPosition`, `role` und
+    `reasoning` nichtleere Strings sind, `weightedCriteria` ein nichtleeres
+    Array ist und `constraints`/`uncertainties` Arrays sind; setzt
+    `valid`/`errorMessage`.
+19c. **Scouting Brief gültig?** (IF) — **falsch** → **Fehler anzeigen**
+    (derselbe zentrale Fehlerpfad wie bei allen anderen Gates); **wahr** →
+    **Scouting Brief zur Freigabe vorlegen**.
+19d. **Scouting Brief zur Freigabe vorlegen** (`n8n-nodes-base.form`, ohne
+    `operation: "completion"`, d. h. eine zusätzliche Formularseite
+    innerhalb desselben mehrstufigen Formulars wie **AI Sporting Director
+    beauftragen**, nicht dessen Abschluss) — zeigt `scoutingBrief`
+    (Hauptproblem, Zielposition/Rolle, Begründung, gewichtete Kriterien,
+    Constraints, Unsicherheiten, aktuelle Überarbeitungsrunde und ggf. bereits
+    gesammeltes Feedback früherer Runden) rein lesend in `formDescription` an
+    und erfragt zwei Eingabefelder: `Entscheidung` (Dropdown, Pflichtfeld,
+    Optionen `Approve`/`Request Changes`/`Reject`) und `Feedback (Pflicht bei
+    Request Changes)` (Textarea, im Formular selbst nicht als Pflichtfeld
+    hinterlegt, da n8n-Formularfelder nicht bedingt pflicht sein können — die
+    eigentliche Pflicht bei `Request Changes` erzwingt stattdessen der
+    nachfolgende Code-Node). Pausiert die Workflow-Ausführung, bis ein Mensch
+    das Formular absendet, und setzt danach mit den eingegebenen Werten fort
+    — analog zum mehrstufigen Formularmuster von **AI Sporting Director
+    beauftragen**/**Ergebnis anzeigen**/**Fehler anzeigen**, hier nur ohne
+    `completion`, weil der Workflow nach dieser Seite weiterläuft statt zu
+    enden.
+19e. **Review-Entscheidung auswerten** (Code) — liest `$json['Entscheidung']`
+    und `$json['Feedback (Pflicht bei Request Changes)']` aus der
+    Formulareingabe und holt das vollständige Item vor der Formularseite über
+    `$('Scouting Brief erstellen').first().json` zurück (bewusst defensiv wie
+    bei den LLM-Chain-Knoten, siehe 11./17., unabhängig davon, ob der
+    Form-Node selbst bereits alle Felder durchreicht). Validiert, dass
+    `Entscheidung` einer von `Approve`/`Request Changes`/`Reject` ist und dass
+    bei `Request Changes` ein nichtleeres Feedback vorliegt; setzt
+    `valid`/`errorMessage`. Erzwingt außerdem den **begrenzten** Feedback-Loop
+    aus der Story-Vorgabe: ist `scoutingBrief.reviewRound` bereits
+    `maxReviewRounds` (3) erreicht und die Entscheidung erneut `Request
+    Changes`, wird `reviewOutcome` trotzdem auf `'Reject'` gesetzt
+    (`maxRoundsReached: true`) statt eine vierte Überarbeitung zuzulassen —
+    ansonsten entspricht `reviewOutcome` der eingegebenen `Entscheidung`.
+19f. **Review-Entscheidung gültig?** (IF) — **falsch** → **Fehler anzeigen**;
+    **wahr** → **Review: Approve?**.
+19g. **Review: Approve?** (IF, prüft `reviewOutcome === 'Approve'`) —
+    **wahr** → **Player-Ranking-Anfrage vorbereiten** (derselbe Hauptworkflow
+    läuft unverändert fort); **falsch** → **Review: Request Changes?**.
+19h. **Review: Request Changes?** (IF, prüft `reviewOutcome === 'Request
+    Changes'`) — **wahr** → zurück zu **Spielerprofil: Positionspool
+    ermitteln** (derselbe Positionspool wird deterministisch aus
+    `teamDiagnosis.diagnosisCategory` neu ermittelt; **Spielerprofil LLM**
+    erhält über `reviewFeedback` das Freitext-Feedback und ist angewiesen,
+    das Profil entsprechend zu überarbeiten, siehe 15.); durchläuft danach
+    erneut **Spielerprofil zusammenführen** → **Spielerprofil prüfen** →
+    **Spielerprofil gültig?** → **Scouting Brief erstellen** (19a., das dabei
+    das vorherige Feedback archiviert und die Runde hochzählt) → erneutes
+    Review. **falsch** (d. h. `reviewOutcome === 'Reject'`, ob explizit oder
+    weil `maxRoundsReached`) → **Scouting Brief: Ablehnung dokumentieren**.
+19i. **Scouting Brief: Ablehnung dokumentieren** (Code) — formuliert
+    `errorMessage` mit dem Grund (`Reject` durch den Reviewer oder erreichte
+    `maxReviewRounds`) und dem zuletzt gegebenen Feedback, läuft in denselben
+    zentralen Fehlerpfad **Fehler anzeigen** wie alle anderen Gates — ein
+    Reject beendet die Kandidatensuche damit kontrolliert, ohne eine
+    Empfehlung zu erzeugen.
+
 20. **Player-Ranking-Anfrage vorbereiten** (Code) — übersetzt `playerProfile`
     in den Tool-Vertrag von Player-Ranking: `rankingExcludeClub` = der
     diagnostizierte Verein (Scouting sucht außerhalb des eigenen Kaders),
@@ -555,20 +683,29 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    Director untersuchen?` already contains the example text about the
    Hamburger SV's sporting problems.
 2. Click `Analyse starten` without changing anything. **Expected result:**
-   the browser shows the **Ergebnis anzeigen** page with five clearly
-   separated sections — Teamdiagnose, Spielerprofil, Spielersuche,
-   Recherche, Empfehlung — with a hint distinguishing the sections backed by
-   the CSV-Analytics-Adapter and the LLM interpretation (Teamdiagnose,
-   Spielerprofil, Spielersuche) from the still fully simulated one
-   (Recherche), and the recommended candidate is one of the shortlisted CSV
-   players (not the Hamburger SV squad itself). In the n8n **Executions**
-   list the run is successful and passes all six gates (**Teamdiagnose
-   gültig?**, **Spielerprofil gültig?**, **Spielersuche gültig?**,
-   **Recherche gültig?**, **Final Validation gültig?**, plus **Eingabe
-   validieren**); zusätzlich wird die Routing-IF **Teamdiagnose:
-   Datenverfügbarkeit prüfen** in ihren Wahr-Zweig verzweigt (kein Gate im
-   engeren Sinn, da beide Zweige gültig fortsetzen), und **Teamdiagnose
-   LLM**/**Spielerprofil LLM** laufen jeweils über ihren Erfolgs-Output.
+   the browser now shows the **Scouting Brief zur Freigabe vorlegen** page
+   (Human Review) instead of directly proceeding to the recommendation —
+   `formDescription` renders the Teamdiagnose-derived Hauptproblem,
+   Zielposition/Rolle, Begründung, gewichtete Kriterien, Constraints and
+   Unsicherheiten of the Spielerprofil-derived `scoutingBrief`, and shows
+   `Ueberarbeitungsrunde: 1 von max. 3` with no prior feedback.
+3. Select `Approve` in the `Entscheidung` dropdown, leave `Feedback` empty,
+   and submit. **Expected result:** the browser shows the **Ergebnis
+   anzeigen** page with five clearly separated sections — Teamdiagnose,
+   Spielerprofil, Spielersuche, Recherche, Empfehlung — with a hint
+   distinguishing the sections backed by the CSV-Analytics-Adapter and the
+   LLM interpretation (Teamdiagnose, Spielerprofil, Spielersuche) from the
+   still fully simulated one (Recherche), and the recommended candidate is
+   one of the shortlisted CSV players (not the Hamburger SV squad itself).
+   In the n8n **Executions** list the run is successful and passes all eight
+   gates (**Teamdiagnose gültig?**, **Spielerprofil gültig?**, **Scouting
+   Brief gültig?**, **Review-Entscheidung gültig?**, **Spielersuche
+   gültig?**, **Recherche gültig?**, **Final Validation gültig?**, plus
+   **Eingabe validieren**); zusätzlich werden die Routing-IFs **Teamdiagnose:
+   Datenverfügbarkeit prüfen** und **Review: Approve?** in ihren Wahr-Zweig
+   verzweigt (kein Gate im engeren Sinn, da beide Zweige gültig fortsetzen),
+   und **Teamdiagnose LLM**/**Spielerprofil LLM** laufen jeweils über ihren
+   Erfolgs-Output.
    **Ausgeführt (gezielte Node.js-Verifikation der geänderten Nodes):** der
    frühere Offline-Simulator für den kompletten Hauptworkflow
    (`n8n/data/simulate_main_workflow.js`) ist mit der Umstellung der
@@ -594,6 +731,25 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    unstrukturierte (z. B. freitextliche) Constraints ab; **Spielersuche
    prüfen** liefert `valid: false`, sobald `playerRanking.ignoredConstraints`
    nichtleer ist, und `valid: true`, wenn keine Constraints ignoriert wurden.
+   Für das neue Human-Review-Gate: `node
+   n8n/data/verify-scouting-brief-review.js` (grün) verifiziert isoliert die
+   drei zugehörigen Code-Nodes 1:1 aus ihrem `jsCode`-Inhalt — **Scouting
+   Brief erstellen** setzt `reviewRound: 1` mit leerer `feedbackHistory` im
+   Erstlauf und übernimmt in Folgerunden das Feedback der Vorrunde korrekt in
+   die Historie; **Scouting Brief prüfen** liefert `valid: false` bei einem
+   fehlenden Pflichtfeld; **Review-Entscheidung auswerten** liefert
+   `valid: false` für eine unbekannte Entscheidung sowie für `Request Changes`
+   ohne Feedback-Text, setzt `reviewOutcome` korrekt für `Approve`/`Reject`,
+   und erzwingt nach drei erreichten Überarbeitungsrunden `reviewOutcome:
+   'Reject'` (`maxRoundsReached: true`) statt eine vierte `Request
+   Changes`-Runde zuzulassen; zusätzlich verifiziert dieselbe Datei, dass ein
+   konkretes Reviewer-Alters-/Budgetlimit aus `reviewFeedback` (z. B. „max.
+   10 Mio. Marktwert“) — simuliert über die dadurch ausgelöste
+   **Spielerprofil LLM**-Folgerunde — unverändert in
+   `playerProfile.constraints` und von dort in `scoutingBrief.constraints`
+   der Folgerunde landet und ein gültiges Brief ergibt, statt am
+   ursprünglichen Widerspruch zwischen der `additionalContext`- und der
+   `reviewFeedback`-Instruktion im Prompt zu scheitern (siehe 15. oben).
    Zusätzlich:
    `node n8n/data/verify-import-architecture.js` (grün) sowie eine
    Konsistenzprüfung aller `n8n/*.json`-Workflow-Dateien (gültiges JSON, keine
@@ -708,16 +864,73 @@ wird der positive Testfall erneut ausgeführt.
    stattdessen zeigt **Fehler anzeigen** einen expliziten Hinweis auf die
    fehlende Datengrundlage statt eine Transfermaßnahme auf Basis eines
    beliebigen Positionspools zu erzeugen.
+10. **Scouting Brief gültig?** — `playerProfile.reasoning` vor **Scouting
+    Brief erstellen** entfernen (bzw. eine leere `weightedCriteria`-Liste
+    setzen). **Erwartet:** **Scouting Brief prüfen** setzt `valid: false`,
+    die Anzeige zeigt "Das Scouting Brief ist ungültig …" statt der
+    Freigabeseite.
+11. **Review-Entscheidung gültig?** (Request Changes ohne Feedback) — im
+    Formular **Scouting Brief zur Freigabe vorlegen** `Entscheidung` =
+    `Request Changes` waehlen und `Feedback` leer lassen. **Erwartet:**
+    **Review-Entscheidung auswerten** setzt `valid: false` mit einer
+    Fehlermeldung, die einen erforderlichen Feedback-Text nennt; die
+    Kandidatensuche stoppt kontrolliert über **Fehler anzeigen**, statt eine
+    leere Überarbeitung anzustoßen.
+12. **Review: Request Changes?** (begrenzter Feedback-Loop) — im Formular
+    dreimal hintereinander `Request Changes` mit nichtleerem Feedback waehlen.
+    **Erwartet:** die ersten beiden Runden erzeugen über **Spielerprofil
+    LLM** (mit `reviewFeedback` im Prompt) ein erneut vorgelegtes,
+    überarbeitetes Scouting Brief (`reviewRound` 2, dann 3) mit der
+    bisherigen Feedback-Historie sichtbar in `formDescription`; bei der
+    dritten `Request Changes`-Entscheidung (auf bereits erreichter
+    `maxReviewRounds: 3`) setzt **Review-Entscheidung auswerten**
+    `maxRoundsReached: true` und `reviewOutcome: 'Reject'`, sodass **Scouting
+    Brief: Ablehnung dokumentieren** die Kandidatensuche kontrolliert über
+    **Fehler anzeigen** beendet, statt eine vierte Überarbeitung zuzulassen.
+13. **Review: Approve?** (Reject) — im Formular `Entscheidung` = `Reject`
+    waehlen. **Erwartet:** **Scouting Brief: Ablehnung dokumentieren**
+    formuliert eine `errorMessage`, die auf die Ablehnung durch den Reviewer
+    hinweist (inkl. eines evtl. angegebenen Feedbacks), und die Anzeige zeigt
+    diese über **Fehler anzeigen** statt einer Empfehlung — keine der
+    nachfolgenden Stufen (Player-Ranking, Spielersuche, Recherche,
+    Empfehlung) wird erreicht.
+14. **Review: Request Changes?** (Reviewer-Alters-/Budgetlimit wird wirksam) —
+    im Formular **Scouting Brief zur Freigabe vorlegen** `Entscheidung` =
+    `Request Changes` waehlen und im `Feedback`-Feld ein konkretes Limit ohne
+    Bezug zum urspruenglichen `additionalContext` angeben (z. B. „bitte nur
+    Kandidaten unter 10 Mio. Marktwert vorschlagen“). **Erwartet:** die
+    Folgerunde von **Spielerprofil LLM** liefert ein `playerProfile.constraints`
+    mit genau diesem Limit (`{ field: 'marketValueMEUR', operator: 'max',
+    value: 10 }`), **Scouting Brief erstellen** übernimmt es unverändert in
+    `scoutingBrief.constraints` der Folgerunde, und nach **Approve** wendet
+    **Player-Ranking-Anfrage vorbereiten**/der Player-Ranking-Subworkflow es
+    tatsächlich an (`appliedConstraints` enthält es, `ignoredConstraints`
+    bleibt leer) — das vom Reviewer genannte Limit darf nicht folgenlos
+    bleiben, nur weil es nicht aus `additionalContext`, sondern aus
+    `reviewFeedback` stammt.
 
 **Ausgeführt (gezielte Node.js-Verifikation):** Fälle 1–8 wurden bereits vor
 dieser Story mit dem inzwischen entfernten Offline-Simulator gegen die
 HSV-Beispieldaten durchgespielt (siehe oben, Abschnitt „Positiver Testfall“,
 zur Ablösung dieses Simulators); Fall 9 wurde isoliert mit Node.js gegen
 **Teamdiagnose: Datengrundlage prüfen** verifiziert (`valid: false` für
-`diagnosisCategory: 'no_data'`, `valid: true` für `'defensive'`). Nicht
-ausgeführt: das manuelle Editieren der Nodes und Beobachten der
+`diagnosisCategory: 'no_data'`, `valid: true` für `'defensive'`); die Fälle
+10–12 wurden isoliert mit Node.js gegen die 1:1 aus `ai-sporting-director.json`
+übernommenen Funktionen in `n8n/data/verify-scouting-brief-review.js`
+verifiziert (siehe oben, Abschnitt "Positiver Testfall"); Fall 13 (Reject)
+teilt sich denselben `evaluateReview`-Codepfad wie Fall 12 und wurde dort mit
+verifiziert (`reviewOutcome: 'Reject'` bei direkter Reject-Entscheidung ohne
+`maxRoundsReached`); Fall 14 (Reviewer-Alters-/Budgetlimit) wurde für den Teil
+bis einschließlich `scoutingBrief.constraints` ebenfalls isoliert mit Node.js
+in `n8n/data/verify-scouting-brief-review.js` verifiziert (siehe oben) — der
+Teil ab **Player-Ranking-Anfrage vorbereiten** deckt sich mit der bereits
+bestehenden, isolierten Constraint-Filterung des Player-Ranking-Subworkflows
+(siehe unten, Abschnitt „Player-Ranking-Subworkflow: gezielte Tests“) und
+wurde nicht erneut end-to-end durchgespielt. Nicht ausgeführt: das manuelle
+Editieren der Nodes bzw. Ausfüllen des Freigabe-Formulars und Beobachten der
 **Executions**-Liste in einer laufenden n8n-Instanz — offen für die nächste
-Person (oder Session) mit interaktivem Zugriff.
+Person (oder Session) mit
+interaktivem Zugriff.
 
 ### Negativer Testfall (Validierung des Startformulars)
 
@@ -734,7 +947,7 @@ Der Hauptworkflow bleibt die einzige n8n-Workflow-Datei, die die HSV-Formular-
 Story trägt; die fünf technischen Subworkflow-Dateien (Recherche + die vier
 CSV-Analytics-Tools) sind die einzigen weiteren Dateien. Beim Import (die
 fünf Subworkflows zuerst, `n8n/ai-sporting-director.json` danach, siehe
-[Import & run](#import--run)) öffnet sich der Hauptworkflow mit allen 39 hier
+[Import & run](#import--run)) öffnet sich der Hauptworkflow mit allen 50 hier
 beschriebenen Nodes, inklusive der jetzt verbundenen **Ollama Modell
 (Qwen3.8:latest)**- und **LLM-Fehler normalisieren**-Nodes (siehe die beiden
 folgenden Regressionstests); jeder der fünf Subworkflows öffnet sich mit
