@@ -3,18 +3,39 @@
   "name": "Due Diligence",
   "nodes": [
     {
-      "parameters": {"inputSource": "passthrough"},
+      "parameters": {
+        "inputSource": "passthrough"
+      },
       "id": "d65a21ea-059a-46de-80c2-285528668053",
       "name": "Wenn von anderem Workflow aufgerufen",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
-      "position": [240, 300]
+      "position": [
+        240,
+        300
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
-          "conditions": [{"id": "11993539-cond-1", "leftValue": "={{ Array.isArray($json.playerSearch && $json.playerSearch.shortlist) && $json.playerSearch.shortlist.length > 0 }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true", "singleValue": true}}],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "11993539-cond-1",
+              "leftValue": "={{ Array.isArray($json.playerSearch && $json.playerSearch.shortlist) && $json.playerSearch.shortlist.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
           "combinator": "and"
         },
         "options": {}
@@ -23,7 +44,10 @@
       "name": "Shortlist vorhanden?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [460, 300],
+      "position": [
+        460,
+        300
+      ],
       "notesInFlow": false,
       "notes": "Nur mit einer nicht-leeren Shortlist werden kandidatenspezifische Research-Ausfuehrungen gestartet."
     },
@@ -35,43 +59,65 @@
       "name": "Kandidaten fuer Recherche aufteilen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [680, 180]
-    },
-    {
-      "parameters": {"batchSize": 1, "options": {}},
-      "id": "e4d3d8a6-4012-4e30-83f8-82f785e828f9",
-      "name": "Recherche je Kandidat",
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 3,
-      "position": [900, 180],
-      "notesInFlow": false,
-      "notes": "Erzwingt genau ein Kandidaten-Item pro Iteration. Dadurch wird der technische Recherche-Subworkflow fuer jeden Shortlist-Kandidaten als eigene Ausfuehrung gestartet und ein Fehler bleibt auf diesen Kandidaten begrenzt."
+      "position": [
+        680,
+        180
+      ]
     },
     {
       "parameters": {
         "source": "database",
-        "workflowId": {"__rl": true, "value": "802fdb6b-4c0a-413f-952d-250c91ddc476", "mode": "list", "cachedResultName": "Recherche (Dummy)"},
-        "mode": "once",
-        "options": {}
+        "workflowId": {
+          "__rl": true,
+          "value": "802fdb6b-4c0a-413f-952d-250c91ddc476",
+          "mode": "list",
+          "cachedResultName": "Recherche (Dummy)"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
       },
       "id": "1ff7c055-5a41-4702-ba2a-531b4f7a024e",
       "name": "Recherche je Kandidat durchfuehren",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1120, 180],
+      "position": [
+        920,
+        180
+      ],
       "onError": "continueErrorOutput",
       "notesInFlow": false,
-      "notes": "Ruft n8n/recherche-subworkflow.json mit genau einem Kandidaten-Item auf. success und error output werden beide in den Loop zurueckgefuehrt; erst dessen Done-Ausgang geht in den Fan-in."
+      "notes": "Startet fuer jedes eingehende Kandidaten-Item eine eigene Subworkflow-Ausfuehrung (mode: each) und wartet auf alle Child-Executions. Diese Ausfuehrungen sind voneinander unabhaengig und koennen parallel laufen; Erfolg und Fehler werden anschliessend gemeinsam per Fan-in gesammelt."
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\nif (items.length === 0) {\n  return [{ json: { research: [] } }];\n}\n\nconst contextItem = items.find((it) => it.json && it.json.playerSearch) || items[0];\nconst context = { ...(contextItem ? contextItem.json : {}) };\ndelete context.researchCandidateName;\ndelete context.researchResult;\ndelete context.error;\n\nconst research = items.map((it) => {\n  const j = it.json || {};\n  if (j.researchResult) {\n    return { ...j.researchResult, uncertain: false, uncertaintyReason: null };\n  }\n\n  const candidateName = j.researchCandidateName || (j.rankingCandidate && j.rankingCandidate.name) || 'unbekannter Kandidat';\n  const reason = (j.error && (j.error.message || j.error)) || 'Der Research-Zweig fuer diesen Kandidaten ist fehlgeschlagen.';\n\n  return {\n    candidate: candidateName,\n    club: null,\n    contract: null,\n    marketValue: null,\n    injuries: null,\n    news: [],\n    source: 'Recherche fehlgeschlagen (keine Quelle verfuegbar)',\n    timestamp: new Date().toISOString(),\n    confidence: 0,\n    uncertain: true,\n    uncertaintyReason: String(reason)\n  };\n});\n\nreturn [{ json: { ...context, research } }];"
+        "mode": "append",
+        "numberInputs": 2
+      },
+      "id": "a1c85156-55fc-4fc0-8dcb-524281c3a326",
+      "name": "Research-Zweige einsammeln",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1160,
+        180
+      ],
+      "notesInFlow": false,
+      "notes": "Fan-in der Erfolgs- und Fehlerausgaenge des kandidatenspezifischen Execute-Subworkflow-Nodes. Append wartet auf beide Outputs und reicht alle Kandidaten-Items gemeinsam weiter."
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nif (items.length === 0) {\n  return [{ json: { research: [] } }];\n}\n\nconst contextItem = items.find((it) => it.json && it.json.playerSearch) || items[0];\nconst context = { ...(contextItem ? contextItem.json : {}) };\ndelete context.researchCandidateName;\ndelete context.researchResult;\ndelete context.error;\n\nconst research = items.map((it) => {\n  const j = it.json || {};\n  if (j.researchResult) {\n    return { ...j.researchResult, uncertain: false, uncertaintyReason: null };\n  }\n\n  const candidateName = j.researchCandidateName\n    || (j.rankingCandidate && j.rankingCandidate.name)\n    || (j.error && j.error.researchCandidateName)\n    || 'unbekannter Kandidat';\n  const reason = (j.error && (j.error.message || j.error)) || 'Der Research-Zweig fuer diesen Kandidaten ist fehlgeschlagen.';\n\n  return {\n    candidate: candidateName,\n    club: null,\n    contract: null,\n    marketValue: null,\n    injuries: null,\n    news: [],\n    source: 'Recherche fehlgeschlagen (keine Quelle verfuegbar)',\n    timestamp: new Date().toISOString(),\n    confidence: 0,\n    uncertain: true,\n    uncertaintyReason: String(reason)\n  };\n});\n\nreturn [{ json: { ...context, research } }];"
       },
       "id": "5c6294f2-c7dd-4df2-8815-0a7d5b13ff4c",
       "name": "Recherche-Ergebnisse zusammenfuehren",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1340, 180]
+      "position": [
+        1380,
+        180
+      ]
     },
     {
       "parameters": {
@@ -81,13 +127,32 @@
       "name": "Recherche pruefen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1560, 300]
+      "position": [
+        1600,
+        300
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
-          "conditions": [{"id": "1aac50d4-1e63-4cbe-880a-61459db3b797", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true", "singleValue": true}}],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1aac50d4-1e63-4cbe-880a-61459db3b797",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
           "combinator": "and"
         },
         "options": {}
@@ -96,7 +161,10 @@
       "name": "Recherche gueltig?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1780, 300]
+      "position": [
+        1820,
+        300
+      ]
     },
     {
       "parameters": {},
@@ -104,22 +172,130 @@
       "name": "Due Diligence: Ergebnis",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [2000, 300],
+      "position": [
+        2040,
+        300
+      ],
       "notes": "Konsolidierter Phase-Ergebnis-Knoten: liefert research + valid + errorMessage an den Hauptworkflow.",
       "notesInFlow": false
     }
   ],
   "connections": {
-    "Wenn von anderem Workflow aufgerufen": {"main": [[{"node": "Shortlist vorhanden?", "type": "main", "index": 0}]]},
-    "Shortlist vorhanden?": {"main": [[{"node": "Kandidaten fuer Recherche aufteilen", "type": "main", "index": 0}], [{"node": "Recherche pruefen", "type": "main", "index": 0}]]},
-    "Kandidaten fuer Recherche aufteilen": {"main": [[{"node": "Recherche je Kandidat", "type": "main", "index": 0}]]},
-    "Recherche je Kandidat": {"main": [[{"node": "Recherche-Ergebnisse zusammenfuehren", "type": "main", "index": 0}], [{"node": "Recherche je Kandidat durchfuehren", "type": "main", "index": 0}]]},
-    "Recherche je Kandidat durchfuehren": {"main": [[{"node": "Recherche je Kandidat", "type": "main", "index": 0}], [{"node": "Recherche je Kandidat", "type": "main", "index": 0}]]},
-    "Recherche-Ergebnisse zusammenfuehren": {"main": [[{"node": "Recherche pruefen", "type": "main", "index": 0}]]},
-    "Recherche pruefen": {"main": [[{"node": "Recherche gueltig?", "type": "main", "index": 0}]]},
-    "Recherche gueltig?": {"main": [[{"node": "Due Diligence: Ergebnis", "type": "main", "index": 0}], [{"node": "Due Diligence: Ergebnis", "type": "main", "index": 0}]]}
+    "Wenn von anderem Workflow aufgerufen": {
+      "main": [
+        [
+          {
+            "node": "Shortlist vorhanden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shortlist vorhanden?": {
+      "main": [
+        [
+          {
+            "node": "Kandidaten fuer Recherche aufteilen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Recherche pruefen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kandidaten fuer Recherche aufteilen": {
+      "main": [
+        [
+          {
+            "node": "Recherche je Kandidat durchfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recherche je Kandidat durchfuehren": {
+      "main": [
+        [
+          {
+            "node": "Research-Zweige einsammeln",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Research-Zweige einsammeln",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Research-Zweige einsammeln": {
+      "main": [
+        [
+          {
+            "node": "Recherche-Ergebnisse zusammenfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recherche-Ergebnisse zusammenfuehren": {
+      "main": [
+        [
+          {
+            "node": "Recherche pruefen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recherche pruefen": {
+      "main": [
+        [
+          {
+            "node": "Recherche gueltig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recherche gueltig?": {
+      "main": [
+        [
+          {
+            "node": "Due Diligence: Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Due Diligence: Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "pinData": {},
-  "meta": {"templateCredsSetupCompleted": false},
-  "settings": {"executionOrder": "v1"}
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
 }
