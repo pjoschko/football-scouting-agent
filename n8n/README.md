@@ -92,14 +92,28 @@ das Gate-Muster danach bleibt aber identisch.
    untersuchen?` (Pflichtfeld, vereinsoffener Default-Auftrag ohne fest
    verdrahteten Verein, Position oder Problemdiagnose) und optionalem
    `Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?`.
-2. **Auftrag normalisieren** (Code) — normalisiert die Formularausgabe zu
-   `club`, `objective`, `additionalContext`, `requestId`, `requestedAt`.
-   Bildet die Dropdown-Auswahl über eine zentrale `CLUB_CANONICAL_MAP`
-   eindeutig auf den kanonischen Team-Identifier der Analytics-Schicht ab;
-   diese Zuordnung wird ausschließlich in diesem Node gepflegt und nicht in
-   den Analytics-Subworkflows dupliziert. Eine nicht in der Map enthaltene
-   Auswahl ergibt ein leeres `club` und wird von **Eingabe validieren**
-   abgelehnt.
+2. **Auftrag normalisieren** (Code, `runOnceForEachItem`) — normalisiert die
+   Formularausgabe zu `club`, `objective`, `additionalContext`, `requestId`,
+   `requestedAt`. Gibt dafür pro Item ein einzelnes `{ json: ... }`-Objekt
+   zurück (kein Array) — gegen exakt n8n **2.35.7** verifiziert: bei
+   `runOnceForEachItem` verwirft `validateRunCodeEachItem()` ein
+   Array-Ergebnis mit `Code doesn't return a single object`, bevor
+   **Eingabe validieren** oder die Analytics-Stufen erreicht werden. Bildet
+   die Dropdown-Auswahl über eine zentrale `CLUB_CANONICAL_MAP` eindeutig auf
+   den kanonischen Team-Identifier der Analytics-Schicht ab; diese Zuordnung
+   wird ausschließlich in diesem Node gepflegt und nicht in den
+   Analytics-Subworkflows dupliziert. Die Map-Werte sind gegen die
+   tatsächlichen Team-Identifier aus
+   `bundesliga_2025_26_match_analytics.csv` abgeglichen (nur 4 der 18 Vereine
+   sind dort wortgleich mit dem Dropdown-Label, z. B. `FC Bayern München` →
+   `Bayern Munich`, `1. FC Köln` → `FC Cologne`, `RB Leipzig` →
+   `RasenBallsport Leipzig`), da **Team-Performance abrufen**/**Team-Matches
+   abrufen** `club` per exaktem String-Vergleich gegen `Heimteam`/
+   `Auswärtsteam` matchen. `node n8n/data/verify-club-canonical-map.js`
+   verifiziert automatisiert alle 18 Dropdown-Vereine gegen diese
+   CSV-Identifier sowie den Rückgabevertrag des Nodes. Eine nicht in der Map
+   enthaltene Auswahl ergibt ein leeres `club` und wird von **Eingabe
+   validieren** abgelehnt.
 3. **Eingabe validieren** (IF) — unverändert: lehnt fehlende oder nur aus
    Leerzeichen bestehende Werte für `club`/`objective` ab.
    - **falsch** → **Validierungsfehler formulieren** (Set, unverändert) →
@@ -605,7 +619,13 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    `node n8n/data/verify-import-architecture.js` (grün) sowie eine
    Konsistenzprüfung aller `n8n/*.json`-Workflow-Dateien (gültiges JSON, keine
    doppelten Node-Namen/-IDs, alle Connections referenzieren existierende
-   Nodes, genau ein Trigger-Node). Nicht ausgeführt: ein vollständiger
+   Nodes, genau ein Trigger-Node). Ebenfalls ausgeführt (grün):
+   `node n8n/data/verify-club-canonical-map.js` — verifiziert automatisiert
+   alle 18 Dropdown-Vereine der Saison 2025/26 in `CLUB_CANONICAL_MAP` gegen
+   die tatsächlichen Team-Identifier aus
+   `bundesliga_2025_26_match_analytics.csv` (Spalten Heimteam/Auswärtsteam)
+   sowie den `{ json: ... }`-Rückgabevertrag von **Auftrag normalisieren**
+   gegen dessen `runOnceForEachItem`-Modus. Nicht ausgeführt: ein vollständiger
    End-to-End-Lauf des Hauptworkflows (inkl. Formular-/Completion-Seiten, dem
    n8n-**Executions**-Eintrag und einem echten Aufruf des lokalen
    Ollama-Modells), da dafür eine laufende n8n-Weboberfläche mit
