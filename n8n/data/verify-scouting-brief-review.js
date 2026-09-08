@@ -79,20 +79,65 @@ function evaluateReview(submitted, original) {
     errors.push('Fuer "Request Changes" ist ein Feedback-Text erforderlich.');
   }
 
+  const problem = (submitted['Hauptproblem (Diagnose)'] || '').toString().trim();
+  const targetPosition = (submitted['Zielposition'] || '').toString().trim();
+  const role = (submitted['Rolle'] || '').toString().trim();
+  const reasoning = (submitted['Begruendung'] || '').toString().trim();
+  if (!problem) errors.push('Feld "Hauptproblem (Diagnose)" darf nicht leer sein.');
+  if (!targetPosition) errors.push('Feld "Zielposition" darf nicht leer sein.');
+  if (!role) errors.push('Feld "Rolle" darf nicht leer sein.');
+  if (!reasoning) errors.push('Feld "Begruendung" darf nicht leer sein.');
+
+  function parseJsonArrayField(label) {
+    const raw = (submitted[label] || '').toString().trim();
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error('kein Array');
+      return parsed;
+    } catch (e) {
+      errors.push('Feld "' + label + '" enthaelt kein gueltiges JSON-Array: ' + e.message);
+      return undefined;
+    }
+  }
+  const weightedCriteria = parseJsonArrayField('Gewichtete Kriterien (JSON-Array)');
+  const constraints = parseJsonArrayField('Constraints (JSON-Array)');
+  const uncertainties = parseJsonArrayField('Unsicherheiten (JSON-Array)');
+
   const reviewRound = (original.scoutingBrief && original.scoutingBrief.reviewRound) || 1;
   const maxRoundsReached = reviewDecision === 'Request Changes' && reviewRound >= MAX_REVIEW_ROUNDS;
   const reviewOutcome = maxRoundsReached ? 'Reject' : reviewDecision;
 
   const valid = errors.length === 0;
+  const scoutingBrief = valid
+    ? { ...original.scoutingBrief, problem, targetPosition, role, reasoning, weightedCriteria, constraints, uncertainties }
+    : original.scoutingBrief;
 
   return {
     ...original,
+    scoutingBrief,
     reviewDecision,
     reviewFeedback,
     reviewOutcome,
     maxRoundsReached,
     valid,
     errorMessage: valid ? undefined : 'Die Review-Entscheidung ist ungueltig.\n\n' + errors.join('\n')
+  };
+}
+
+// Simuliert ein unbearbeitet abgesendetes Formular: die defaultValue-Ausdruecke
+// der editierbaren Brief-Felder in n8n/ai-sporting-director.json fuellen exakt
+// die Werte aus dem uebergebenen scoutingBrief vor (siehe "Scouting Brief zur
+// Freigabe vorlegen").
+function unchangedBriefFields(original) {
+  const b = (original && original.scoutingBrief) || {};
+  return {
+    'Hauptproblem (Diagnose)': b.problem,
+    'Zielposition': b.targetPosition,
+    'Rolle': b.role,
+    'Begruendung': b.reasoning,
+    'Gewichtete Kriterien (JSON-Array)': JSON.stringify(b.weightedCriteria),
+    'Constraints (JSON-Array)': JSON.stringify(b.constraints),
+    'Unsicherheiten (JSON-Array)': JSON.stringify(b.uncertainties)
   };
 }
 
@@ -126,20 +171,73 @@ const checkedBroken = checkScoutingBrief(brokenBrief);
 assert.strictEqual(checkedBroken.valid, false);
 assert.ok(checkedBroken.errorMessage.includes('scoutingBrief.reasoning fehlt.'));
 
-// 4. Review-Entscheidung auswerten: Approve.
-const approve = evaluateReview({ Entscheidung: 'Approve', 'Feedback (Pflicht bei Request Changes)': '' }, round1);
+// 4. Review-Entscheidung auswerten: Approve, Formular unbearbeitet abgesendet
+// (AC "Ohne Bearbeitung koennen die vorausgefuellten KI-Ergebnisse
+// unveraendert abgesendet werden").
+const approve = evaluateReview(
+  { ...unchangedBriefFields(round1), Entscheidung: 'Approve', 'Feedback (Pflicht bei Request Changes)': '' },
+  round1
+);
 assert.strictEqual(approve.valid, true);
 assert.strictEqual(approve.reviewOutcome, 'Approve');
 assert.strictEqual(approve.maxRoundsReached, false);
+assert.deepStrictEqual(approve.scoutingBrief, round1.scoutingBrief);
+
+// 4a. Review-Entscheidung auswerten: Reviewer bearbeitet Hauptproblem und
+// Begruendung vor dem Absenden -> die final abgesendeten Texte muessen exakt
+// den bearbeiteten Werten entsprechen und duerfen nicht durch das
+// urspruengliche KI-Ergebnis ueberschrieben werden; unveraenderte Felder
+// (z. B. reviewRound/feedbackHistory) bleiben unangetastet.
+const approveEdited = evaluateReview(
+  {
+    ...unchangedBriefFields(round1),
+    'Hauptproblem (Diagnose)': 'Vom Reviewer praezisiertes Hauptproblem.',
+    'Begruendung': 'Vom Reviewer ergaenzte Begruendung.',
+    Entscheidung: 'Approve',
+    'Feedback (Pflicht bei Request Changes)': ''
+  },
+  round1
+);
+assert.strictEqual(approveEdited.valid, true);
+assert.strictEqual(approveEdited.scoutingBrief.problem, 'Vom Reviewer praezisiertes Hauptproblem.');
+assert.strictEqual(approveEdited.scoutingBrief.reasoning, 'Vom Reviewer ergaenzte Begruendung.');
+assert.strictEqual(approveEdited.scoutingBrief.targetPosition, round1.scoutingBrief.targetPosition);
+assert.strictEqual(approveEdited.scoutingBrief.reviewRound, round1.scoutingBrief.reviewRound);
+assert.deepStrictEqual(approveEdited.scoutingBrief.feedbackHistory, round1.scoutingBrief.feedbackHistory);
+
+// 4b. Review-Entscheidung auswerten: leeres Pflichtfeld (Zielposition) ->
+// ungueltig.
+const emptyRequiredField = evaluateReview(
+  { ...unchangedBriefFields(round1), 'Zielposition': '  ', Entscheidung: 'Approve', 'Feedback (Pflicht bei Request Changes)': '' },
+  round1
+);
+assert.strictEqual(emptyRequiredField.valid, false);
+assert.ok(emptyRequiredField.errorMessage.includes('"Zielposition" darf nicht leer sein.'));
+
+// 4c. Review-Entscheidung auswerten: ungueltiges JSON im Constraints-Feld ->
+// ungueltig, mit eindeutiger Fehlermeldung.
+const invalidJsonField = evaluateReview(
+  { ...unchangedBriefFields(round1), 'Constraints (JSON-Array)': 'kein-json', Entscheidung: 'Approve', 'Feedback (Pflicht bei Request Changes)': '' },
+  round1
+);
+assert.strictEqual(invalidJsonField.valid, false);
+assert.ok(invalidJsonField.errorMessage.includes('"Constraints (JSON-Array)" enthaelt kein gueltiges JSON-Array'));
 
 // 5. Review-Entscheidung auswerten: Request Changes ohne Feedback -> ungueltig.
-const requestNoFeedback = evaluateReview({ Entscheidung: 'Request Changes', 'Feedback (Pflicht bei Request Changes)': '' }, round1);
+const requestNoFeedback = evaluateReview(
+  { ...unchangedBriefFields(round1), Entscheidung: 'Request Changes', 'Feedback (Pflicht bei Request Changes)': '' },
+  round1
+);
 assert.strictEqual(requestNoFeedback.valid, false);
 assert.ok(requestNoFeedback.errorMessage.includes('Feedback-Text erforderlich'));
 
 // 6. Review-Entscheidung auswerten: Request Changes mit Feedback -> gueltig, Loop.
 const request1 = evaluateReview(
-  { Entscheidung: 'Request Changes', 'Feedback (Pflicht bei Request Changes)': 'Bitte juengeren Kandidaten vorschlagen.' },
+  {
+    ...unchangedBriefFields(round1),
+    Entscheidung: 'Request Changes',
+    'Feedback (Pflicht bei Request Changes)': 'Bitte juengeren Kandidaten vorschlagen.'
+  },
   round1
 );
 assert.strictEqual(request1.valid, true);
@@ -164,7 +262,11 @@ assert.strictEqual(round2.scoutingBrief.role, 'Zielspieler (juenger)');
 // playerProfile.constraints -> Player-Ranking-Anfrage, siehe README.md)
 // tatsaechlich wirksam wird.
 const requestBudgetLimit = evaluateReview(
-  { Entscheidung: 'Request Changes', 'Feedback (Pflicht bei Request Changes)': 'Bitte nur Kandidaten unter 10 Mio. Marktwert vorschlagen.' },
+  {
+    ...unchangedBriefFields(round1),
+    Entscheidung: 'Request Changes',
+    'Feedback (Pflicht bei Request Changes)': 'Bitte nur Kandidaten unter 10 Mio. Marktwert vorschlagen.'
+  },
   round1
 );
 const itemForBudgetRound = {
@@ -183,7 +285,11 @@ assert.strictEqual(checkedBudgetRound.valid, true);
 // 8. Dritte Runde erreicht: eine weitere "Request Changes" auf reviewRound 3
 // muss ueber maxRoundsReached zu reviewOutcome 'Reject' gezwungen werden.
 const request2 = evaluateReview(
-  { Entscheidung: 'Request Changes', 'Feedback (Pflicht bei Request Changes)': 'Noch juenger bitte.' },
+  {
+    ...unchangedBriefFields(round2),
+    Entscheidung: 'Request Changes',
+    'Feedback (Pflicht bei Request Changes)': 'Noch juenger bitte.'
+  },
   round2
 );
 const itemForRound3 = { ...request2, playerProfile: baseItem.playerProfile };
@@ -191,7 +297,11 @@ const round3 = buildScoutingBrief(itemForRound3);
 assert.strictEqual(round3.scoutingBrief.reviewRound, 3);
 
 const request3 = evaluateReview(
-  { Entscheidung: 'Request Changes', 'Feedback (Pflicht bei Request Changes)': 'Und nochmal.' },
+  {
+    ...unchangedBriefFields(round3),
+    Entscheidung: 'Request Changes',
+    'Feedback (Pflicht bei Request Changes)': 'Und nochmal.'
+  },
   round3
 );
 assert.strictEqual(request3.valid, true, 'die Entscheidung selbst bleibt formal gueltig');
@@ -199,13 +309,19 @@ assert.strictEqual(request3.maxRoundsReached, true);
 assert.strictEqual(request3.reviewOutcome, 'Reject', 'die dritte Ueberarbeitungsrunde ist ausgeschoepft und wird kontrolliert beendet');
 
 // 9. Reject direkt in Runde 1.
-const reject1 = evaluateReview({ Entscheidung: 'Reject', 'Feedback (Pflicht bei Request Changes)': '' }, round1);
+const reject1 = evaluateReview(
+  { ...unchangedBriefFields(round1), Entscheidung: 'Reject', 'Feedback (Pflicht bei Request Changes)': '' },
+  round1
+);
 assert.strictEqual(reject1.valid, true);
 assert.strictEqual(reject1.reviewOutcome, 'Reject');
 assert.strictEqual(reject1.maxRoundsReached, false);
 
 // 10. Unbekannte Entscheidung -> ungueltig.
-const unknown = evaluateReview({ Entscheidung: 'Vielleicht', 'Feedback (Pflicht bei Request Changes)': '' }, round1);
+const unknown = evaluateReview(
+  { ...unchangedBriefFields(round1), Entscheidung: 'Vielleicht', 'Feedback (Pflicht bei Request Changes)': '' },
+  round1
+);
 assert.strictEqual(unknown.valid, false);
 assert.ok(unknown.errorMessage.includes('Unbekannte Review-Entscheidung'));
 

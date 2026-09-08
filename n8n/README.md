@@ -255,18 +255,27 @@ Routings/Reviews", nicht als eigener Subworkflow:
    `operation: "completion"`, d. h. eine zusätzliche Formularseite innerhalb
    desselben mehrstufigen Formulars wie **AI Sporting Director beauftragen**,
    nicht dessen Abschluss) — zeigt `scoutingBrief` (Hauptproblem,
-   Zielposition/Rolle, Begründung, gewichtete Kriterien, Constraints,
-   Unsicherheiten, aktuelle Überarbeitungsrunde und ggf. bereits gesammeltes
-   Feedback früherer Runden) rein lesend in `formDescription` an und
-   erfragt zwei Eingabefelder: `Entscheidung` (Dropdown, Pflichtfeld,
-   Optionen `Approve`/`Request Changes`/`Reject`) und `Feedback (Pflicht bei
-   Request Changes)` (Textarea, im Formular selbst nicht als Pflichtfeld
-   hinterlegt — die eigentliche Pflicht bei `Request Changes` erzwingt der
-   nachfolgende Code-Node). Pausiert die Workflow-Ausführung, bis ein Mensch
-   das Formular absendet.
-9. **Review-Entscheidung auswerten** (Code) — liest `$json['Entscheidung']`
-   und `$json['Feedback (Pflicht bei Request Changes)']` aus der
-   Formulareingabe und holt das vollständige Item vor der Formularseite über
+   Zielposition, Rolle, Begründung, gewichtete Kriterien, Constraints,
+   Unsicherheiten) **vollständig und editierbar** im Formular an: jedes
+   dieser Felder ist ein eigenes Formularfeld (`text`/`textarea`), dessen
+   `defaultValue` per Ausdruck (`={{ $json.scoutingBrief.<feld> }}`) mit dem
+   von der KI erzeugten Inhalt vorausgefüllt wird — die Array-Felder
+   (gewichtete Kriterien, Constraints, Unsicherheiten) werden dabei als
+   JSON-Array-Text vorausgefüllt. Der Reviewer kann jedes dieser Felder vor
+   dem Absenden frei bearbeiten; ohne Bearbeitung werden die vorausgefüllten
+   KI-Werte unverändert übernommen. Danach folgen wie zuvor zwei weitere
+   Eingabefelder: `Entscheidung` (Dropdown, Pflichtfeld, Optionen
+   `Approve`/`Request Changes`/`Reject`) und `Feedback (Pflicht bei Request
+   Changes)` (Textarea, im Formular selbst nicht als Pflichtfeld hinterlegt —
+   die eigentliche Pflicht bei `Request Changes` erzwingt der nachfolgende
+   Code-Node). Pausiert die Workflow-Ausführung, bis ein Mensch das Formular
+   absendet.
+9. **Review-Entscheidung auswerten** (Code) — liest `$json['Entscheidung']`,
+   `$json['Feedback (Pflicht bei Request Changes)']` sowie die editierbaren
+   Brief-Felder (`Hauptproblem (Diagnose)`, `Zielposition`, `Rolle`,
+   `Begruendung`, sowie die drei JSON-Array-Felder für gewichtete Kriterien,
+   Constraints und Unsicherheiten) aus der Formulareingabe und holt das
+   vollständige Item vor der Formularseite über
    `$('Execute Workflow: Scouting Brief erstellen').first().json` zurück
    (bewusst defensiv wie bei den LLM-Chain-Knoten in den Subworkflows,
    unabhängig davon, ob der Form-Node selbst bereits alle Felder
@@ -276,8 +285,16 @@ Routings/Reviews", nicht als eigener Subworkflow:
    dem Hauptworkflow heraus nicht mehr per `$()` adressierbar ist; der
    Execute-Workflow-Aufrufknoten selbst liefert dasselbe vollständige Item
    zurück). Validiert, dass `Entscheidung` einer von `Approve`/`Request
-   Changes`/`Reject` ist und dass bei `Request Changes` ein nichtleeres
-   Feedback vorliegt; setzt `valid`/`errorMessage`. Erzwingt außerdem den
+   Changes`/`Reject` ist, dass bei `Request Changes` ein nichtleeres Feedback
+   vorliegt, dass die Text-Felder (`Hauptproblem`, `Zielposition`, `Rolle`,
+   `Begruendung`) nicht leer sind und dass die drei JSON-Array-Felder
+   gültiges JSON (jeweils ein Array) enthalten; setzt `valid`/`errorMessage`.
+   Baut bei gültiger Eingabe ein neues `scoutingBrief`-Objekt, das
+   `reviewRound`/`maxReviewRounds`/`feedbackHistory` unverändert aus dem
+   ursprünglichen `scoutingBrief` übernimmt, dessen Inhaltsfelder aber exakt
+   den zuletzt im Formular sichtbaren (ggf. vom Reviewer bearbeiteten) Werten
+   entsprechen — die ursprünglichen, unbearbeiteten KI-Werte überschreiben
+   die Bearbeitung des Reviewers also nicht mehr. Erzwingt außerdem den
    **begrenzten** Feedback-Loop: ist `scoutingBrief.reviewRound` bereits
    `maxReviewRounds` (3) erreicht und die Entscheidung erneut `Request
    Changes`, wird `reviewOutcome` trotzdem auf `'Reject'` gesetzt
@@ -943,16 +960,18 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    untersuchen?` already contains the club-agnostic default order text.
 2. Click `Analyse starten` without changing anything. **Expected result:**
    the browser now shows the **Scouting Brief zur Freigabe vorlegen** page
-   (Human Review) instead of directly proceeding to the recommendation —
-   `formDescription` renders the Teamdiagnose-derived Hauptproblem,
-   Zielposition/Rolle, Begründung, gewichtete Kriterien, Constraints and
-   Unsicherheiten of the Spielerprofil-derived `scoutingBrief`, and shows
-   `Ueberarbeitungsrunde: 1 von max. 3` with no prior feedback. In the n8n
-   **Executions** list, this run appears as the main-workflow execution plus
-   two nested sub-executions (**Team analysieren**, **Scouting Brief
-   erstellen**), each independently inspectable.
-3. Select `Approve` in the `Entscheidung` dropdown, leave `Feedback` empty,
-   and submit. **Expected result:** the browser shows the **Ergebnis
+   (Human Review) instead of directly proceeding to the recommendation — the
+   Teamdiagnose-derived `Hauptproblem (Diagnose)` and the
+   Spielerprofil-derived `Zielposition`, `Rolle`, `Begruendung`, `Gewichtete
+   Kriterien (JSON-Array)`, `Constraints (JSON-Array)` and `Unsicherheiten
+   (JSON-Array)` of the `scoutingBrief` are each pre-filled, editable form
+   fields (not read-only text). In the n8n **Executions** list, this run
+   appears as the main-workflow execution plus two nested sub-executions
+   (**Team analysieren**, **Scouting Brief erstellen**), each independently
+   inspectable.
+3. Without editing any of the pre-filled brief fields, select `Approve` in
+   the `Entscheidung` dropdown, leave `Feedback` empty, and submit.
+   **Expected result:** the browser shows the **Ergebnis
    anzeigen** page with five clearly separated sections — Teamdiagnose,
    Spielerprofil, Spielersuche, Recherche, Empfehlung — with a hint
    distinguishing the sections backed by the CSV-Analytics-Adapter and the
@@ -1002,7 +1021,17 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    'Reject'` (`maxRoundsReached: true`); zusätzlich verifiziert dieselbe
    Datei, dass ein konkretes Reviewer-Alters-/Budgetlimit aus
    `reviewFeedback` unverändert in `playerProfile.constraints` und von dort
-   in `scoutingBrief.constraints` der Folgerunde landet.
+   in `scoutingBrief.constraints` der Folgerunde landet. Für die im Rahmen
+   dieser Story editierbar gemachten Brief-Felder verifiziert dieselbe Datei
+   zusätzlich: ein unbearbeitet abgesendetes Formular (alle Felder auf ihrem
+   `defaultValue`) liefert ein `scoutingBrief`, das exakt dem ursprünglichen
+   KI-Ergebnis entspricht; vom Reviewer bearbeitete Felder (z. B.
+   `Hauptproblem (Diagnose)`, `Begruendung`) landen unverändert im
+   resultierenden `scoutingBrief`, ohne dass unbearbeitete Felder
+   (`reviewRound`, `feedbackHistory`) davon berührt werden; ein leeres
+   Pflichtfeld sowie ein ungültiges JSON-Array in einem der drei
+   JSON-Array-Felder liefern `valid: false` mit einer feldspezifischen
+   Fehlermeldung.
 
    `node n8n/data/verify-import-architecture.js` (grün) verifiziert zusätzlich
    die vier `analytics-*-subworkflow.json`-Dateien sowie
