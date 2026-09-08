@@ -111,25 +111,6 @@ class N8nClient:
         except urllib.error.URLError as exc:
             raise SyncError(f"Cannot reach n8n API at {url}: {exc.reason}") from exc
 
-    def list_project_workflows(self) -> list[dict[str, Any]]:
-        workflows: list[dict[str, Any]] = []
-        cursor: str | None = None
-        while True:
-            params: dict[str, str] = {
-                "projectId": self.config.project_id,
-                "limit": "100",
-            }
-            if cursor:
-                params["cursor"] = cursor
-            query = urllib.parse.urlencode(params)
-            response = self._request("GET", f"/workflows?{query}")
-            if not isinstance(response, dict) or not isinstance(response.get("data"), list):
-                raise SyncError("Unexpected response from GET /workflows")
-            workflows.extend(item for item in response["data"] if isinstance(item, dict))
-            cursor = response.get("nextCursor")
-            if not cursor:
-                return workflows
-
     def export_folder_package(self) -> bytes:
         # The folder export is the public-API-supported way to enumerate exactly
         # the workflows in a folder (including nested folders). reference-only
@@ -319,8 +300,6 @@ def extract_workflows_from_package(package_bytes: bytes) -> list[dict[str, Any]]
     except (tarfile.TarError, json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise SyncError(f"Cannot read n8n folder export package: {exc}") from exc
 
-    if not workflows:
-        raise SyncError("The selected n8n folder export contains no workflows")
     return workflows
 
 
@@ -390,7 +369,7 @@ def _match_remote(
         ids = ", ".join(str(item.get("id")) for item in matches)
         raise SyncError(
             f"Cannot safely match local workflow {local.name!r}: multiple remote workflows "
-            f"in project {ids}. Match by stable workflow id or remove the duplicate names."
+            f"in folder {ids}. Match by stable workflow id or remove the duplicate names."
         )
     return matches[0] if matches else None
 
@@ -398,7 +377,10 @@ def _match_remote(
 def upload(config: Config, *, dry_run: bool) -> None:
     local = load_local_workflows(config.workflow_dir)
     client = N8nClient(config)
-    remote = client.list_project_workflows()
+    # Scope replace/name matching to the configured target folder (the same
+    # folder export publish/download use) so a same-named or same-id workflow
+    # living in a different folder can never be overwritten or moved here.
+    remote = extract_workflows_from_package(client.export_folder_package())
     remote_by_id, remote_by_name = _remote_indexes(remote)
 
     local_by_id = {wf.id: wf for wf in local if wf.id}
@@ -508,6 +490,8 @@ def _existing_local_filename_map(directory: Path) -> tuple[dict[str, Path], dict
 def download(config: Config, *, dry_run: bool) -> None:
     client = N8nClient(config)
     workflows = extract_workflows_from_package(client.export_folder_package())
+    if not workflows:
+        raise SyncError(f"n8n folder {config.folder_id} contains no workflows")
     config.workflow_dir.mkdir(parents=True, exist_ok=True)
     existing_by_id, existing_by_name = _existing_local_filename_map(config.workflow_dir)
     reserved: set[Path] = set()
@@ -548,6 +532,8 @@ def download(config: Config, *, dry_run: bool) -> None:
 def publish(config: Config, *, dry_run: bool) -> None:
     client = N8nClient(config)
     workflows = extract_workflows_from_package(client.export_folder_package())
+    if not workflows:
+        raise SyncError(f"n8n folder {config.folder_id} contains no workflows")
     ordered = dependency_order(workflows)
 
     print("Publish order (dependencies first):")
