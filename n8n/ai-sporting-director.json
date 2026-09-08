@@ -14,9 +14,6 @@
               "fieldOptions": {
                 "values": [
                   {
-                    "option": "Hamburger SV"
-                  },
-                  {
                     "option": "FC Bayern München"
                   },
                   {
@@ -26,17 +23,59 @@
                     "option": "RB Leipzig"
                   },
                   {
+                    "option": "VfB Stuttgart"
+                  },
+                  {
+                    "option": "TSG Hoffenheim"
+                  },
+                  {
                     "option": "Bayer 04 Leverkusen"
+                  },
+                  {
+                    "option": "Sport-Club Freiburg"
+                  },
+                  {
+                    "option": "Eintracht Frankfurt"
+                  },
+                  {
+                    "option": "FC Augsburg"
+                  },
+                  {
+                    "option": "1. FSV Mainz 05"
+                  },
+                  {
+                    "option": "1. FC Union Berlin"
+                  },
+                  {
+                    "option": "Borussia Mönchengladbach"
+                  },
+                  {
+                    "option": "Hamburger SV"
+                  },
+                  {
+                    "option": "1. FC Köln"
+                  },
+                  {
+                    "option": "SV Werder Bremen"
+                  },
+                  {
+                    "option": "VfL Wolfsburg"
+                  },
+                  {
+                    "option": "1. FC Heidenheim 1846"
+                  },
+                  {
+                    "option": "FC St. Pauli"
                   }
                 ]
               },
-              "defaultValue": "Hamburger SV",
+              "defaultValue": "FC Bayern München",
               "requiredField": true
             },
             {
               "fieldLabel": "Was soll der Sporting Director untersuchen?",
               "fieldType": "textarea",
-              "defaultValue": "Beim Hamburger SV läuft es sportlich nicht besonders gut. Analysiere, wo die größten Probleme liegen, und schlage vor, was wir auf dem Transfermarkt tun sollten.",
+              "defaultValue": "Analysiere, wo die größten Probleme liegen, und schlage vor, was wir auf dem Transfermarkt tun sollten.",
               "requiredField": true
             },
             {
@@ -62,47 +101,13 @@
     },
     {
       "parameters": {
-        "mode": "manual",
-        "assignments": {
-          "assignments": [
-            {
-              "id": "e5f6a7b8-b5b5-4e6f-8a7b-8c9d0e1f2a3b",
-              "name": "club",
-              "value": "={{ ($json['Verein'] || '').toString().trim() }}",
-              "type": "string"
-            },
-            {
-              "id": "f6a7b8c9-c6c6-4f7a-9b8c-9d0e1f2a3b4c",
-              "name": "objective",
-              "value": "={{ ($json['Was soll der Sporting Director untersuchen?'] || '').toString().trim() }}",
-              "type": "string"
-            },
-            {
-              "id": "a7b8c9d0-d7d7-4a8b-8c9d-0e1f2a3b4c5d",
-              "name": "additionalContext",
-              "value": "={{ ($json['Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?'] || '').toString().trim() }}",
-              "type": "string"
-            },
-            {
-              "id": "11223344-aaaa-4bbb-8ccc-1234567890ab",
-              "name": "requestId",
-              "value": "={{ $now.toMillis() + '-' + Math.random().toString(36).slice(2, 8) }}",
-              "type": "string"
-            },
-            {
-              "id": "22334455-bbbb-4ccc-8ddd-234567890abc",
-              "name": "requestedAt",
-              "value": "={{ $now.toISO() }}",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Zentrale, einmalige Zuordnung Dropdown-Auswahl -> kanonischer Team-Identifier der Analytics-Schicht.\n// Diese Zuordnung wird ausschliesslich hier gepflegt; keine Duplizierung in weiteren Nodes/Subworkflows.\nconst CLUB_CANONICAL_MAP = {\n  'FC Bayern München': 'FC Bayern München',\n  'Borussia Dortmund': 'Borussia Dortmund',\n  'RB Leipzig': 'RB Leipzig',\n  'VfB Stuttgart': 'VfB Stuttgart',\n  'TSG Hoffenheim': 'TSG Hoffenheim',\n  'Bayer 04 Leverkusen': 'Bayer 04 Leverkusen',\n  'Sport-Club Freiburg': 'Sport-Club Freiburg',\n  'Eintracht Frankfurt': 'Eintracht Frankfurt',\n  'FC Augsburg': 'FC Augsburg',\n  '1. FSV Mainz 05': '1. FSV Mainz 05',\n  '1. FC Union Berlin': '1. FC Union Berlin',\n  'Borussia Mönchengladbach': 'Borussia Mönchengladbach',\n  'Hamburger SV': 'Hamburger SV',\n  '1. FC Köln': '1. FC Köln',\n  'SV Werder Bremen': 'SV Werder Bremen',\n  'VfL Wolfsburg': 'VfL Wolfsburg',\n  '1. FC Heidenheim 1846': '1. FC Heidenheim 1846',\n  'FC St. Pauli': 'FC St. Pauli',\n};\n\nconst item = $input.item.json;\nconst selectedClub = (item['Verein'] || '').toString().trim();\nconst club = CLUB_CANONICAL_MAP[selectedClub] || '';\n\nreturn [{\n  json: {\n    club,\n    objective: (item['Was soll der Sporting Director untersuchen?'] || '').toString().trim(),\n    additionalContext: (item['Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?'] || '').toString().trim(),\n    requestId: Date.now() + '-' + Math.random().toString(36).slice(2, 8),\n    requestedAt: new Date().toISOString(),\n  },\n}];"
       },
       "id": "b2c3d4e5-e8e8-4b3c-9d4e-5f6a7b8c9d0e",
       "name": "Auftrag normalisieren",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         460,
         300

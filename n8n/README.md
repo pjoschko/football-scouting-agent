@@ -86,13 +86,20 @@ das Gate-Muster danach bleibt aber identisch.
 
 ## Nodes
 
-1. **AI Sporting Director beauftragen** (Form Trigger) — unverändert:
-   Formular mit `Verein` (Dropdown, `Hamburger SV` vorausgewählt), `Was soll
-   der Sporting Director untersuchen?` (Pflichtfeld) und optionalem `Gibt es
-   zusätzliche Rahmenbedingungen oder Beobachtungen?`.
-2. **Auftrag normalisieren** (Set) — unverändert: normalisiert die
-   Formularausgabe zu `club`, `objective`, `additionalContext`, `requestId`,
-   `requestedAt`.
+1. **AI Sporting Director beauftragen** (Form Trigger) — Formular mit
+   `Verein` (Dropdown, alle 18 Bundesliga-Vereine der Saison 2025/26,
+   `FC Bayern München` vorausgewählt), `Was soll der Sporting Director
+   untersuchen?` (Pflichtfeld, vereinsoffener Default-Auftrag ohne fest
+   verdrahteten Verein, Position oder Problemdiagnose) und optionalem
+   `Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?`.
+2. **Auftrag normalisieren** (Code) — normalisiert die Formularausgabe zu
+   `club`, `objective`, `additionalContext`, `requestId`, `requestedAt`.
+   Bildet die Dropdown-Auswahl über eine zentrale `CLUB_CANONICAL_MAP`
+   eindeutig auf den kanonischen Team-Identifier der Analytics-Schicht ab;
+   diese Zuordnung wird ausschließlich in diesem Node gepflegt und nicht in
+   den Analytics-Subworkflows dupliziert. Eine nicht in der Map enthaltene
+   Auswahl ergibt ein leeres `club` und wird von **Eingabe validieren**
+   abgelehnt.
 3. **Eingabe validieren** (IF) — unverändert: lehnt fehlende oder nur aus
    Leerzeichen bestehende Werte für `club`/`objective` ab.
    - **falsch** → **Validierungsfehler formulieren** (Set, unverändert) →
@@ -551,9 +558,9 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
 ### Positiver Testfall (alle Stufen)
 
 1. Open the form's test or production URL in a browser. **Expected result:**
-   `Verein` shows `Hamburger SV` preselected, and `Was soll der Sporting
-   Director untersuchen?` already contains the example text about the
-   Hamburger SV's sporting problems.
+   `Verein` shows all 18 Bundesliga clubs of the 2025/26 season, with
+   `FC Bayern München` preselected, and `Was soll der Sporting Director
+   untersuchen?` already contains the club-agnostic default order text.
 2. Click `Analyse starten` without changing anything. **Expected result:**
    the browser shows the **Ergebnis anzeigen** page with five clearly
    separated sections — Teamdiagnose, Spielerprofil, Spielersuche,
