@@ -140,13 +140,15 @@
       "position": [2440, 180]
     },
     {
-      "parameters": {},
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nif (item.valid === false) {\n  throw new Error('[CANDIDATE_SEARCH] ' + (item.errorMessage || 'Kandidaten suchen ist fehlgeschlagen.'));\n}\nreturn [{ json: { ...item, status: 'success' } }];"
+      },
       "id": "177bae2b-a84f-4c33-90f9-eeadf76058ff",
       "name": "Kandidaten suchen: Ergebnis",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [2660, 180],
-      "notes": "Konsolidierter Phase-Ergebnis-Knoten: liefert playerSearch + playerRanking + valid + errorMessage an den Hauptworkflow.",
+      "notes": "Einziger Capability-Exit: liefert bei Erfolg die validierte Shortlist. Bei valid=false wird die intern formulierte errorMessage als Subworkflow-Fehler geworfen; der Hauptworkflow braucht kein eigenes Kandidaten-gueltig-Gate mehr.",
       "notesInFlow": false
     }
   ],
