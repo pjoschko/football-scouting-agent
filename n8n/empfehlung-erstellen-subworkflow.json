@@ -3,113 +3,69 @@
   "name": "Empfehlung erstellen",
   "nodes": [
     {
-      "parameters": {
-        "inputSource": "passthrough"
-      },
+      "parameters": {"inputSource": "passthrough"},
       "id": "14713bba-51be-4ab0-aaa1-c3fc3b5ff7d0",
       "name": "Wenn von anderem Workflow aufgerufen",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
-      "position": [
-        240,
-        300
-      ]
+      "position": [240, 300]
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst shortlist = item.playerSearch.shortlist;\nconst research = Array.isArray(item.research) ? item.research : [];\nconst researchByCandidate = new Map(research.map((r) => [r.candidate, r]));\n\n// Kombiniert analytischen Fit (playerSearch.shortlist[].score aus dem\n// CSV-Analytics-Ranking) mit Transferrealisierbarkeit aus der Due Diligence\n// (research[].confidence als Mass fuer die Belastbarkeit der Recherche; ein\n// Kandidat ohne erfolgreichen Research-Zweig - research[].uncertain - gilt\n// als schwer beurteilbar, weil vertragliche/marktwertbezogene Fakten fehlen).\n// Ein reiner Analytics-Score wuerde Transferrealisierbarkeit vollstaendig\n// ignorieren - das widerspraeche dem Checklist-Ziel \"analytischen Fit und\n// Transferrealisierbarkeit zusammenfuehren\".\nconst ANALYTICS_WEIGHT = 0.6;\nconst FEASIBILITY_WEIGHT = 0.4;\n\nconst evaluated = shortlist.map((candidate) => {\n  const r = researchByCandidate.get(candidate.name) || null;\n  const feasibilityScore = (r && !r.uncertain && typeof r.confidence === 'number') ? r.confidence * 100 : 0;\n  const combinedScore = (ANALYTICS_WEIGHT * candidate.score) + (FEASIBILITY_WEIGHT * feasibilityScore);\n  return { candidate, research: r, feasibilityScore, combinedScore };\n});\n\nconst ranked = [...evaluated].sort((a, b) => b.combinedScore - a.combinedScore);\nconst bestEntry = ranked[0];\nconst best = bestEntry.candidate;\nconst bestResearch = bestEntry.research;\nconst alternatives = ranked.slice(1).map((e) => e.candidate.name);\n\nconst uncertainties = [\n  'Empfehlung basiert vollstaendig auf simulierten Recherche-Daten, keine echte Web-Recherche.'\n];\n// 'Spielersuche pruefen' (im Subworkflow \"Kandidaten suchen\") blockt bereits\n// den kompletten Fallback auf einen ungefilterten Pool\n// (positionFallbackApplied). Ein grober Positionsgruppen-Match (DF/MF/FW/GK\n// statt der exakt angeforderten Position, siehe\n// analytics-player-ranking-subworkflow.json posMatch()) ist dagegen mit der\n// FBref-Datengrundlage die Regel und wird deshalb nicht geblockt, aber hier\n// explizit als Unsicherheit ausgewiesen statt stillschweigend uebernommen.\nif (item.playerRanking && item.playerRanking.positionApproximationApplied) {\n  uncertainties.push('Die angeforderte Position (' + (item.playerRanking.position || item.playerProfile.position) + ') konnte im Kandidatenpool nur grob auf eine Positionsgruppe (DF/MF/FW/GK) angenaehert werden, kein exakter Positionsabgleich.');\n}\nif (!bestResearch || bestResearch.uncertain) {\n  uncertainties.push(`Fuer den bevorzugten Kandidaten ${best.name} liegt keine belastbare Due-Diligence-Recherche vor (Research-Zweig als Unsicherheit markiert) - die Transferrealisierbarkeit ist ungeprueft.`);\n} else if (typeof bestResearch.confidence === 'number' && bestResearch.confidence < 0.5) {\n  uncertainties.push(`Die Due-Diligence-Recherche zu ${best.name} hat eine niedrige Konfidenz (${bestResearch.confidence}).`);\n}\n\nconst risks = ['Simuliertes Risiko, das bei einer echten Analyse zu pruefen waere'];\nif (bestResearch && !bestResearch.uncertain) {\n  risks.push(`Vertragslage laut Due Diligence: ${bestResearch.contract}. Marktwert: ${bestResearch.marketValue}. Verletzungshistorie: ${bestResearch.injuries}.`);\n} else {\n  risks.push('Simuliertes Risiko aus einer fehlgeschlagenen bzw. unvollstaendigen Due-Diligence-Recherche');\n}\n\nconst reasoning = (bestResearch && !bestResearch.uncertain)\n  ? `${best.name} kombiniert den besten analytischen Fit (Score ${best.score}) mit der hoechsten Transferrealisierbarkeit laut Due Diligence (Konfidenz ${bestResearch.confidence}, ${bestResearch.club}, ${bestResearch.contract}).`\n  : `${best.name} hat unter den Kandidaten mit belastbarer Due-Diligence-Recherche den besten kombinierten Fit aus analytischem Score (${best.score}) und Transferrealisierbarkeit (Due-Diligence-Konfidenz ${bestResearch ? bestResearch.confidence : 0}).`;\n\nconst recommendation = {\n  simulated: true,\n  candidate: best.name,\n  alternatives,\n  reasoning,\n  risks,\n  uncertainties,\n  nextStep: 'Naechster Schritt: die Dummy-Stufen schrittweise durch die echte AI-, Qlik- und Web-Anbindung ersetzen.'\n};\n\nreturn [{ json: { ...item, recommendation } }];"
+        "jsCode": "const item = $input.item.json;\nconst shortlist = item.playerSearch.shortlist;\nconst research = Array.isArray(item.research) ? item.research : [];\nconst researchByCandidate = new Map(research.map((r) => [r.candidate, r]));\n\nconst ANALYTICS_WEIGHT = 0.6;\nconst FEASIBILITY_WEIGHT = 0.4;\n\nconst clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, value));\n\nconst parseNumber = (value) => {\n  if (typeof value === 'number' && Number.isFinite(value)) return value;\n  if (typeof value !== 'string') return null;\n  const match = value.match(/(\\d+(?:[.,]\\d+)?)/);\n  return match ? Number(match[1].replace(',', '.')) : null;\n};\n\nconst parseContractDate = (value) => {\n  if (typeof value !== 'string') return null;\n  const match = value.match(/(\\d{2})\\.(\\d{2})\\.(\\d{4})/);\n  if (!match) return null;\n  const date = new Date(Date.UTC(Number(match[3]), Number(match[2]) - 1, Number(match[1])));\n  return Number.isNaN(date.getTime()) ? null : date;\n};\n\nconst scoreMarketValue = (value) => {\n  const million = parseNumber(value);\n  if (million === null) return { score: null, detail: 'Marktwert nicht numerisch auswertbar.' };\n  const score = clamp(100 - (1.5 * million));\n  return { score, detail: `Marktwert ${million.toFixed(1)} Mio. EUR -> ${score.toFixed(1)}/100.` };\n};\n\nconst scoreContract = (value) => {\n  if (typeof value === 'string' && /(abl[oö]sefrei|vertragslos|auslaufend)/i.test(value)) {\n    return { score: 95, detail: 'Vertragslage deutet auf kurzfristige/ablösefreie Verfügbarkeit hin -> 95/100.' };\n  }\n  const date = parseContractDate(value);\n  if (!date) return { score: null, detail: 'Vertragsende nicht belastbar auswertbar.' };\n\n  const months = (date.getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30.4375);\n  let score;\n  if (months <= 0) score = 100;\n  else if (months <= 12) score = 90;\n  else if (months <= 24) score = 70;\n  else if (months <= 36) score = 50;\n  else if (months <= 60) score = 30;\n  else score = 15;\n  return { score, detail: `Vertragsrestlaufzeit ca. ${Math.max(0, months).toFixed(1)} Monate -> ${score}/100.` };\n};\n\nconst scoreInjuries = (value) => {\n  if (typeof value !== 'string' || !value.trim()) return { score: null, detail: 'Verletzungshistorie nicht auswertbar.' };\n  if (/(keine bekannten|keine verletzungen|verletzungsfrei)/i.test(value)) {\n    return { score: 90, detail: 'Keine bekannten relevanten Verletzungen -> 90/100.' };\n  }\n  if (/(langzeit|wiederkehr|chronisch|schwer)/i.test(value)) {\n    return { score: 25, detail: 'Erhöhtes Verletzungsrisiko erkennbar -> 25/100.' };\n  }\n  return { score: 55, detail: 'Verletzungslage vorhanden, aber ohne klaren Hochrisiko-Hinweis -> 55/100.' };\n};\n\nconst scoreNews = (news) => {\n  if (!Array.isArray(news) || news.length === 0) return { score: null, detail: 'Keine verwertbaren Transfer-News.' };\n  const text = news.join(' ');\n  if (/(unverk[aä]uflich|kein verkauf|not for sale|nicht abzugeben)/i.test(text)) {\n    return { score: 20, detail: 'News deuten auf geringe Verkaufsbereitschaft -> 20/100.' };\n  }\n  if (/(wechselbereit|transferfreigabe|darf gehen|verkaufsbereit)/i.test(text)) {\n    return { score: 90, detail: 'News deuten auf hohe Transferbereitschaft -> 90/100.' };\n  }\n  return { score: 60, detail: 'News ohne eindeutigen positiven/negativen Transfersignal -> 60/100.' };\n};\n\nconst assessFeasibility = (r) => {\n  if (!r || r.uncertain) {\n    return {\n      known: false,\n      score: null,\n      components: {},\n      evidence: ['Keine belastbaren Due-Diligence-Fakten; Transfer-Realisierbarkeit bleibt unbekannt.']\n    };\n  }\n\n  const components = {\n    marketValue: scoreMarketValue(r.marketValue),\n    contract: scoreContract(r.contract),\n    injuries: scoreInjuries(r.injuries),\n    news: scoreNews(r.news)\n  };\n\n  const weighted = [\n    ['marketValue', 0.35],\n    ['contract', 0.35],\n    ['injuries', 0.20],\n    ['news', 0.10]\n  ].filter(([key]) => typeof components[key].score === 'number');\n\n  if (weighted.length < 3 || !weighted.some(([key]) => key === 'marketValue') || !weighted.some(([key]) => key === 'contract')) {\n    return {\n      known: false,\n      score: null,\n      components,\n      evidence: Object.values(components).map((part) => part.detail)\n    };\n  }\n\n  const totalWeight = weighted.reduce((sum, [, weight]) => sum + weight, 0);\n  const score = weighted.reduce((sum, [key, weight]) => sum + (components[key].score * weight), 0) / totalWeight;\n\n  return {\n    known: true,\n    score: clamp(score),\n    components,\n    evidence: Object.values(components).map((part) => part.detail)\n  };\n};\n\nconst evaluated = shortlist.map((candidate) => {\n  const r = researchByCandidate.get(candidate.name) || null;\n  const feasibility = assessFeasibility(r);\n  const rankingFeasibility = feasibility.known ? feasibility.score : 50;\n  const combinedScore = (ANALYTICS_WEIGHT * candidate.score) + (FEASIBILITY_WEIGHT * rankingFeasibility);\n\n  return {\n    candidate,\n    research: r,\n    feasibility,\n    combinedScore,\n    researchConfidence: (r && typeof r.confidence === 'number') ? r.confidence : null\n  };\n});\n\nconst ranked = [...evaluated].sort((a, b) => {\n  if (b.combinedScore !== a.combinedScore) return b.combinedScore - a.combinedScore;\n  return b.candidate.score - a.candidate.score;\n});\n\nconst bestEntry = ranked[0];\nconst best = bestEntry.candidate;\nconst bestResearch = bestEntry.research;\nconst alternatives = ranked.slice(1).map((entry) => entry.candidate.name);\n\nconst uncertainties = ['Empfehlung basiert auf simulierten Recherche-Daten, keine echte Web-Recherche.'];\n\nif (item.playerRanking && item.playerRanking.positionApproximationApplied) {\n  uncertainties.push('Die angeforderte Position konnte im Kandidatenpool nur grob auf eine Positionsgruppe (DF/MF/FW/GK) angenaehert werden.');\n}\n\nif (!bestEntry.feasibility.known) {\n  uncertainties.push(`Fuer ${best.name} konnte aus den vorliegenden Due-Diligence-Fakten keine belastbare Transfer-Realisierbarkeit abgeleitet werden.`);\n}\n\nif (!bestResearch || bestResearch.uncertain) {\n  uncertainties.push(`Der Research-Zweig fuer ${best.name} ist unvollstaendig oder fehlgeschlagen.`);\n} else if (typeof bestResearch.confidence === 'number' && bestResearch.confidence < 0.5) {\n  uncertainties.push(`Die Recherche zu ${best.name} hat eine niedrige Konfidenz (${bestResearch.confidence}); diese Konfidenz bewertet nur die Verlaesslichkeit der Fakten, nicht die Transfer-Realisierbarkeit.`);\n}\n\nconst risks = ['Simuliertes Risiko, das bei einer echten Analyse zu pruefen waere'];\nif (bestResearch && !bestResearch.uncertain) {\n  risks.push(`Vertragslage: ${bestResearch.contract}. Marktwert: ${bestResearch.marketValue}. Verletzungshistorie: ${bestResearch.injuries}.`);\n}\n\nconst reasoning = bestEntry.feasibility.known\n  ? `${best.name} erreicht einen analytischen Fit von ${best.score} und eine aus Vertrag, Marktwert, Verletzungshistorie und News abgeleitete Transfer-Realisierbarkeit von ${bestEntry.feasibility.score.toFixed(1)}/100. Kombinierter Score: ${bestEntry.combinedScore.toFixed(1)}. Die Research-Konfidenz (${bestEntry.researchConfidence ?? 'n/a'}) wird separat ausgewiesen und nicht als Feasibility-Score verwendet.`\n  : `${best.name} erzielt den hoechsten kombinierten Score (${bestEntry.combinedScore.toFixed(1)}), wobei die Transfer-Realisierbarkeit mangels belastbarer Fakten neutral mit 50 fuer die Sortierung behandelt und explizit als unbekannt markiert wurde.`;\n\nconst candidateEvaluations = ranked.map((entry) => ({\n  candidate: entry.candidate.name,\n  analyticsScore: entry.candidate.score,\n  feasibilityScore: entry.feasibility.known ? Number(entry.feasibility.score.toFixed(2)) : null,\n  feasibilityKnown: entry.feasibility.known,\n  combinedScore: Number(entry.combinedScore.toFixed(2)),\n  researchConfidence: entry.researchConfidence,\n  feasibilityEvidence: entry.feasibility.evidence\n}));\n\nconst recommendation = {\n  simulated: true,\n  candidate: best.name,\n  alternatives,\n  reasoning,\n  risks,\n  uncertainties,\n  candidateEvaluations,\n  nextStep: 'Naechster Schritt: die Dummy-Stufen schrittweise durch die echte AI-, Qlik- und Web-Anbindung ersetzen.'\n};\n\nreturn [{ json: { ...item, recommendation } }];"
       },
       "id": "3b16c55f-b9b3-402c-986d-39a9273a96d6",
       "name": "Empfehlung erzeugen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        460,
-        180
-      ]
+      "position": [460, 180]
     },
     {
-      "parameters": {
-        "jsCode": "const item = $input.item.json;\nreturn [{ json: { ...item, playerName: item.recommendation.candidate } }];"
-      },
+      "parameters": {"jsCode": "const item = $input.item.json;\nreturn [{ json: { ...item, playerName: item.recommendation.candidate } }];"},
       "id": "f37f151f-fdd4-47a3-b9a2-531ab79f0675",
       "name": "Player-Profil-Anfrage vorbereiten",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        680,
-        180
-      ]
+      "position": [680, 180]
     },
     {
       "parameters": {
         "source": "database",
-        "workflowId": {
-          "__rl": true,
-          "value": "d6f31473-12f9-40a2-b935-ca998397142e",
-          "mode": "list",
-          "cachedResultName": "Player-Profil (CSV)"
-        },
+        "workflowId": {"__rl": true, "value": "d6f31473-12f9-40a2-b935-ca998397142e", "mode": "list", "cachedResultName": "Player-Profil (CSV)"},
+        "mode": "once",
         "options": {}
       },
       "id": "14a78354-7e5c-41e4-95c9-e48de5613b15",
       "name": "Player-Profil abrufen",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [
-        900,
-        180
-      ],
+      "position": [900, 180],
       "notesInFlow": false,
-      "notes": "CSV-Analytics-Adapter (temporaerer Ersatz fuer Qlik MCP): ruft n8n/analytics-player-profile-subworkflow.json ueber dessen feste Top-Level-ID auf, um den von \"Empfehlung erzeugen\" gewaehlten Kandidaten nachzuschlagen. Reichert das Item um playerProfileLookup an. Siehe n8n/README.md, Abschnitt \"CSV-Analytics-Adapter\"."
+      "notes": "CSV-Analytics-Adapter: reichert den bereits gewaehlten Kandidaten nochmals um das stabile Player-Profil an."
     },
     {
-      "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst lookup = item.playerProfileLookup;\n\nconst recommendation = {\n  ...item.recommendation,\n  candidateProfile: (lookup && lookup.found) ? lookup.profile : null\n};\n\nreturn [{ json: { ...item, recommendation } }];"
-      },
+      "parameters": {"jsCode": "const item = $input.item.json;\nconst lookup = item.playerProfileLookup;\nconst recommendation = { ...item.recommendation, candidateProfile: (lookup && lookup.found) ? lookup.profile : null };\nreturn [{ json: { ...item, recommendation } }];"},
       "id": "e01e339f-794b-45f5-afa5-1908fca02f26",
       "name": "Empfehlung anreichern",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        1120,
-        180
-      ]
+      "position": [1120, 180]
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst r = item.recommendation;\nconst errors = [];\n\n// Nur ein leichtgewichtiger, technischer Struktur-Check dieser Capability\n// (\"hat 'Empfehlung erzeugen' ueberhaupt eine schema-gueltige Empfehlung\n// geliefert?\"). Die fachlich uebergreifende Gesamtvalidierung (Teamdiagnose,\n// Spielerprofil, Shortlist, Recherche UND diese Empfehlung zusammen) ist\n// bewusst Teil der eigenstaendigen \"Ergebnis aufbereiten\"-Capability\n// (n8n/ergebnis-aufbereiten-subworkflow.json), die auch die\n// Praesentationsausgabe kapselt - siehe n8n/README.md.\nif (!r || !r.candidate) errors.push('recommendation.candidate fehlt.');\nif (!r || !Array.isArray(r.alternatives)) errors.push('recommendation.alternatives fehlt.');\nif (!r || !r.reasoning) errors.push('recommendation.reasoning fehlt.');\nif (!r || !Array.isArray(r.risks) || r.risks.length === 0) errors.push('recommendation.risks fehlt oder ist leer.');\nif (!r || !Array.isArray(r.uncertainties) || r.uncertainties.length === 0) errors.push('recommendation.uncertainties fehlt oder ist leer.');\nif (!r || !r.nextStep) errors.push('recommendation.nextStep fehlt.');\n\nconst valid = errors.length === 0;\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : 'Die Empfehlung ist technisch ungueltig.\\n\\n' + errors.join('\\n')\n  }\n}];"
+        "jsCode": "const item = $input.item.json;\nconst r = item.recommendation;\nconst errors = [];\n\nif (!r || !r.candidate) errors.push('recommendation.candidate fehlt.');\nif (!r || !Array.isArray(r.alternatives)) errors.push('recommendation.alternatives fehlt.');\nif (!r || !r.reasoning) errors.push('recommendation.reasoning fehlt.');\nif (!r || !Array.isArray(r.risks) || r.risks.length === 0) errors.push('recommendation.risks fehlt oder ist leer.');\nif (!r || !Array.isArray(r.uncertainties) || r.uncertainties.length === 0) errors.push('recommendation.uncertainties fehlt oder ist leer.');\nif (!r || !Array.isArray(r.candidateEvaluations) || r.candidateEvaluations.length === 0) errors.push('recommendation.candidateEvaluations fehlt oder ist leer.');\nif (!r || !r.nextStep) errors.push('recommendation.nextStep fehlt.');\n\nconst valid = errors.length === 0;\nreturn [{ json: { ...item, valid, errorMessage: valid ? undefined : 'Die Empfehlung ist technisch ungueltig.\\n\\n' + errors.join('\\n') } }];"
       },
       "id": "c3c08ae4-37e9-4f6c-814a-a809c92a550d",
       "name": "Empfehlung technisch pruefen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        1340,
-        180
-      ]
+      "position": [1340, 180]
     },
     {
       "parameters": {
         "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "1d4e1ed6-cond-1",
-              "leftValue": "={{ $json.valid }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
+          "conditions": [{"id": "1d4e1ed6-cond-1", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true", "singleValue": true}}],
           "combinator": "and"
         },
         "options": {}
@@ -118,10 +74,7 @@
       "name": "Empfehlung technisch gueltig?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        1560,
-        180
-      ]
+      "position": [1560, 180]
     },
     {
       "parameters": {},
@@ -129,105 +82,21 @@
       "name": "Empfehlung erstellen: Ergebnis",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [
-        1780,
-        180
-      ],
-      "notes": "Konsolidierter Phase-Ergebnis-Knoten dieser Subworkflow-Datei (siehe n8n/README.md): liefert recommendation + valid + errorMessage (bereits von 'Empfehlung technisch pruefen' gesetzt) an den Hauptworkflow zurueck. Die fachlich uebergreifende Gesamtvalidierung (Final Validation) laeuft erst in der nachgelagerten Capability 'Ergebnis aufbereiten'.",
+      "position": [1780, 180],
+      "notes": "Konsolidierter Phase-Ergebnis-Knoten: liefert recommendation + valid + errorMessage an den Hauptworkflow.",
       "notesInFlow": false
     }
   ],
   "connections": {
-    "Wenn von anderem Workflow aufgerufen": {
-      "main": [
-        [
-          {
-            "node": "Empfehlung erzeugen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Empfehlung erzeugen": {
-      "main": [
-        [
-          {
-            "node": "Player-Profil-Anfrage vorbereiten",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Player-Profil-Anfrage vorbereiten": {
-      "main": [
-        [
-          {
-            "node": "Player-Profil abrufen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Player-Profil abrufen": {
-      "main": [
-        [
-          {
-            "node": "Empfehlung anreichern",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Empfehlung anreichern": {
-      "main": [
-        [
-          {
-            "node": "Empfehlung technisch pruefen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Empfehlung technisch pruefen": {
-      "main": [
-        [
-          {
-            "node": "Empfehlung technisch gueltig?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Empfehlung technisch gueltig?": {
-      "main": [
-        [
-          {
-            "node": "Empfehlung erstellen: Ergebnis",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Empfehlung erstellen: Ergebnis",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Wenn von anderem Workflow aufgerufen": {"main": [[{"node": "Empfehlung erzeugen", "type": "main", "index": 0}]]},
+    "Empfehlung erzeugen": {"main": [[{"node": "Player-Profil-Anfrage vorbereiten", "type": "main", "index": 0}]]},
+    "Player-Profil-Anfrage vorbereiten": {"main": [[{"node": "Player-Profil abrufen", "type": "main", "index": 0}]]},
+    "Player-Profil abrufen": {"main": [[{"node": "Empfehlung anreichern", "type": "main", "index": 0}]]},
+    "Empfehlung anreichern": {"main": [[{"node": "Empfehlung technisch pruefen", "type": "main", "index": 0}]]},
+    "Empfehlung technisch pruefen": {"main": [[{"node": "Empfehlung technisch gueltig?", "type": "main", "index": 0}]]},
+    "Empfehlung technisch gueltig?": {"main": [[{"node": "Empfehlung erstellen: Ergebnis", "type": "main", "index": 0}], [{"node": "Empfehlung erstellen: Ergebnis", "type": "main", "index": 0}]]}
   },
   "pinData": {},
-  "meta": {
-    "templateCredsSetupCompleted": false
-  },
-  "settings": {
-    "executionOrder": "v1"
-  }
+  "meta": {"templateCredsSetupCompleted": false},
+  "settings": {"executionOrder": "v1"}
 }
