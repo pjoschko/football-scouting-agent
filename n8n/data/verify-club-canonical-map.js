@@ -28,6 +28,12 @@ const n8nDir = path.resolve(__dirname, '..');
 const workflowPath = path.join(n8nDir, 'ai-sporting-director.json');
 const workflow = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
 
+// "Player-Ranking-Anfrage vorbereiten" moved out of ai-sporting-director.json
+// into the "Kandidaten suchen" business subworkflow as part of the
+// top-level-restructuring story (see n8n/README.md); read it from there.
+const kandidatenSuchenPath = path.join(n8nDir, 'kandidaten-suchen-subworkflow.json');
+const kandidatenSuchenWorkflow = JSON.parse(fs.readFileSync(kandidatenSuchenPath, 'utf8'));
+
 const node = workflow.nodes.find((n) => n.name === 'Auftrag normalisieren');
 if (!node) {
   console.error('Node "Auftrag normalisieren" nicht gefunden.');
@@ -170,8 +176,8 @@ if (actualCanonicalMap && actualPlayerDataMap) {
 // bestimmen, nicht ueber den Match-Identifier (club) - sonst werden eigene
 // Spieler bei den 8 abweichenden Clubs nicht ausgeschlossen (Cross-Dataset-
 // Bug, siehe Review).
-const rankingPrepNode = workflow.nodes.find((n) => n.name === 'Player-Ranking-Anfrage vorbereiten');
-assert(Boolean(rankingPrepNode), 'Node "Player-Ranking-Anfrage vorbereiten" nicht gefunden.');
+const rankingPrepNode = kandidatenSuchenWorkflow.nodes.find((n) => n.name === 'Player-Ranking-Anfrage vorbereiten');
+assert(Boolean(rankingPrepNode), 'Node "Player-Ranking-Anfrage vorbereiten" nicht in kandidaten-suchen-subworkflow.json gefunden.');
 if (rankingPrepNode) {
   const prepCode = rankingPrepNode.parameters.jsCode;
   assert(

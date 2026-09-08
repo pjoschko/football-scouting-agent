@@ -1,0 +1,311 @@
+{
+  "id": "25aeb354-a18e-4e44-b0a1-c3a7c546b19f",
+  "name": "Team analysieren",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "3dcde188-84e1-4632-add8-c55bfe03e472",
+      "name": "Wenn von anderem Workflow aufgerufen",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "e7a415a1-6e8b-4f26-a724-3f728588c6b3",
+          "mode": "list",
+          "cachedResultName": "Team-Performance (CSV)"
+        },
+        "options": {}
+      },
+      "id": "320aaa80-817a-4414-aded-288f125ef423",
+      "name": "Team-Performance abrufen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        460,
+        140
+      ],
+      "notesInFlow": false,
+      "notes": "CSV-Analytics-Adapter (temporaerer Ersatz fuer Qlik MCP): ruft n8n/analytics-team-performance-subworkflow.json ueber dessen feste Top-Level-ID auf und reichert das Item um teamPerformance an. Siehe n8n/README.md, Abschnitt \"CSV-Analytics-Adapter\"."
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "68f47ebf-1e64-41a1-af75-b2afae2c0fbc",
+          "mode": "list",
+          "cachedResultName": "Team-Matches (CSV)"
+        },
+        "options": {}
+      },
+      "id": "16f022b1-04a0-44ae-8ac9-20368d75ea71",
+      "name": "Team-Matches abrufen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        680,
+        140
+      ],
+      "notesInFlow": false,
+      "notes": "CSV-Analytics-Adapter (temporaerer Ersatz fuer Qlik MCP): ruft n8n/analytics-team-matches-subworkflow.json ueber dessen feste Top-Level-ID auf und reichert das Item um teamMatches an. Siehe n8n/README.md, Abschnitt \"CSV-Analytics-Adapter\"."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "15ca78f8-cond-1",
+              "leftValue": "={{ $json.teamPerformance.dataAvailable }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "15ca78f8-96df-45ce-87d7-a5ecaa484c9c",
+      "name": "Teamdiagnose: Datenverfuegbarkeit pruefen",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        900,
+        140
+      ],
+      "notesInFlow": false,
+      "notes": "Entscheidet, ob 'Teamdiagnose LLM' ueberhaupt aufgerufen wird: ohne CSV-Analytics-Daten (teamPerformance.dataAvailable === false) gibt es nichts, was ein LLM interpretieren koennte - dieser Fall bleibt bewusst der deterministische 'Teamdiagnose (keine Daten) erzeugen'-Pfad. Siehe n8n/README.md."
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\nconst teamDiagnosis = {\n  simulated: false,\n  dataAvailable: false,\n  diagnosisCategory: 'no_data',\n  evidence: [\n    `Keine importierten Analytics-Daten fuer '${item.club}' vorhanden (Data Table 'football_scouting_raw') - es werden keine Ersatzwerte erfunden.`\n  ],\n  leagueComparisonAvailable: false,\n  leagueComparison: `Ohne Datengrundlage ist kein Ligavergleich fuer '${item.club}' moeglich.`,\n  hypotheses: [\n    'Ohne Datengrundlage kann keine belastbare Hypothese zur sportlichen Situation abgeleitet werden.'\n  ],\n  counterHypotheses: [],\n  mainProblem: `Fuer '${item.club}' liegen keine CSV-Analytics-Daten vor; auf dieser Datengrundlage ist keine Diagnose moeglich.`,\n  uncertainties: [\n    'Diese Aussage stammt aus dem CSV-Analytics-Adapter (Data Table football_scouting_raw), nicht aus einer echten Qlik-Analyse oder Websuche.',\n    'Ohne Datengrundlage konnte kein LLM zur Interpretation herangezogen werden.'\n  ]\n};\n\nreturn [{ json: { ...item, teamDiagnosis } }];"
+      },
+      "id": "61a04ad1-727f-4673-9f6d-08edb34e8f6b",
+      "name": "Teamdiagnose (keine Daten) erzeugen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst perf = item.teamPerformance;\nconst matches = item.teamMatches;\n\nconst recentResults = (matches && Array.isArray(matches.matches))\n  ? matches.matches.map((m) => `${m.result} ${m.goalsFor}:${m.goalsAgainst} vs. ${m.opponent} (${m.date})`)\n  : [];\n\nconst teamDiagnosisEvidence = [\n  `Bilanz der letzten ${perf.matchesAnalyzed} Pflichtspiele: ${perf.wins}S/${perf.draws}U/${perf.losses}N, Tore ${perf.goalsFor}:${perf.goalsAgainst}, Punkte ${perf.points} (CSV-Analytics-Adapter, Data Table football_scouting_raw).`,\n  `Form (neuestes Spiel zuerst): ${perf.form.join('-')}.`,\n  `Punkteschnitt der letzten ${perf.matchesAnalyzed} Spiele: ${(perf.points / perf.matchesAnalyzed).toFixed(2)} pro Spiel.`,\n  `Durchschnittliche Tore pro Spiel: ${perf.avgGoalsFor} erzielt, ${perf.avgGoalsAgainst} kassiert (Tordifferenz ${perf.goalDifference}).`,\n  ...recentResults\n];\n\nreturn [{ json: { ...item, teamDiagnosisEvidence } }];"
+      },
+      "id": "c75d215c-45b2-4e16-a4a9-a086df0d35cf",
+      "name": "Teamdiagnose: Evidenz aufbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Verein: {{ $json.club }}\nZielsetzung des Auftrags: {{ $json.objective }}\nZusaetzlicher Kontext: {{ $json.additionalContext || '(keiner)' }}\n\nGegebene Fakten aus dem CSV-Analytics-Adapter (bereits real berechnet - NICHT erfinden, nur interpretieren):\n{{ $json.teamDiagnosisEvidence.join('\\n') }}\n\nRohkennzahlen: avgGoalsFor={{ $json.teamPerformance.avgGoalsFor }}, avgGoalsAgainst={{ $json.teamPerformance.avgGoalsAgainst }}, Punkte={{ $json.teamPerformance.points }} aus {{ $json.teamPerformance.matchesAnalyzed }} Spielen.\n\nInterpretiere ausschliesslich auf Basis dieser Fakten (keine erfundenen Zahlen, keine externen Annahmen). Ordne die Lage genau einer von drei Kategorien zu: 'defensive' (mehr Gegentore als eigene Tore / auffaellige Anfaelligkeit), 'offensive' (zu wenige eigene Tore trotz stabilerer Defensive) oder 'neutral' (kein eindeutiger struktureller Schwerpunkt). Liefere zusaetzlich einen Ligavergleich: Dir liegen ausschliesslich die Kennzahlen von '{{ $json.club }}' vor, KEINE Liga-Durchschnittswerte und KEINE Kennzahlen anderer Bundesliga-Vereine. Erfinde deshalb KEINE Platzierung, KEINEN Liga-Durchschnitt und KEINEN Vergleich zu konkreten anderen Vereinen - benenne in 'leagueComparison' stattdessen explizit, dass auf dieser Datengrundlage kein belastbarer Vergleich zur Bundesliga-Konkurrenz moeglich ist, und was dafuer zusaetzlich vorliegen muesste (z. B. Liga-weite Kennzahlen aller Vereine). Liefere ausserdem Hypothesen zur Ursache, Gegenhypothesen (plausible alternative Erklaerungen, die denselben Fakten ebenfalls nicht widersprechen), das Hauptproblem in einem Satz sowie Unsicherheiten (was diese Diagnose NICHT abdeckt, z. B. fehlende erwartbare Tore/xG, Gegnerstaerke, Verletzungen, kein Kontext zu anderen Vereinen).",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Du bist ein erfahrener Sporting-Director-Analyst. Du interpretierst ausschliesslich die dir gegebenen, bereits real berechneten Kennzahlen aus einem CSV-Analytics-Adapter. Du erfindest keine Zahlen und triffst keine Annahmen ueber Daten, die dir nicht vorliegen - wo Unsicherheit besteht, benennst du sie explizit statt sie zu verschweigen. Du erfindest insbesondere keinen Ligavergleich (keine Platzierung, keinen Liga-Durchschnitt, keinen Vergleich zu konkreten anderen Vereinen), wenn dir dafuer keine echten Vergleichsdaten anderer Vereine vorliegen - in diesem Fall benennst du das Fehlen der Vergleichsgrundlage explizit als 'leagueComparison'."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "id": "9778a722-d717-4f1c-9bfc-3f08a9bede6b",
+      "name": "Teamdiagnose LLM",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.6,
+      "onError": "continueErrorOutput",
+      "position": [
+        1340,
+        60
+      ],
+      "notesInFlow": false,
+      "notes": "Interpretiert die von 'Teamdiagnose: Evidenz aufbereiten' gelieferten Fakten ueber Ollama. Fehler werden intern normalisiert und am Capability-Exit als Subworkflow-Fehler an den zentralen Hauptworkflow-Fehlerkanal weitergegeben."
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"required\": [\"diagnosisCategory\", \"leagueComparison\", \"hypotheses\", \"counterHypotheses\", \"mainProblem\", \"uncertainties\"],\n  \"properties\": {\n    \"diagnosisCategory\": { \"type\": \"string\", \"enum\": [\"defensive\", \"offensive\", \"neutral\"] },\n    \"leagueComparison\": { \"type\": \"string\" },\n    \"hypotheses\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n    \"counterHypotheses\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n    \"mainProblem\": { \"type\": \"string\" },\n    \"uncertainties\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } }\n  }\n}"
+      },
+      "id": "ab53e5d3-f5d6-4b12-bb6d-73335a413260",
+      "name": "Teamdiagnose Output-Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        1340,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "model": "Qwen3.8:latest",
+        "options": {
+          "think": true
+        }
+      },
+      "id": "2b845ffc-4d8c-418e-ad32-7a6ae9b5d778",
+      "name": "Ollama Modell (Qwen3.8:latest)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        440
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "REPLACE_WITH_LOCAL_CREDENTIAL_ID",
+          "name": "[cimt] Ollama"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst rawError = item && item.error;\nconst rawMessage = typeof rawError === 'string'\n  ? rawError\n  : (rawError && rawError.message) ? rawError.message : 'Unbekannter Fehler';\n\nreturn [{\n  json: {\n    ...item,\n    valid: false,\n    errorMessage: 'Bei der Kommunikation mit dem lokalen Ollama-Modell ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.\\n\\nDetails: ' + rawMessage\n  }\n}];"
+      },
+      "id": "7ddba24a-f4cc-426a-bae4-1d32d1913442",
+      "name": "LLM-Fehler normalisieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        440
+      ],
+      "notes": "Normalisiert den LLM-Fehler intern; der gemeinsame Capability-Exit wirft diese fachliche Fehlermeldung an den Hauptworkflow."
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $input.item.json;\nconst original = $('Teamdiagnose: Evidenz aufbereiten').first().json;\nconst leagueComparisonAvailable = false;\n\nconst teamDiagnosis = {\n  simulated: false,\n  dataAvailable: true,\n  diagnosisCategory: parsed.diagnosisCategory,\n  evidence: original.teamDiagnosisEvidence,\n  leagueComparisonAvailable,\n  leagueComparison: leagueComparisonAvailable\n    ? parsed.leagueComparison\n    : `Auf dieser Datengrundlage liegt kein belastbarer Vergleich zur Bundesliga-Konkurrenz vor: es liegen ausschliesslich Kennzahlen von '${original.club}' vor, keine Liga-Durchschnittswerte oder Kennzahlen anderer Vereine.`,\n  hypotheses: parsed.hypotheses,\n  counterHypotheses: parsed.counterHypotheses,\n  mainProblem: parsed.mainProblem,\n  uncertainties: parsed.uncertainties\n};\n\nreturn [{ json: { ...original, teamDiagnosis } }];"
+      },
+      "id": "0f828a67-13b9-4df7-9812-14360ce9ec0a",
+      "name": "Teamdiagnose zusammenfuehren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst d = item.teamDiagnosis;\nconst errors = [];\n\nif (!d || typeof d !== 'object') {\n  errors.push('teamDiagnosis fehlt oder ist kein Objekt.');\n} else {\n  if (!Array.isArray(d.evidence) || d.evidence.length === 0) errors.push('teamDiagnosis.evidence fehlt oder ist leer.');\n  if (typeof d.leagueComparisonAvailable !== 'boolean') errors.push('teamDiagnosis.leagueComparisonAvailable fehlt oder ist kein boolean.');\n  if (typeof d.leagueComparison !== 'string' || !d.leagueComparison.trim()) errors.push('teamDiagnosis.leagueComparison fehlt.');\n  if (!Array.isArray(d.hypotheses) || d.hypotheses.length === 0) errors.push('teamDiagnosis.hypotheses fehlt oder ist leer.');\n  if (!Array.isArray(d.counterHypotheses)) errors.push('teamDiagnosis.counterHypotheses fehlt oder ist kein Array.');\n  if (typeof d.mainProblem !== 'string' || !d.mainProblem.trim()) errors.push('teamDiagnosis.mainProblem fehlt.');\n  if (!Array.isArray(d.uncertainties)) errors.push('teamDiagnosis.uncertainties fehlt oder ist kein Array.');\n}\n\nconst valid = errors.length === 0;\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid ? undefined : 'Die Teamdiagnose ist ungueltig und wird nicht als fachliche Grundlage verwendet.\\n\\n' + errors.join('\\n')\n  }\n}];"
+      },
+      "id": "231819af-8957-4a69-881e-6e5ce2187a12",
+      "name": "Teamdiagnose pruefen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
+          "conditions": [{"id": "c840e66b-7a1a-4e65-9035-610224978b89", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true", "singleValue": true}}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f27b2a0c-36c4-437e-ae8e-f292a7b932e4",
+      "name": "Teamdiagnose gueltig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst d = item.teamDiagnosis;\nconst valid = !!d && d.diagnosisCategory !== 'no_data';\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : `Fuer '${item.club}' liegen keine ausreichenden Analytics-Daten fuer eine Teamdiagnose vor. Eine Bedarfsermittlung (Spielerprofil) und Spielersuche werden deshalb nicht durchgefuehrt, statt auf einen beliebigen Positionspool zurueckzufallen. Bitte weitere Analytics-Daten fuer diesen Verein bereitstellen.\\n\\n${d && d.mainProblem ? d.mainProblem : ''}`\n  }\n}];"
+      },
+      "id": "79e5e676-ff36-4b37-9b01-46bedf63e6ff",
+      "name": "Teamdiagnose: Datengrundlage pruefen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2220,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
+          "conditions": [{"id": "a1e863a2-87c5-4a10-9441-12d90ed391dc", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true", "singleValue": true}}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d5ae083c-0f71-4c22-b956-f3e48ccc1a68",
+      "name": "Teamdiagnose: Datengrundlage ausreichend?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nif (item.valid === false) {\n  throw new Error('[TEAM_ANALYSIS] ' + (item.errorMessage || 'Team analysieren ist fehlgeschlagen.'));\n}\nreturn [{ json: { ...item, status: 'success' } }];"
+      },
+      "id": "38334ae7-8ed1-4e8e-970f-0f7f474ceee8",
+      "name": "Team analysieren: Ergebnis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2660,
+        140
+      ],
+      "notes": "Einziger Capability-Exit: liefert bei Erfolg teamDiagnosis. Bei valid=false wird die intern formulierte errorMessage als Subworkflow-Fehler geworfen; der Hauptworkflow braucht kein eigenes Team-analysieren-gueltig-Gate mehr.",
+      "notesInFlow": false
+    }
+  ],
+  "connections": {
+    "Wenn von anderem Workflow aufgerufen": {"main": [[{"node": "Team-Performance abrufen", "type": "main", "index": 0}]]},
+    "Team-Performance abrufen": {"main": [[{"node": "Team-Matches abrufen", "type": "main", "index": 0}]]},
+    "Team-Matches abrufen": {"main": [[{"node": "Teamdiagnose: Datenverfuegbarkeit pruefen", "type": "main", "index": 0}]]},
+    "Teamdiagnose: Datenverfuegbarkeit pruefen": {"main": [[{"node": "Teamdiagnose: Evidenz aufbereiten", "type": "main", "index": 0}], [{"node": "Teamdiagnose (keine Daten) erzeugen", "type": "main", "index": 0}]]},
+    "Teamdiagnose (keine Daten) erzeugen": {"main": [[{"node": "Teamdiagnose pruefen", "type": "main", "index": 0}]]},
+    "Teamdiagnose: Evidenz aufbereiten": {"main": [[{"node": "Teamdiagnose LLM", "type": "main", "index": 0}]]},
+    "Teamdiagnose LLM": {"main": [[{"node": "Teamdiagnose zusammenfuehren", "type": "main", "index": 0}], [{"node": "LLM-Fehler normalisieren", "type": "main", "index": 0}]]},
+    "Teamdiagnose Output-Schema": {"ai_outputParser": [[{"node": "Teamdiagnose LLM", "type": "ai_outputParser", "index": 0}]]},
+    "Ollama Modell (Qwen3.8:latest)": {"ai_languageModel": [[{"node": "Teamdiagnose LLM", "type": "ai_languageModel", "index": 0}]]},
+    "LLM-Fehler normalisieren": {"main": [[{"node": "Team analysieren: Ergebnis", "type": "main", "index": 0}]]},
+    "Teamdiagnose zusammenfuehren": {"main": [[{"node": "Teamdiagnose pruefen", "type": "main", "index": 0}]]},
+    "Teamdiagnose pruefen": {"main": [[{"node": "Teamdiagnose gueltig?", "type": "main", "index": 0}]]},
+    "Teamdiagnose gueltig?": {"main": [[{"node": "Teamdiagnose: Datengrundlage pruefen", "type": "main", "index": 0}], [{"node": "Team analysieren: Ergebnis", "type": "main", "index": 0}]]},
+    "Teamdiagnose: Datengrundlage pruefen": {"main": [[{"node": "Teamdiagnose: Datengrundlage ausreichend?", "type": "main", "index": 0}]]},
+    "Teamdiagnose: Datengrundlage ausreichend?": {"main": [[{"node": "Team analysieren: Ergebnis", "type": "main", "index": 0}], [{"node": "Team analysieren: Ergebnis", "type": "main", "index": 0}]]}
+  },
+  "pinData": {},
+  "meta": {"templateCredsSetupCompleted": false},
+  "settings": {"executionOrder": "v1"}
+}

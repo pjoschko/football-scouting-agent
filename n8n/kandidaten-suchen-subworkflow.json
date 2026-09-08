@@ -1,0 +1,171 @@
+{
+  "id": "803a06a1-fb4b-4cb7-b502-63ab119c9996",
+  "name": "Kandidaten suchen",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "bc79f244-3029-4b39-b416-6d56aa84298f",
+      "name": "Wenn von anderem Workflow aufgerufen",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst p = item.playerProfile;\n\nreturn [{\n  json: {\n    ...item,\n    rankingExcludeClub: item.clubPlayerData,\n    position: p.position,\n    criteria: p.weightedCriteria,\n    constraints: p.constraints || [],\n    limit: 5\n  }\n}];"
+      },
+      "id": "f97d626f-2224-4844-a279-8f791b70151f",
+      "name": "Player-Ranking-Anfrage vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 180]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "5e50b3ea-5e60-436f-b8bd-77957b54355a",
+          "mode": "list",
+          "cachedResultName": "Player-Ranking (CSV)"
+        },
+        "mode": "once",
+        "options": {}
+      },
+      "id": "26c50a98-a512-43a7-a0c5-852d30e1c186",
+      "name": "Player-Ranking abrufen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [680, 180],
+      "notesInFlow": false,
+      "notes": "CSV-Analytics-Adapter (temporaerer Ersatz fuer Qlik MCP): ruft n8n/analytics-player-ranking-subworkflow.json ueber dessen feste Top-Level-ID auf. Uebergibt excludeClub statt club, da die Spielersuche ausserhalb des eigenen Kaders sucht."
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst ranking = item.playerRanking;\n\nif (!ranking || !ranking.dataAvailable || !Array.isArray(ranking.ranking) || ranking.ranking.length === 0) {\n  return [{\n    json: {\n      ...item,\n      playerSearch: { simulated: false, dataAvailable: false, longlistSize: 0, shortlist: [] }\n    }\n  }];\n}\n\nconst pool = ranking.ranking;\nconst statFields = Object.keys(pool[0].stats).filter((f) => f !== 'age');\nconst poolAverage = {};\nstatFields.forEach((field) => {\n  poolAverage[field] = pool.reduce((sum, p) => sum + p.stats[field], 0) / pool.length;\n});\n\nconst shortlist = pool.slice(0, 5).map((candidate) => {\n  const strengths = [];\n  const weaknesses = [];\n  statFields.forEach((field) => {\n    const avg = poolAverage[field];\n    if (candidate.stats[field] > avg) strengths.push(`${field}: ${candidate.stats[field]} (Pool-Schnitt ${avg.toFixed(2)})`);\n    else if (candidate.stats[field] < avg) weaknesses.push(`${field}: ${candidate.stats[field]} (Pool-Schnitt ${avg.toFixed(2)})`);\n  });\n\n  return {\n    name: candidate.name,\n    score: candidate.score,\n    strengths: strengths.length > 0 ? strengths : [`Score ${candidate.score} im CSV-Player-Ranking.`],\n    weaknesses: weaknesses.length > 0 ? weaknesses : ['Keine auffaelligen Schwaechen gegenueber dem betrachteten CSV-Pool.'],\n    evidence: [`CSV-Analytics-Datenpunkt (Data Table football_scouting_raw): ${candidate.club}, ${candidate.position}, Alter ${candidate.age}, Rating ${candidate.stats.rating}, ${candidate.stats.goals} Tore, ${candidate.stats.assists} Vorlagen in ${candidate.stats.appearances} Einsaetzen.`]\n  };\n});\n\nreturn [{\n  json: {\n    ...item,\n    playerSearch: {\n      simulated: false,\n      dataAvailable: true,\n      longlistSize: ranking.poolSize,\n      shortlist\n    }\n  }\n}];"
+      },
+      "id": "084953e2-07d9-4a9d-8c5d-abd484c45c63",
+      "name": "Spielersuche durchfuehren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
+          "conditions": [{"id": "fadaad93-cond-1", "leftValue": "={{ Boolean($json.playerSearch.dataAvailable) && Array.isArray($json.playerSearch.shortlist) && $json.playerSearch.shortlist.length > 0 }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true", "singleValue": true}}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "fadaad93-b87c-4b6c-8381-a7834c764e4a",
+      "name": "Shortlist vorhanden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 180],
+      "notesInFlow": false,
+      "notes": "Nur mit einer nicht-leeren Ranking-Shortlist wird der fachliche Profilabgleich je Kandidat gestartet."
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst shortlist = item.playerSearch.shortlist;\n\nreturn shortlist.map((candidate) => ({\n  json: {\n    ...item,\n    playerName: candidate.name,\n    rankingCandidate: candidate\n  }\n}));"
+      },
+      "id": "4882d04d-f968-4323-a73b-8520ac7a5eb9",
+      "name": "Kandidaten fuer Profilabgleich aufteilen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 60]
+    },
+    {
+      "parameters": {"batchSize": 1, "options": {}},
+      "id": "5a66b2a7-69e1-4f1e-bc18-78202645b8ba",
+      "name": "Profilabgleich je Kandidat",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1560, 60],
+      "notesInFlow": false,
+      "notes": "Erzwingt genau ein Kandidaten-Item pro Iteration. Der Execute-Subworkflow-Node bleibt explizit im Modus 'once', sodass get_player_profile wirklich einmal pro Kandidat ausgefuehrt wird."
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {"__rl": true, "value": "d6f31473-12f9-40a2-b935-ca998397142e", "mode": "list", "cachedResultName": "Player-Profil (CSV)"},
+        "mode": "once",
+        "options": {}
+      },
+      "id": "d459dd54-ed22-4dd5-a960-1855578bc6d2",
+      "name": "Player-Profil je Kandidat abrufen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1780, 60],
+      "notesInFlow": false,
+      "notes": "CSV-Analytics-Adapter: wird durch 'Profilabgleich je Kandidat' mit genau einem Item aufgerufen und reichert dieses Item um playerProfileLookup an."
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nif (items.length === 0) {\n  return [{ json: { playerSearch: { shortlist: [], profileValidated: false }, valid: false, errorMessage: 'Profilabgleich lieferte keine Items.' } }];\n}\n\nconst context = { ...items[0].json };\ndelete context.playerName;\ndelete context.rankingCandidate;\ndelete context.playerProfileLookup;\n\nconst evaluated = items.map((it) => {\n  const candidate = it.json.rankingCandidate;\n  const lookup = it.json.playerProfileLookup;\n  const profile = (lookup && lookup.found && lookup.profile) ? lookup.profile : null;\n  return { candidate, profile, profileValid: !!candidate && !!profile && !profile.dataError };\n});\n\nconst validated = evaluated.filter((entry) => entry.profileValid);\nconst rejected = evaluated.filter((entry) => !entry.profileValid).map((entry) => entry.candidate && entry.candidate.name).filter(Boolean);\n\nconst shortlist = validated.map(({ candidate: c, profile: p }) => ({\n  ...c,\n  evidence: [...c.evidence, `CSV-Analytics-Spielerprofil (Data Table football_scouting_raw, get_player_profile): ${p.club}, ${p.position}, Alter ${p.age}, Rating ${p.rating}, ${p.goals} Tore, ${p.assists} Vorlagen in ${p.appearances} Einsaetzen.`],\n  profile: p\n}));\n\nreturn [{ json: { ...context, playerSearch: { ...context.playerSearch, shortlist, profileValidated: true, candidatesWithoutValidProfile: rejected } } }];"
+      },
+      "id": "95aa8a56-dea3-4464-88be-e3b07da126fd",
+      "name": "Kandidatenvergleich validieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 60]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst s = item.playerSearch;\nconst errors = [];\n\nconst ignoredConstraints = (item.playerRanking && Array.isArray(item.playerRanking.ignoredConstraints)) ? item.playerRanking.ignoredConstraints : [];\nif (ignoredConstraints.length > 0) errors.push('playerRanking.ignoredConstraints ist nicht leer: ' + JSON.stringify(ignoredConstraints) + '.');\n\nconst ignoredCriteria = (item.playerRanking && Array.isArray(item.playerRanking.ignoredCriteria)) ? item.playerRanking.ignoredCriteria : [];\nif (ignoredCriteria.length > 0) errors.push('playerRanking.ignoredCriteria ist nicht leer: ' + JSON.stringify(ignoredCriteria) + '.');\n\nif (item.playerRanking && item.playerRanking.positionFallbackApplied) errors.push('playerRanking.positionFallbackApplied ist gesetzt - die angeforderte Position konnte nicht belastbar gefiltert werden.');\n\nif (!s || typeof s !== 'object') {\n  errors.push('playerSearch fehlt oder ist kein Objekt.');\n} else {\n  if (typeof s.longlistSize !== 'number' || s.longlistSize <= 0) errors.push('playerSearch.longlistSize fehlt oder ist ungueltig.');\n  if (!Array.isArray(s.shortlist) || s.shortlist.length === 0) errors.push('playerSearch.shortlist fehlt oder ist leer.');\n  else if (s.shortlist.length > 5) errors.push('playerSearch.shortlist enthaelt mehr als fuenf Kandidaten.');\n  else if (s.shortlist.some((c) => !c.name || typeof c.score !== 'number' || !Array.isArray(c.strengths) || !Array.isArray(c.weaknesses) || !Array.isArray(c.evidence) || !c.profile)) errors.push('playerSearch.shortlist enthaelt einen Kandidaten ohne vollstaendige Ranking- und Profildaten.');\n  if (!s.profileValidated) errors.push('playerSearch.shortlist wurde nicht ueber get_player_profile fachlich validiert.');\n}\n\nconst valid = errors.length === 0;\nreturn [{ json: { ...item, valid, errorMessage: valid ? undefined : 'Die Spielersuche ist ungueltig und wird nicht fuer die weitere Recherche verwendet.\\n\\n' + errors.join('\\n') } }];"
+      },
+      "id": "1359e982-2383-4123-8b80-b17ee9611d8a",
+      "name": "Spielersuche pruefen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
+          "conditions": [{"id": "c495744e-4a83-400a-ade8-5aa428c60361", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true", "singleValue": true}}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "006028a3-60d5-44e9-8def-58e87032b8d8",
+      "name": "Spielersuche gueltig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2440, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nif (item.valid === false) {\n  throw new Error('[CANDIDATE_SEARCH] ' + (item.errorMessage || 'Kandidaten suchen ist fehlgeschlagen.'));\n}\nreturn [{ json: { ...item, status: 'success' } }];"
+      },
+      "id": "177bae2b-a84f-4c33-90f9-eeadf76058ff",
+      "name": "Kandidaten suchen: Ergebnis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 180],
+      "notes": "Einziger Capability-Exit: liefert bei Erfolg die validierte Shortlist. Bei valid=false wird die intern formulierte errorMessage als Subworkflow-Fehler geworfen; der Hauptworkflow braucht kein eigenes Kandidaten-gueltig-Gate mehr.",
+      "notesInFlow": false
+    }
+  ],
+  "connections": {
+    "Wenn von anderem Workflow aufgerufen": {"main": [[{"node": "Player-Ranking-Anfrage vorbereiten", "type": "main", "index": 0}]]},
+    "Player-Ranking-Anfrage vorbereiten": {"main": [[{"node": "Player-Ranking abrufen", "type": "main", "index": 0}]]},
+    "Player-Ranking abrufen": {"main": [[{"node": "Spielersuche durchfuehren", "type": "main", "index": 0}]]},
+    "Spielersuche durchfuehren": {"main": [[{"node": "Shortlist vorhanden?", "type": "main", "index": 0}]]},
+    "Shortlist vorhanden?": {"main": [[{"node": "Kandidaten fuer Profilabgleich aufteilen", "type": "main", "index": 0}], [{"node": "Spielersuche pruefen", "type": "main", "index": 0}]]},
+    "Kandidaten fuer Profilabgleich aufteilen": {"main": [[{"node": "Profilabgleich je Kandidat", "type": "main", "index": 0}]]},
+    "Profilabgleich je Kandidat": {"main": [[{"node": "Kandidatenvergleich validieren", "type": "main", "index": 0}], [{"node": "Player-Profil je Kandidat abrufen", "type": "main", "index": 0}]]},
+    "Player-Profil je Kandidat abrufen": {"main": [[{"node": "Profilabgleich je Kandidat", "type": "main", "index": 0}]]},
+    "Kandidatenvergleich validieren": {"main": [[{"node": "Spielersuche pruefen", "type": "main", "index": 0}]]},
+    "Spielersuche pruefen": {"main": [[{"node": "Spielersuche gueltig?", "type": "main", "index": 0}]]},
+    "Spielersuche gueltig?": {"main": [[{"node": "Kandidaten suchen: Ergebnis", "type": "main", "index": 0}], [{"node": "Kandidaten suchen: Ergebnis", "type": "main", "index": 0}]]}
+  },
+  "pinData": {},
+  "meta": {"templateCredsSetupCompleted": false},
+  "settings": {"executionOrder": "v1"}
+}
