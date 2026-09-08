@@ -73,6 +73,48 @@ const editedBase = {
   'Unsicherheiten (JSON-Array)': JSON.stringify(['Vom Reviewer korrigierte Unsicherheit']),
 };
 
+// Syntaktisch gueltige, aber fachlich ungueltige Reviewer-Arrays muessen schon
+// an der Review-Abgabe scheitern, bevor sie nach playerProfile synchronisiert werden.
+const invalidSemanticCases = [
+  {
+    label: 'unbekanntes Kriterium',
+    field: 'Gewichtete Kriterien (JSON-Array)',
+    value: JSON.stringify([{ criterion: 'xGoals', weight: 0.7 }]),
+  },
+  {
+    label: 'nichtnumerisches Gewicht',
+    field: 'Gewichtete Kriterien (JSON-Array)',
+    value: JSON.stringify([{ criterion: 'assists', weight: 'hoch' }]),
+  },
+  {
+    label: 'leere Kriterien',
+    field: 'Gewichtete Kriterien (JSON-Array)',
+    value: JSON.stringify([]),
+  },
+  {
+    label: 'ungueltiges Constraint-Feld',
+    field: 'Constraints (JSON-Array)',
+    value: JSON.stringify([{ field: 'salaryMEUR', operator: 'max', value: 5 }]),
+  },
+  {
+    label: 'ungueltiger Constraint-Operator',
+    field: 'Constraints (JSON-Array)',
+    value: JSON.stringify([{ field: 'age', operator: 'equals', value: 26 }]),
+  },
+  {
+    label: 'nichtnumerischer Constraint-Wert',
+    field: 'Constraints (JSON-Array)',
+    value: JSON.stringify([{ field: 'age', operator: 'max', value: '26' }]),
+  },
+];
+for (const testCase of invalidSemanticCases) {
+  const submitted = { ...editedBase, Entscheidung: 'Approve', [testCase.field]: testCase.value };
+  const result = runReview(submitted, original);
+  assert.strictEqual(result.valid, false, `${testCase.label} muss abgelehnt werden.`);
+  assert.deepStrictEqual(result.playerProfile, original.playerProfile, `${testCase.label}: ungueltige Reviewer-Werte duerfen playerProfile nicht ueberschreiben.`);
+  assert.deepStrictEqual(result.scoutingBrief, original.scoutingBrief, `${testCase.label}: ungueltige Reviewer-Werte duerfen scoutingBrief nicht ueberschreiben.`);
+}
+
 const approved = runReview({ ...editedBase, Entscheidung: 'Approve' }, original);
 assert.strictEqual(approved.valid, true);
 assert.strictEqual(approved.reviewOutcome, 'Approve');
