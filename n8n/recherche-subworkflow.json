@@ -6,30 +6,27 @@
       "id": "501998ec-49b0-4bbf-8324-527c3119bb39",
       "name": "Wenn von anderem Workflow aufgerufen",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
-      "typeVersion": 1.1,
-      "position": [
-        0,
-        0
-      ],
+      "typeVersion": 1.2,
+      "position": [0, 0],
       "parameters": {
-        "inputSource": "passthrough"
-      }
+        "workflowInputs": {
+          "values": [
+            {"name": "researchCandidateName", "type": "string"},
+            {"name": "researchBatchId", "type": "string"}
+          ]
+        }
+      },
+      "notes": "Expliziter Parent→Child-Vertrag fuer genau einen Research-Zweig. Der Parent mappt researchCandidateName und researchBatchId explizit; der Child ist damit nicht mehr von implizitem Passthrough abhaengig.",
+      "notesInFlow": false
     },
     {
       "id": "7c1f9e2a-3b4d-4e5f-8a6b-1c2d3e4f5a6b",
       "name": "Recherche-Start markieren",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
-      "position": [
-        128,
-        0
-      ],
+      "position": [128, 0],
       "parameters": {
-        "dataTableId": {
-          "__rl": true,
-          "mode": "name",
-          "value": "football_scouting_research_runtime"
-        },
+        "dataTableId": {"__rl": true, "mode": "name", "value": "football_scouting_research_runtime"},
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
@@ -40,56 +37,16 @@
             "completedAt": "={{ $now.toISO() }}"
           },
           "schema": [
-            {
-              "id": "batchId",
-              "displayName": "batchId",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "candidate",
-              "displayName": "candidate",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "status",
-              "displayName": "status",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "payload",
-              "displayName": "payload",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "completedAt",
-              "displayName": "completedAt",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "date",
-              "canBeUsedToMatch": true
-            }
+            {"id": "batchId", "displayName": "batchId", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "candidate", "displayName": "candidate", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "status", "displayName": "status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "payload", "displayName": "payload", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "completedAt", "displayName": "completedAt", "required": false, "defaultMatch": false, "display": true, "type": "date", "canBeUsedToMatch": true}
           ]
         },
         "options": {}
       },
-      "notes": "Live-Diagnose-Marker (siehe Review): persistiert VOR dem Agent-Aufruf einen 'started'-Datensatz mit batchId+candidate, damit ein naechster Live-Lauf eindeutig unterscheiden kann: kein 'started' = Dispatch-/Input-Problem (Kandidat hat den Child nie erreicht); 'started' ohne Terminalstatus ('success'/'uncertain'/'agent_error') = Agent-/Ollama-/Tavily-Problem; Terminalstatus vorhanden, aber Parent sieht ihn nicht = Fan-in-/Filter-Problem. 'Research-Fortschritt und Fan-in pruefen' in due-diligence-subworkflow.json filtert 'started'-Zeilen bewusst aus der Vollstaendigkeits-/Latest-Bestimmung heraus, damit dieser Marker den Fan-in nicht faelschlich als abgeschlossen erscheinen laesst.",
+      "notes": "Persistiert VOR dem Agent-Aufruf einen 'started'-Datensatz mit batchId+candidate. Wichtig: Data-Table-Insert gibt Insert-Metadaten statt des urspruenglichen Items weiter; deshalb liest der nachfolgende Recherche-Agent den Kandidaten explizit wieder aus dem Execute-Workflow-Trigger. 'Research-Fortschritt und Fan-in pruefen' filtert started-Zeilen aus der Abschlussbestimmung.",
       "notesInFlow": false
     },
     {
@@ -97,19 +54,16 @@
       "name": "Recherche-Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.9,
-      "position": [
-        256,
-        0
-      ],
+      "position": [256, 0],
       "parameters": {
         "promptType": "define",
-        "text": "=Recherchiere ausschliesslich den folgenden Fussballspieler mithilfe der Websuche: {{ $json.researchCandidateName }}.\n\nSuche gezielt und mit mehreren Anfragen nach: aktuellem Verein, Marktwert, Vertragslaufzeit/-ende, aktuellen Verletzungen, der aktuellen sportlichen Situation (z. B. Einsatzzeiten, Formkurve, Rolle im Team) sowie relevanten aktuellen News und Hinweisen auf eine moegliche Wechselwahrscheinlichkeit.\n\nLiefere ausschliesslich strukturierte Daten fuer GENAU diesen einen Kandidaten. Liefere zusaetzlich zu den freitextlichen Feldern 'contract' und 'marketValue' zwingend auch die maschinenlesbaren Felder 'contractEndDate' und 'marketValueMEUR' (siehe Systemprompt fuer das exakte Format).",
+        "text": "=Recherchiere ausschliesslich den folgenden Fussballspieler mithilfe der Websuche: {{ $('Wenn von anderem Workflow aufgerufen').first().json.researchCandidateName }}.\n\nSuche gezielt und mit mehreren Anfragen nach: aktuellem Verein, Marktwert, Vertragslaufzeit/-ende, aktuellen Verletzungen, der aktuellen sportlichen Situation (z. B. Einsatzzeiten, Formkurve, Rolle im Team) sowie relevanten aktuellen News und Hinweisen auf eine moegliche Wechselwahrscheinlichkeit.\n\nLiefere ausschliesslich strukturierte Daten fuer GENAU diesen einen Kandidaten. Liefere zusaetzlich zu den freitextlichen Feldern 'contract' und 'marketValue' zwingend auch die maschinenlesbaren Felder 'contractEndDate' und 'marketValueMEUR' (siehe Systemprompt fuer das exakte Format).",
         "hasOutputParser": true,
         "options": {
           "systemMessage": "Du bist ein Recherche-Assistent fuer Fussball-Scouting-Due-Diligence. Du nutzt ausschliesslich das dir zur Verfuegung gestellte Websuche-Tool fuer aktuelle, externe Informationen - du erfindest keine Fakten und keine Quelle. Stelle pro Anfrage mehrere gezielte Suchanfragen (Spielername kombiniert mit z. B. 'Marktwert', 'Vertrag', 'Verletzung', 'Transfer News'), um belastbare, aktuelle Quellen zu finden. Findest du zu einem Feld nichts Belastbares, liefere fuer dieses Feld null (bzw. ein leeres Array bei news) statt zu spekulieren, und senke 'confidence' entsprechend. 'source' beschreibt, woher die zusammengefasste Information ueberwiegend stammt (z. B. Domain/Titel der wichtigsten genutzten Quelle); 'confidence' (Zahl zwischen 0 und 1) druckt aus, wie gut die gefundenen Quellen die Antwort abdecken (mehrere uebereinstimmende aktuelle Treffer = hohe confidence, nur vage oder veraltete Treffer = niedrige confidence). Zusaetzlich zu den freitextlichen Feldern 'contract' (z. B. 'Vertrag bis 30.06.2027' oder 'vertragslos') und 'marketValue' (z. B. '45 Mio. EUR') lieferst du zwingend zwei maschinenlesbare Felder, die die nachgelagerte Bewertung robust auswerten kann: 'contractEndDate' ist entweder ein ISO-Datum im Format YYYY-MM-DD (das konkrete, recherchierte Vertragsende) oder null, wenn kein konkretes Datum bekannt ist (z. B. bei einem bereits vertragslosen Spieler oder wenn nur ein Jahr, aber kein Tag/Monat bekannt ist - erfinde niemals einen Tag/Monat, den du nicht recherchiert hast). 'marketValueMEUR' ist entweder eine Zahl in Millionen EUR (z. B. 45.5 fuer 45,5 Mio. EUR) oder null, wenn kein numerischer Marktwert bekannt ist."
         }
       },
-      "notes": "Eigenstaendiger Research-Zweig fuer genau einen Kandidaten (siehe due-diligence-subworkflow.json, Fan-out ueber 'Kandidaten fuer Recherche aufteilen'). Nutzt eine echte Websuche (ai_tool) statt einer simulierten Dummy-Antwort. onError: continueErrorOutput leitet fehlgeschlagene Recherchen (z. B. Tool-/LLM-Fehler) an 'Recherche-Fehler als Unsicherheit markieren', ohne andere parallele Research-Zweige zu blockieren.",
+      "notes": "Eigenstaendiger Research-Zweig fuer genau einen Kandidaten. Nutzt echte Websuche. Der Kandidatenname wird bewusst direkt aus dem Execute-Workflow-Trigger gelesen, weil der davor liegende Data-Table-Insert nur Insert-Metadaten ausgibt und das urspruengliche Item nicht durchreicht.",
       "notesInFlow": false,
       "onError": "continueErrorOutput"
     },
@@ -118,23 +72,10 @@
       "name": "Ollama Modell (qwen3.8-agent-128k:latest)",
       "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
-      "position": [
-        96,
-        240
-      ],
-      "parameters": {
-        "model": "qwen3.8-agent-128k:latest",
-        "options": {
-          "think": true
-        }
-      },
-      "credentials": {
-        "ollamaApi": {
-          "id": "REPLACE_WITH_LOCAL_CREDENTIAL_ID",
-          "name": "[cimt] Ollama"
-        }
-      },
-      "notes": "Eigene Node-Instanz dieser Subworkflow-Datei (technische Utility-Node, bewusst dupliziert statt geteilt - siehe n8n/README.md). Versorgt 'Recherche-Agent' ueber ai_languageModel. Nutzt 'qwen3.8-agent-128k:latest' statt 'Qwen3.8:latest' (wie in team-analysieren-subworkflow.json/scouting-brief-subworkflow.json), da dieses Modell laut Live-UAT-Review auf der Zielinstanz bereits nachweislich fuer Tool-/Function-Calling in einem Agent-Workflow im Einsatz ist; 'Recherche-Agent' braucht das, um das Websuche-Tool tatsaechlich aufzurufen.",
+      "position": [96, 240],
+      "parameters": {"model": "qwen3.8-agent-128k:latest", "options": {"think": true}},
+      "credentials": {"ollamaApi": {"id": "REPLACE_WITH_LOCAL_CREDENTIAL_ID", "name": "[cimt] Ollama"}},
+      "notes": "Eigene Node-Instanz dieser Subworkflow-Datei. Nutzt qwen3.8-agent-128k:latest, da dieses Modell auf der Zielinstanz bereits fuer Tool-/Function-Calling in einem Agent-Workflow eingesetzt wird.",
       "notesInFlow": false
     },
     {
@@ -142,10 +83,7 @@
       "name": "Websuche (Tavily)",
       "type": "n8n-nodes-base.httpRequestTool",
       "typeVersion": 1.1,
-      "position": [
-        256,
-        240
-      ],
+      "position": [256, 240],
       "parameters": {
         "method": "POST",
         "url": "https://api.tavily.com/search",
@@ -156,13 +94,8 @@
         "genericAuthType": "httpHeaderAuth",
         "toolDescription": "Fuehrt eine echte Websuche aus (Tavily Search API) und liefert Titel, URL und Zusammenfassung/Inhalt der Top-Treffer fuer eine Suchanfrage. Nutze eine praezise, spezifische Suchanfrage (Spielername + gesuchtes Detail), rufe das Tool bei Bedarf mehrfach mit unterschiedlichen Anfragen auf."
       },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "REPLACE_WITH_LOCAL_CREDENTIAL_ID",
-          "name": "[cimt] Tavily Search"
-        }
-      },
-      "notes": "Erfordert nach dem Import eine lokale 'HTTP Header Auth'-Credential '[cimt] Tavily Search' (Header 'Authorization', Wert 'Bearer <TAVILY_API_KEY>'), einmalig an diesem Node auszuwaehlen - analog zur bestehenden '[cimt] Ollama'-Credential (siehe n8n/README.md, Import & run). Es gelangt kein echtes Secret nach Git.",
+      "credentials": {"httpHeaderAuth": {"id": "REPLACE_WITH_LOCAL_CREDENTIAL_ID", "name": "[cimt] Tavily Search"}},
+      "notes": "Erfordert nach dem Import eine lokale HTTP Header Auth-Credential '[cimt] Tavily Search' (Authorization: Bearer <TAVILY_API_KEY>). Es gelangt kein echtes Secret nach Git.",
       "notesInFlow": false
     },
     {
@@ -170,16 +103,13 @@
       "name": "Recherche-Ergebnis Output-Schema",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
-      "position": [
-        416,
-        240
-      ],
+      "position": [416, 240],
       "parameters": {
         "schemaType": "manual",
-        "inputSchema": "{\n  \"type\": \"object\",\n  \"required\": [\n    \"club\",\n    \"contract\",\n    \"contractEndDate\",\n    \"marketValue\",\n    \"marketValueMEUR\",\n    \"injuries\",\n    \"currentSituation\",\n    \"news\",\n    \"transferLikelihoodNotes\",\n    \"source\",\n    \"confidence\"\n  ],\n  \"properties\": {\n    \"club\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"contract\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"contractEndDate\": {\n      \"type\": [\"string\", \"null\"],\n      \"description\": \"ISO-Datum YYYY-MM-DD des recherchierten Vertragsendes, oder null wenn kein konkretes Datum bekannt ist.\"\n    },\n    \"marketValue\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"marketValueMEUR\": {\n      \"type\": [\"number\", \"null\"],\n      \"description\": \"Marktwert in Millionen EUR als Zahl, oder null wenn kein numerischer Marktwert bekannt ist.\"\n    },\n    \"injuries\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"currentSituation\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"news\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"transferLikelihoodNotes\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"source\": {\n      \"type\": \"string\"\n    },\n    \"confidence\": {\n      \"type\": \"number\"\n    }\n  }\n}",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"required\": [\"club\", \"contract\", \"contractEndDate\", \"marketValue\", \"marketValueMEUR\", \"injuries\", \"currentSituation\", \"news\", \"transferLikelihoodNotes\", \"source\", \"confidence\"],\n  \"properties\": {\n    \"club\": {\"type\": [\"string\", \"null\"]},\n    \"contract\": {\"type\": [\"string\", \"null\"]},\n    \"contractEndDate\": {\"type\": [\"string\", \"null\"], \"description\": \"ISO-Datum YYYY-MM-DD des recherchierten Vertragsendes, oder null wenn kein konkretes Datum bekannt ist.\"},\n    \"marketValue\": {\"type\": [\"string\", \"null\"]},\n    \"marketValueMEUR\": {\"type\": [\"number\", \"null\"], \"description\": \"Marktwert in Millionen EUR als Zahl, oder null wenn kein numerischer Marktwert bekannt ist.\"},\n    \"injuries\": {\"type\": [\"string\", \"null\"]},\n    \"currentSituation\": {\"type\": [\"string\", \"null\"]},\n    \"news\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}},\n    \"transferLikelihoodNotes\": {\"type\": [\"string\", \"null\"]},\n    \"source\": {\"type\": \"string\"},\n    \"confidence\": {\"type\": \"number\"}\n  }\n}",
         "autoFix": true
       },
-      "notes": "Erzwingt die strukturierte Recherche-Antwort des Agents. 'Recherche-Ergebnis normalisieren' erzwingt zusaetzlich den fachlichen Due-Diligence-Vertrag (candidate/timestamp/uncertain, siehe due-diligence-subworkflow.json).",
+      "notes": "Erzwingt die strukturierte Recherche-Antwort des Agents. Recherche-Ergebnis normalisieren ergaenzt candidate/timestamp/uncertain.",
       "notesInFlow": false
     },
     {
@@ -187,44 +117,31 @@
       "name": "Recherche-Ergebnis normalisieren",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        512,
-        -120
-      ],
+      "position": [512, -120],
       "parameters": {
-        "jsCode": "// WICHTIG: 'Recherche-Agent' (Tools Agent) gibt auf dem Erfolgspfad NUR seine\n// eigene Antwort als $json zurueck; researchCandidateName/researchBatchId aus\n// dem urspruenglichen Trigger-Item werden NICHT durchgereicht. Deshalb wird der\n// Trigger-Kontext hier explizit erneut geholt (analog zu 'Fan-in-Kontext\n// herstellen' in due-diligence-subworkflow.json), statt ihn aus $input.item.json\n// zu lesen - sonst waeren researchRuntimeBatchId/-Candidate leer und der Fan-in\n// im Parent wuerde diesen Kandidaten nie finden.\nconst trigger = $('Wenn von anderem Workflow aufgerufen').first().json;\nconst candidate = trigger.researchCandidateName;\nconst raw = $input.item.json;\nconst out = (raw.output && typeof raw.output === 'object') ? raw.output : raw;\nconst now = new Date().toISOString();\n\nconst news = Array.isArray(out.news)\n  ? out.news.filter((entry) => typeof entry === 'string' && entry.trim().length > 0)\n  : [];\nconst club = out.club || null;\nconst contract = out.contract || null;\nconst marketValue = out.marketValue || null;\nconst injuries = out.injuries || null;\nconst currentSituation = out.currentSituation || null;\nconst transferLikelihoodNotes = out.transferLikelihoodNotes || null;\nconst source = out.source || 'Websuche (Quelle nicht spezifiziert)';\n\n// Maschinenlesbare Zusatzfelder fuer 'Empfehlung erzeugen'\n// (empfehlung-erstellen-subworkflow.json): der Agent liefert 'contract'/\n// 'marketValue' als Freitext, den die dortige Feasibility-Bewertung nur ueber\n// ein enges DD.MM.YYYY-/Keyword-Muster auswerten kann. contractEndDate/\n// marketValueMEUR sind deshalb kanonisch und werden dort bevorzugt genutzt,\n// mit Freitext-Parsing weiterhin als Fallback.\nconst contractEndDateRaw = typeof out.contractEndDate === 'string' ? out.contractEndDate.trim() : null;\nconst contractEndDate = (contractEndDateRaw && /^\\d{4}-\\d{2}-\\d{2}$/.test(contractEndDateRaw) && !Number.isNaN(Date.parse(contractEndDateRaw)))\n  ? contractEndDateRaw\n  : null;\nconst marketValueMEUR = (typeof out.marketValueMEUR === 'number' && Number.isFinite(out.marketValueMEUR))\n  ? out.marketValueMEUR\n  : null;\n\nlet confidence = typeof out.confidence === 'number' ? out.confidence : 0;\nif (!Number.isFinite(confidence)) confidence = 0;\nconfidence = Math.max(0, Math.min(1, confidence));\n\n// Nur mit allen fachlichen Pflichtfeldern (siehe 'Recherche pruefen' in\n// due-diligence-subworkflow.json) gilt der Zweig als nicht 'uncertain'.\nconst hasCoreFacts = Boolean(club) && Boolean(contract) && Boolean(marketValue) && Boolean(injuries) && news.length > 0;\nconst uncertain = !hasCoreFacts;\n\nconst researchResult = {\n  candidate,\n  club,\n  contract,\n  contractEndDate,\n  marketValue,\n  marketValueMEUR,\n  injuries,\n  currentSituation,\n  transferLikelihoodNotes,\n  news,\n  source,\n  timestamp: now,\n  confidence: uncertain ? 0 : confidence,\n  uncertain,\n  uncertaintyReason: uncertain\n    ? 'Websuche konnte nicht alle erforderlichen Angaben (Verein, Vertrag, Marktwert, Verletzungen, News) belastbar ermitteln.'\n    : null\n};\n\nreturn [{\n  json: {\n    ...trigger,\n    researchRuntimeBatchId: trigger.researchBatchId,\n    researchRuntimeCandidate: candidate,\n    researchRuntimeStatus: uncertain ? 'uncertain' : 'success',\n    researchRuntimePayload: JSON.stringify(researchResult),\n    researchRuntimeCompletedAt: now\n  }\n}];"
+        "jsCode": "const trigger = $('Wenn von anderem Workflow aufgerufen').first().json;\nconst candidate = trigger.researchCandidateName;\nconst raw = $input.item.json;\nconst out = (raw.output && typeof raw.output === 'object') ? raw.output : raw;\nconst now = new Date().toISOString();\n\nconst news = Array.isArray(out.news) ? out.news.filter((entry) => typeof entry === 'string' && entry.trim().length > 0) : [];\nconst club = out.club || null;\nconst contract = out.contract || null;\nconst marketValue = out.marketValue || null;\nconst injuries = out.injuries || null;\nconst currentSituation = out.currentSituation || null;\nconst transferLikelihoodNotes = out.transferLikelihoodNotes || null;\nconst source = out.source || 'Websuche (Quelle nicht spezifiziert)';\nconst contractEndDateRaw = typeof out.contractEndDate === 'string' ? out.contractEndDate.trim() : null;\nconst contractEndDate = (contractEndDateRaw && /^\\d{4}-\\d{2}-\\d{2}$/.test(contractEndDateRaw) && !Number.isNaN(Date.parse(contractEndDateRaw))) ? contractEndDateRaw : null;\nconst marketValueMEUR = (typeof out.marketValueMEUR === 'number' && Number.isFinite(out.marketValueMEUR)) ? out.marketValueMEUR : null;\nlet confidence = typeof out.confidence === 'number' ? out.confidence : 0;\nif (!Number.isFinite(confidence)) confidence = 0;\nconfidence = Math.max(0, Math.min(1, confidence));\nconst hasCoreFacts = Boolean(club) && Boolean(contract) && Boolean(marketValue) && Boolean(injuries) && news.length > 0;\nconst uncertain = !hasCoreFacts;\nconst researchResult = {candidate, club, contract, contractEndDate, marketValue, marketValueMEUR, injuries, currentSituation, transferLikelihoodNotes, news, source, timestamp: now, confidence: uncertain ? 0 : confidence, uncertain, uncertaintyReason: uncertain ? 'Websuche konnte nicht alle erforderlichen Angaben (Verein, Vertrag, Marktwert, Verletzungen, News) belastbar ermitteln.' : null};\nreturn [{json: {...trigger, researchRuntimeBatchId: trigger.researchBatchId, researchRuntimeCandidate: candidate, researchRuntimeStatus: uncertain ? 'uncertain' : 'success', researchRuntimePayload: JSON.stringify(researchResult), researchRuntimeCompletedAt: now}}];"
       },
-      "notes": "Erzwingt den Due-Diligence-Datenvertrag (candidate aus researchCandidateName statt aus der LLM-Antwort, timestamp serverseitig, confidence auf [0,1] geklemmt) und markiert fehlende Pflichtfelder als uncertain statt sie stillschweigend durchzulassen."
+      "notes": "Erzwingt den Due-Diligence-Datenvertrag und holt Candidate/Batch explizit aus dem Child-Trigger, weil Agent-Outputs den Eingangskontext nicht garantieren."
     },
     {
       "id": "d5ab4757-cbdb-44b5-8b9a-19b0e4b30aa2",
       "name": "Recherche-Fehler als Unsicherheit markieren",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        512,
-        120
-      ],
+      "position": [512, 120],
       "parameters": {
-        "jsCode": "// WICHTIG: der Fehlerausgang von 'Recherche-Agent' enthaelt nur { error,\n// pairedItem } - researchCandidateName/researchBatchId aus dem urspruenglichen\n// Trigger-Item fehlen hier ebenfalls (siehe Kommentar in\n// 'Recherche-Ergebnis normalisieren'). Deshalb wird der Trigger-Kontext auch\n// hier explizit erneut geholt statt aus $input.item.json gelesen.\nconst trigger = $('Wenn von anderem Workflow aufgerufen').first().json;\nconst candidate = trigger.researchCandidateName || 'unbekannter Kandidat';\nconst current = $input.item.json || {};\nconst reason = (current.error && (current.error.message || current.error)) || 'Recherche-Agent konnte kein Ergebnis liefern.';\nconst now = new Date().toISOString();\n\nconst researchResult = {\n  candidate,\n  club: null,\n  contract: null,\n  contractEndDate: null,\n  marketValue: null,\n  marketValueMEUR: null,\n  injuries: null,\n  currentSituation: null,\n  transferLikelihoodNotes: null,\n  news: [],\n  source: 'Websuche fehlgeschlagen (keine Quelle verfuegbar)',\n  timestamp: now,\n  confidence: 0,\n  uncertain: true,\n  uncertaintyReason: String(reason)\n};\n\nreturn [{\n  json: {\n    ...trigger,\n    researchRuntimeBatchId: trigger.researchBatchId,\n    researchRuntimeCandidate: candidate,\n    researchRuntimeStatus: 'agent_error',\n    researchRuntimePayload: JSON.stringify(researchResult),\n    researchRuntimeCompletedAt: now\n  }\n}];"
+        "jsCode": "const trigger = $('Wenn von anderem Workflow aufgerufen').first().json;\nconst candidate = trigger.researchCandidateName || 'unbekannter Kandidat';\nconst current = $input.item.json || {};\nconst reason = (current.error && (current.error.message || current.error)) || 'Recherche-Agent konnte kein Ergebnis liefern.';\nconst now = new Date().toISOString();\nconst researchResult = {candidate, club: null, contract: null, contractEndDate: null, marketValue: null, marketValueMEUR: null, injuries: null, currentSituation: null, transferLikelihoodNotes: null, news: [], source: 'Websuche fehlgeschlagen (keine Quelle verfuegbar)', timestamp: now, confidence: 0, uncertain: true, uncertaintyReason: String(reason)};\nreturn [{json: {...trigger, researchRuntimeBatchId: trigger.researchBatchId, researchRuntimeCandidate: candidate, researchRuntimeStatus: 'agent_error', researchRuntimePayload: JSON.stringify(researchResult), researchRuntimeCompletedAt: now}}];"
       },
-      "notes": "Faengt Tool-/LLM-Fehler von 'Recherche-Agent' (onError: continueErrorOutput) ab und markiert nur diesen einen Kandidaten als unsicher, statt den Research-Zweig ganz abzubrechen."
+      "notes": "Faengt Tool-/LLM-Fehler ab und markiert nur diesen Kandidaten als unsicher."
     },
     {
       "id": "24981783-7a3b-4a05-98a2-d985894b309e",
       "name": "Recherche-Ergebnis speichern",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
-      "position": [
-        768,
-        0
-      ],
+      "position": [768, 0],
       "parameters": {
-        "dataTableId": {
-          "__rl": true,
-          "mode": "name",
-          "value": "football_scouting_research_runtime"
-        },
+        "dataTableId": {"__rl": true, "mode": "name", "value": "football_scouting_research_runtime"},
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
@@ -235,160 +152,30 @@
             "completedAt": "={{ $json.researchRuntimeCompletedAt }}"
           },
           "schema": [
-            {
-              "id": "batchId",
-              "displayName": "batchId",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "candidate",
-              "displayName": "candidate",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "status",
-              "displayName": "status",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "payload",
-              "displayName": "payload",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "completedAt",
-              "displayName": "completedAt",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "date",
-              "canBeUsedToMatch": true
-            }
+            {"id": "batchId", "displayName": "batchId", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "candidate", "displayName": "candidate", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "status", "displayName": "status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "payload", "displayName": "payload", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "completedAt", "displayName": "completedAt", "required": false, "defaultMatch": false, "display": true, "type": "date", "canBeUsedToMatch": true}
           ]
         },
         "options": {}
       },
-      "notes": "Fire-and-forget-Aufruf aus due-diligence-subworkflow.json ('Recherche je Kandidat starten', waitForSubWorkflow: false): dieser Subworkflow persistiert sein eigenes Ergebnis selbst in dieselbe Runtime-Tabelle, aus der der Aufrufer per Fan-in liest (dieselbe dataTableId/Spalten wie 'Dispatch-Fehler speichern' in due-diligence-subworkflow.json). Nimmt sowohl den Erfolgs-/Unsicher-Pfad ('Recherche-Ergebnis normalisieren') als auch den Fehlerpfad ('Recherche-Fehler als Unsicherheit markieren') entgegen.",
+      "notes": "Persistiert success/uncertain/agent_error in football_scouting_research_runtime fuer den asynchronen Fan-in.",
       "notesInFlow": false
     }
   ],
   "connections": {
-    "Wenn von anderem Workflow aufgerufen": {
-      "main": [
-        [
-          {
-            "node": "Recherche-Start markieren",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Recherche-Agent": {
-      "main": [
-        [
-          {
-            "node": "Recherche-Ergebnis normalisieren",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Recherche-Fehler als Unsicherheit markieren",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Websuche (Tavily)": {
-      "ai_tool": [
-        [
-          {
-            "node": "Recherche-Agent",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Recherche-Ergebnis Output-Schema": {
-      "ai_outputParser": [
-        [
-          {
-            "node": "Recherche-Agent",
-            "type": "ai_outputParser",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Recherche-Ergebnis normalisieren": {
-      "main": [
-        [
-          {
-            "node": "Recherche-Ergebnis speichern",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Recherche-Fehler als Unsicherheit markieren": {
-      "main": [
-        [
-          {
-            "node": "Recherche-Ergebnis speichern",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Ollama Modell (qwen3.8-agent-128k:latest)": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Recherche-Agent",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Recherche-Start markieren": {
-      "main": [
-        [
-          {
-            "node": "Recherche-Agent",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Wenn von anderem Workflow aufgerufen": {"main": [[{"node": "Recherche-Start markieren", "type": "main", "index": 0}]]},
+    "Recherche-Start markieren": {"main": [[{"node": "Recherche-Agent", "type": "main", "index": 0}]]},
+    "Recherche-Agent": {"main": [[{"node": "Recherche-Ergebnis normalisieren", "type": "main", "index": 0}], [{"node": "Recherche-Fehler als Unsicherheit markieren", "type": "main", "index": 0}]]},
+    "Websuche (Tavily)": {"ai_tool": [[{"node": "Recherche-Agent", "type": "ai_tool", "index": 0}]]},
+    "Recherche-Ergebnis Output-Schema": {"ai_outputParser": [[{"node": "Recherche-Agent", "type": "ai_outputParser", "index": 0}]]},
+    "Recherche-Ergebnis normalisieren": {"main": [[{"node": "Recherche-Ergebnis speichern", "type": "main", "index": 0}]]},
+    "Recherche-Fehler als Unsicherheit markieren": {"main": [[{"node": "Recherche-Ergebnis speichern", "type": "main", "index": 0}]]},
+    "Ollama Modell (qwen3.8-agent-128k:latest)": {"ai_languageModel": [[{"node": "Recherche-Agent", "type": "ai_languageModel", "index": 0}]]}
   },
-  "settings": {
-    "executionOrder": "v1",
-    "binaryMode": "separate"
-  },
+  "settings": {"executionOrder": "v1", "binaryMode": "separate"},
   "versionId": "fd556e4e-8ddf-4121-a6c2-845f515a7ffd",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
   "isPublished": true,
