@@ -1,1 +1,94 @@
-{"id":"68f47ebf-1e64-41a1-af75-b2afae2c0fbc","name":"Team-Matches (CSV)","nodes":[{"parameters":{"inputSource":"passthrough"},"id":"f8b9f781-0aec-4d17-b72d-056bd3430447","name":"Wenn von anderem Workflow aufgerufen","type":"n8n-nodes-base.executeWorkflowTrigger","typeVersion":1.1,"position":[240,300]},{"parameters":{"resource":"row","operation":"get","dataTableId":{"__rl":true,"mode":"name","value":"football_scouting_raw"},"matchType":"allConditions","filters":{"conditions":[{"keyName":"dataset","condition":"eq","keyValue":"matches"}]},"returnAll":true,"options":{}},"id":"6237f821-932d-4a68-a803-e2057fe73e3e","name":"Importierte Originaldaten laden","type":"n8n-nodes-base.dataTable","typeVersion":1.1,"position":[460,300],"continueOnFail":true,"alwaysOutputData":true},{"parameters":{"mode":"runOnceForAllItems","jsCode":"function norm(v){return String(v??'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'');}\nfunction keyMap(row){const out={};for(const key of Object.keys(row||{}))out[norm(key)]=key;return out;}\nfunction get(row,aliases){const map=keyMap(row);for(const alias of aliases){const key=map[norm(alias)];if(key!==undefined)return row[key];}}\nfunction num(value){if(value===undefined||value===null)return null;let s=String(value).trim();if(!s)return null;if(/^-?\\d{1,3}(,\\d{3})+(\\.\\d+)?$/.test(s))s=s.replace(/,/g,'');else if(/^-?\\d+,\\d+$/.test(s))s=s.replace(',','.');const n=Number(s);return Number.isFinite(n)?n:null;}\nfunction rawRows(items){return items.filter(i=>i&&i.json&&typeof i.json.payload==='string').sort((a,b)=>(a.json.rowNumber||0)-(b.json.rowNumber||0)).map(i=>{try{return JSON.parse(i.json.payload)}catch{return null}}).filter(Boolean);}\nconst request=$('Wenn von anderem Workflow aufgerufen').first().json;const club=String(request.club||'').trim();const limit=Number(request.matchLimit)>0?Math.floor(Number(request.matchLimit)):10;const rows=rawRows($input.all());\nfunction parseScore(row){const hg=num(get(row,['Home Goals','HomeGoals','Goals Home','FTHG'])),ag=num(get(row,['Away Goals','AwayGoals','Goals Away','FTAG']));if(hg!==null&&ag!==null)return[hg,ag];const score=get(row,['Tore','Score','Goals']);const m=score==null?null:String(score).match(/(-?\\d+)\\s*[:\\-–]\\s*(-?\\d+)/);return m?[Number(m[1]),Number(m[2])]:[null,null];}\nconst matches=[];let invalidMatches=0;for(const row of rows){const directClub=String(get(row,['club'])||'').trim();if(directClub){if(directClub!==club)continue;const gf=num(get(row,['goalsFor'])),ga=num(get(row,['goalsAgainst'])),dataError=gf===null||ga===null;if(dataError)invalidMatches++;matches.push({date:get(row,['date','Datum']),opponent:get(row,['opponent']),homeAway:get(row,['homeAway']),goalsFor:gf,goalsAgainst:ga,xGFor:null,xGAgainst:null,result:dataError?null:(gf>ga?'W':gf===ga?'D':'L'),competition:get(row,['competition','Competition']),sourceLink:get(row,['Source-Link','Source Link','sourceLink']),dataError});continue;}const home=String(get(row,['Heimteam','HomeTeam','Home Team'])||'').trim(),away=String(get(row,['Auswärtsteam','Auswaertsteam','AwayTeam','Away Team'])||'').trim(),isHome=home===club,isAway=away===club;if(!isHome&&!isAway)continue;const [hg,ag]=parseScore(row),hxg=num(get(row,['Home xG','HomeXG','xG Home'])),axg=num(get(row,['Away xG','AwayXG','xG Away'])),gf=isHome?hg:ag,ga=isHome?ag:hg,dataError=gf===null||ga===null;if(dataError)invalidMatches++;matches.push({date:get(row,['Datum','Date']),opponent:isHome?away:home,homeAway:isHome?'H':'A',goalsFor:gf,goalsAgainst:ga,xGFor:isHome?hxg:axg,xGAgainst:isHome?axg:hxg,result:dataError?null:(gf>ga?'W':gf===ga?'D':'L'),competition:get(row,['Competition','Wettbewerb'])||'Bundesliga',sourceLink:get(row,['Source-Link','Source Link','sourceLink','Understat URL']),dataError});}\nmatches.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));const limited=matches.slice(0,limit);const teamMatches={club,source:'csv',storage:'n8n-data-table',dataAvailable:limited.length>0,count:limited.length,totalAvailable:matches.length,invalidMatches,matches:limited,note:limited.length?undefined:`Keine importierten Match-Daten für '${club}' gefunden.`};return[{json:{...request,teamMatches}}];"},"id":"f32f1eb4-0920-405a-be50-9046d9e701fb","name":"Analytics ausführen","type":"n8n-nodes-base.code","typeVersion":2,"position":[700,300]}],"connections":{"Wenn von anderem Workflow aufgerufen":{"main":[[{"node":"Importierte Originaldaten laden","type":"main","index":0}]]},"Importierte Originaldaten laden":{"main":[[{"node":"Analytics ausführen","type":"main","index":0}]]}},"pinData":{},"meta":{"templateCredsSetupCompleted":false},"settings":{"executionOrder":"v1"}}
+{
+  "id": "XT5LmIBrxt6nrDGv",
+  "name": "Team-Matches (CSV)",
+  "nodes": [
+    {
+      "id": "1ccdf31d-60f5-41de-868f-9b2b322499d0",
+      "name": "Wenn von anderem Workflow aufgerufen",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "47c97de8-d521-4260-85c5-39fb3141969a",
+      "name": "Importierte Originaldaten laden",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "football_scouting_raw"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataset",
+              "keyValue": "matches"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "d3f73cfe-6aa4-41ef-aa37-a63da600e562",
+      "name": "Analytics ausführen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        0
+      ],
+      "parameters": {
+        "jsCode": "function norm(v){return String(v??'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'');}\nfunction keyMap(row){const out={};for(const key of Object.keys(row||{}))out[norm(key)]=key;return out;}\nfunction get(row,aliases){const map=keyMap(row);for(const alias of aliases){const key=map[norm(alias)];if(key!==undefined)return row[key];}}\nfunction num(value){if(value===undefined||value===null)return null;let s=String(value).trim();if(!s)return null;if(/^-?\\d{1,3}(,\\d{3})+(\\.\\d+)?$/.test(s))s=s.replace(/,/g,'');else if(/^-?\\d+,\\d+$/.test(s))s=s.replace(',','.');const n=Number(s);return Number.isFinite(n)?n:null;}\nfunction rawRows(items){return items.filter(i=>i&&i.json&&typeof i.json.payload==='string').sort((a,b)=>(a.json.rowNumber||0)-(b.json.rowNumber||0)).map(i=>{try{return JSON.parse(i.json.payload)}catch{return null}}).filter(Boolean);}\nconst request=$('Wenn von anderem Workflow aufgerufen').first().json;const club=String(request.club||'').trim();const limit=Number(request.matchLimit)>0?Math.floor(Number(request.matchLimit)):10;const rows=rawRows($input.all());\nfunction parseScore(row){const hg=num(get(row,['Home Goals','HomeGoals','Goals Home','FTHG'])),ag=num(get(row,['Away Goals','AwayGoals','Goals Away','FTAG']));if(hg!==null&&ag!==null)return[hg,ag];const score=get(row,['Tore','Score','Goals']);const m=score==null?null:String(score).match(/(-?\\d+)\\s*[:\\-–]\\s*(-?\\d+)/);return m?[Number(m[1]),Number(m[2])]:[null,null];}\nconst matches=[];let invalidMatches=0;for(const row of rows){const directClub=String(get(row,['club'])||'').trim();if(directClub){if(directClub!==club)continue;const gf=num(get(row,['goalsFor'])),ga=num(get(row,['goalsAgainst'])),dataError=gf===null||ga===null;if(dataError)invalidMatches++;matches.push({date:get(row,['date','Datum']),opponent:get(row,['opponent']),homeAway:get(row,['homeAway']),goalsFor:gf,goalsAgainst:ga,xGFor:null,xGAgainst:null,result:dataError?null:(gf>ga?'W':gf===ga?'D':'L'),competition:get(row,['competition','Competition']),sourceLink:get(row,['Source-Link','Source Link','sourceLink']),dataError});continue;}const home=String(get(row,['Heimteam','HomeTeam','Home Team'])||'').trim(),away=String(get(row,['Auswärtsteam','Auswaertsteam','AwayTeam','Away Team'])||'').trim(),isHome=home===club,isAway=away===club;if(!isHome&&!isAway)continue;const [hg,ag]=parseScore(row),hxg=num(get(row,['Home xG','HomeXG','xG Home'])),axg=num(get(row,['Away xG','AwayXG','xG Away'])),gf=isHome?hg:ag,ga=isHome?ag:hg,dataError=gf===null||ga===null;if(dataError)invalidMatches++;matches.push({date:get(row,['Datum','Date']),opponent:isHome?away:home,homeAway:isHome?'H':'A',goalsFor:gf,goalsAgainst:ga,xGFor:isHome?hxg:axg,xGAgainst:isHome?axg:hxg,result:dataError?null:(gf>ga?'W':gf===ga?'D':'L'),competition:get(row,['Competition','Wettbewerb'])||'Bundesliga',sourceLink:get(row,['Source-Link','Source Link','sourceLink','Understat URL']),dataError});}\nmatches.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));const limited=matches.slice(0,limit);const teamMatches={club,source:'csv',storage:'n8n-data-table',dataAvailable:limited.length>0,count:limited.length,totalAvailable:matches.length,invalidMatches,matches:limited,note:limited.length?undefined:`Keine importierten Match-Daten für '${club}' gefunden.`};return[{json:{...request,teamMatches}}];"
+      }
+    }
+  ],
+  "connections": {
+    "Wenn von anderem Workflow aufgerufen": {
+      "main": [
+        [
+          {
+            "node": "Importierte Originaldaten laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Importierte Originaldaten laden": {
+      "main": [
+        [
+          {
+            "node": "Analytics ausführen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "42dec5a3-782c-4407-b059-61c81c899da4",
+  "parentFolderId": "xvYBFRCqYXtsxMCF",
+  "isPublished": true,
+  "isArchived": false
+}

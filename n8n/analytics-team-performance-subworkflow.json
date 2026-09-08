@@ -1,1 +1,94 @@
-{"id":"e7a415a1-6e8b-4f26-a724-3f728588c6b3","name":"Team-Performance (CSV)","nodes":[{"parameters":{"inputSource":"passthrough"},"id":"e0b8482f-cf16-4ef6-a907-d5c7816777c6","name":"Wenn von anderem Workflow aufgerufen","type":"n8n-nodes-base.executeWorkflowTrigger","typeVersion":1.1,"position":[240,300]},{"parameters":{"resource":"row","operation":"get","dataTableId":{"__rl":true,"mode":"name","value":"football_scouting_raw"},"matchType":"allConditions","filters":{"conditions":[{"keyName":"dataset","condition":"eq","keyValue":"matches"}]},"returnAll":true,"options":{}},"id":"b5b97009-78f7-42f5-9518-9c2c5fe17d23","name":"Importierte Originaldaten laden","type":"n8n-nodes-base.dataTable","typeVersion":1.1,"position":[460,300],"continueOnFail":true,"alwaysOutputData":true},{"parameters":{"mode":"runOnceForAllItems","jsCode":"function norm(v) { return String(v ?? '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ''); }\nfunction keyMap(row) { const out={}; for (const key of Object.keys(row||{})) out[norm(key)]=key; return out; }\nfunction get(row, aliases) { const map=keyMap(row); for (const alias of aliases) { const key=map[norm(alias)]; if (key!==undefined) return row[key]; } }\nfunction num(value) { if (value===undefined||value===null) return null; let s=String(value).trim(); if (!s) return null; if (/^-?\\d{1,3}(,\\d{3})+(\\.\\d+)?$/.test(s)) s=s.replace(/,/g,''); else if (/^-?\\d+,\\d+$/.test(s)) s=s.replace(',','.'); const n=Number(s); return Number.isFinite(n)?n:null; }\nfunction rawRows(items) { return items.filter(i=>i&&i.json&&typeof i.json.payload==='string').sort((a,b)=>(a.json.rowNumber||0)-(b.json.rowNumber||0)).map(i=>{try{return JSON.parse(i.json.payload)}catch{return null}}).filter(Boolean); }\nconst request=$('Wenn von anderem Workflow aufgerufen').first().json; const club=String(request.club||'').trim(); const rows=rawRows($input.all());\nfunction parseScore(row) { const hg=num(get(row,['Home Goals','HomeGoals','Goals Home','FTHG'])); const ag=num(get(row,['Away Goals','AwayGoals','Goals Away','FTAG'])); if(hg!==null&&ag!==null)return[hg,ag]; const score=get(row,['Tore','Score','Goals']); if(score!=null){const m=String(score).match(/(-?\\d+)\\s*[:\\-–]\\s*(-?\\d+)/); if(m)return[Number(m[1]),Number(m[2])];} return[null,null]; }\nfunction normalizedMatch(row){ const directClub=String(get(row,['club'])||'').trim(); if(directClub){return{date:get(row,['date','Datum']),directClub,directHomeAway:String(get(row,['homeAway'])||'').trim().toUpperCase(),opponent:String(get(row,['opponent'])||'').trim(),directGoalsFor:num(get(row,['goalsFor'])),directGoalsAgainst:num(get(row,['goalsAgainst'])),homeXg:null,awayXg:null};} const [homeGoals,awayGoals]=parseScore(row); return{date:get(row,['Datum','Date']),home:String(get(row,['Heimteam','HomeTeam','Home Team'])||'').trim(),away:String(get(row,['Auswärtsteam','Auswaertsteam','AwayTeam','Away Team'])||'').trim(),homeGoals,awayGoals,homeXg:num(get(row,['Home xG','HomeXG','xG Home'])),awayXg:num(get(row,['Away xG','AwayXG','xG Away']))}; }\nconst clubMatches=[]; let invalidMatches=0; for(const m of rows.map(normalizedMatch)){let gf=null,ga=null,xgf=null,xga=null;if(m.directClub===club){gf=m.directGoalsFor;ga=m.directGoalsAgainst;}else{const home=m.home===club,away=m.away===club;if(!home&&!away)continue;gf=home?m.homeGoals:m.awayGoals;ga=home?m.awayGoals:m.homeGoals;xgf=home?m.homeXg:m.awayXg;xga=home?m.awayXg:m.homeXg;} if(gf===null||ga===null){invalidMatches++;continue;} clubMatches.push({...m,gf,ga,xgf,xga});}\nif(!club||!clubMatches.length){const teamPerformance={club,source:'csv',storage:'n8n-data-table',dataAvailable:false,matchesAnalyzed:0,invalidMatches,note:club?`Keine importierten Match-Daten für '${club}' in Data Table 'football_scouting_raw' gefunden.`:'Kein Verein übergeben.'};return[{json:{...request,teamPerformance}}];}\nclubMatches.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))); let wins=0,draws=0,losses=0,goalsFor=0,goalsAgainst=0,xGFor=0,xGAgainst=0,xGMatches=0; for(const m of clubMatches){goalsFor+=m.gf;goalsAgainst+=m.ga;if(m.gf>m.ga)wins++;else if(m.gf===m.ga)draws++;else losses++;if(m.xgf!==null&&m.xga!==null){xGFor+=m.xgf;xGAgainst+=m.xga;xGMatches++;}} const matchesAnalyzed=clubMatches.length; const teamPerformance={club,source:'csv',storage:'n8n-data-table',dataAvailable:true,matchesAnalyzed,invalidMatches,wins,draws,losses,goalsFor,goalsAgainst,goalDifference:goalsFor-goalsAgainst,points:wins*3+draws,avgGoalsFor:Math.round(goalsFor/matchesAnalyzed*100)/100,avgGoalsAgainst:Math.round(goalsAgainst/matchesAnalyzed*100)/100,xGMatchesAnalyzed:xGMatches,xGFor:xGMatches?Math.round(xGFor*100)/100:null,xGAgainst:xGMatches?Math.round(xGAgainst*100)/100:null,xGDifference:xGMatches?Math.round((xGFor-xGAgainst)*100)/100:null,avgXGFor:xGMatches?Math.round(xGFor/xGMatches*100)/100:null,avgXGAgainst:xGMatches?Math.round(xGAgainst/xGMatches*100)/100:null,form:clubMatches.map(m=>m.gf>m.ga?'W':m.gf===m.ga?'D':'L'),datasetRowsAvailable:rows.length}; return[{json:{...request,teamPerformance}}];"},"id":"79f4f54f-6afa-4612-a697-19f8dbd450d6","name":"Analytics ausführen","type":"n8n-nodes-base.code","typeVersion":2,"position":[700,300]}],"connections":{"Wenn von anderem Workflow aufgerufen":{"main":[[{"node":"Importierte Originaldaten laden","type":"main","index":0}]]},"Importierte Originaldaten laden":{"main":[[{"node":"Analytics ausführen","type":"main","index":0}]]}},"pinData":{},"meta":{"templateCredsSetupCompleted":false},"settings":{"executionOrder":"v1"}}
+{
+  "id": "9iu74bLLAjpUZ73C",
+  "name": "Team-Performance (CSV)",
+  "nodes": [
+    {
+      "id": "688ba991-618d-47ed-af64-14f93a355498",
+      "name": "Wenn von anderem Workflow aufgerufen",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "cba864bd-6844-4463-bb65-a7eba6f520b1",
+      "name": "Importierte Originaldaten laden",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "football_scouting_raw"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataset",
+              "keyValue": "matches"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "14c533ec-4f4b-4fc4-956c-2bf5f6d72484",
+      "name": "Analytics ausführen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        0
+      ],
+      "parameters": {
+        "jsCode": "function norm(v) { return String(v ?? '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ''); }\nfunction keyMap(row) { const out={}; for (const key of Object.keys(row||{})) out[norm(key)]=key; return out; }\nfunction get(row, aliases) { const map=keyMap(row); for (const alias of aliases) { const key=map[norm(alias)]; if (key!==undefined) return row[key]; } }\nfunction num(value) { if (value===undefined||value===null) return null; let s=String(value).trim(); if (!s) return null; if (/^-?\\d{1,3}(,\\d{3})+(\\.\\d+)?$/.test(s)) s=s.replace(/,/g,''); else if (/^-?\\d+,\\d+$/.test(s)) s=s.replace(',','.'); const n=Number(s); return Number.isFinite(n)?n:null; }\nfunction rawRows(items) { return items.filter(i=>i&&i.json&&typeof i.json.payload==='string').sort((a,b)=>(a.json.rowNumber||0)-(b.json.rowNumber||0)).map(i=>{try{return JSON.parse(i.json.payload)}catch{return null}}).filter(Boolean); }\nconst request=$('Wenn von anderem Workflow aufgerufen').first().json; const club=String(request.club||'').trim(); const rows=rawRows($input.all());\nfunction parseScore(row) { const hg=num(get(row,['Home Goals','HomeGoals','Goals Home','FTHG'])); const ag=num(get(row,['Away Goals','AwayGoals','Goals Away','FTAG'])); if(hg!==null&&ag!==null)return[hg,ag]; const score=get(row,['Tore','Score','Goals']); if(score!=null){const m=String(score).match(/(-?\\d+)\\s*[:\\-–]\\s*(-?\\d+)/); if(m)return[Number(m[1]),Number(m[2])];} return[null,null]; }\nfunction normalizedMatch(row){ const directClub=String(get(row,['club'])||'').trim(); if(directClub){return{date:get(row,['date','Datum']),directClub,directHomeAway:String(get(row,['homeAway'])||'').trim().toUpperCase(),opponent:String(get(row,['opponent'])||'').trim(),directGoalsFor:num(get(row,['goalsFor'])),directGoalsAgainst:num(get(row,['goalsAgainst'])),homeXg:null,awayXg:null};} const [homeGoals,awayGoals]=parseScore(row); return{date:get(row,['Datum','Date']),home:String(get(row,['Heimteam','HomeTeam','Home Team'])||'').trim(),away:String(get(row,['Auswärtsteam','Auswaertsteam','AwayTeam','Away Team'])||'').trim(),homeGoals,awayGoals,homeXg:num(get(row,['Home xG','HomeXG','xG Home'])),awayXg:num(get(row,['Away xG','AwayXG','xG Away']))}; }\nconst clubMatches=[]; let invalidMatches=0; for(const m of rows.map(normalizedMatch)){let gf=null,ga=null,xgf=null,xga=null;if(m.directClub===club){gf=m.directGoalsFor;ga=m.directGoalsAgainst;}else{const home=m.home===club,away=m.away===club;if(!home&&!away)continue;gf=home?m.homeGoals:m.awayGoals;ga=home?m.awayGoals:m.homeGoals;xgf=home?m.homeXg:m.awayXg;xga=home?m.awayXg:m.homeXg;} if(gf===null||ga===null){invalidMatches++;continue;} clubMatches.push({...m,gf,ga,xgf,xga});}\nif(!club||!clubMatches.length){const teamPerformance={club,source:'csv',storage:'n8n-data-table',dataAvailable:false,matchesAnalyzed:0,invalidMatches,note:club?`Keine importierten Match-Daten für '${club}' in Data Table 'football_scouting_raw' gefunden.`:'Kein Verein übergeben.'};return[{json:{...request,teamPerformance}}];}\nclubMatches.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))); let wins=0,draws=0,losses=0,goalsFor=0,goalsAgainst=0,xGFor=0,xGAgainst=0,xGMatches=0; for(const m of clubMatches){goalsFor+=m.gf;goalsAgainst+=m.ga;if(m.gf>m.ga)wins++;else if(m.gf===m.ga)draws++;else losses++;if(m.xgf!==null&&m.xga!==null){xGFor+=m.xgf;xGAgainst+=m.xga;xGMatches++;}} const matchesAnalyzed=clubMatches.length; const teamPerformance={club,source:'csv',storage:'n8n-data-table',dataAvailable:true,matchesAnalyzed,invalidMatches,wins,draws,losses,goalsFor,goalsAgainst,goalDifference:goalsFor-goalsAgainst,points:wins*3+draws,avgGoalsFor:Math.round(goalsFor/matchesAnalyzed*100)/100,avgGoalsAgainst:Math.round(goalsAgainst/matchesAnalyzed*100)/100,xGMatchesAnalyzed:xGMatches,xGFor:xGMatches?Math.round(xGFor*100)/100:null,xGAgainst:xGMatches?Math.round(xGAgainst*100)/100:null,xGDifference:xGMatches?Math.round((xGFor-xGAgainst)*100)/100:null,avgXGFor:xGMatches?Math.round(xGFor/xGMatches*100)/100:null,avgXGAgainst:xGMatches?Math.round(xGAgainst/xGMatches*100)/100:null,form:clubMatches.map(m=>m.gf>m.ga?'W':m.gf===m.ga?'D':'L'),datasetRowsAvailable:rows.length}; return[{json:{...request,teamPerformance}}];"
+      }
+    }
+  ],
+  "connections": {
+    "Wenn von anderem Workflow aufgerufen": {
+      "main": [
+        [
+          {
+            "node": "Importierte Originaldaten laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Importierte Originaldaten laden": {
+      "main": [
+        [
+          {
+            "node": "Analytics ausführen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "7f70efa6-eb67-4876-a13b-169a44fd6b0e",
+  "parentFolderId": "xvYBFRCqYXtsxMCF",
+  "isPublished": true,
+  "isArchived": false
+}
