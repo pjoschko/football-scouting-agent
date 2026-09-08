@@ -86,7 +86,6 @@ assert.strictEqual(approved.teamDiagnosis.diagnosisCategory, 'defensive', 'Nicht
 assert.strictEqual(approved.scoutingBrief.reviewRound, 1, 'Review-Metadaten duerfen durch reine Form-Edits nicht veraendert werden.');
 
 // Approve: der reale Ergebnis-Formatter liest weiterhin teamDiagnosis.mainProblem.
-// Der synchronisierte Review-Output muss deshalb im finalen Text sichtbar sein.
 const formatCode = node(resultWorkflow, 'Ergebnisseiten aufbereiten').parameters.jsCode;
 const runFormatter = new Function('$input', formatCode);
 const formattedInput = {
@@ -99,23 +98,69 @@ const formatted = runFormatter({ item: { json: formattedInput } })[0].json.forma
 assert(formatted.includes('Hauptproblem: Vom Reviewer korrigiertes Hauptproblem'), 'Finaler Output muss das editierte Hauptproblem anzeigen.');
 assert(!formatted.includes('Hauptproblem: Altes KI-Hauptproblem'), 'Finaler Output darf das alte KI-Hauptproblem nicht wiederherstellen.');
 
-// Request Changes: die naechste Brief-Runde liest Hauptproblem und Unsicherheiten
-// aus teamDiagnosis; daher muessen genau die Formularwerte dort stehen.
+// Request Changes: die synchronisierten Reviewer-Werte sind die Baseline der Folgerunde.
 const requested = runReview({
   ...editedBase,
+  Zielposition: 'Zentrales Mittelfeld',
   Entscheidung: 'Request Changes',
-  'Feedback (Pflicht bei Request Changes)': 'Bitte Profil neu gewichten.',
+  'Feedback (Pflicht bei Request Changes)': 'Bitte nur die Begruendung schaerfen; Position, Kriterien und Constraints beibehalten.',
 }, original);
 assert.strictEqual(requested.valid, true);
 assert.strictEqual(requested.reviewOutcome, 'Request Changes');
 assert.strictEqual(requested.teamDiagnosis.mainProblem, 'Vom Reviewer korrigiertes Hauptproblem');
 assert.deepStrictEqual(requested.teamDiagnosis.uncertainties, ['Vom Reviewer korrigierte Unsicherheit']);
+assert.strictEqual(requested.playerProfile.position, 'Zentrales Mittelfeld');
+assert.deepStrictEqual(requested.playerProfile.weightedCriteria, [{ criterion: 'assists', weight: 0.7 }]);
+assert.deepStrictEqual(requested.playerProfile.constraints, [{ field: 'age', operator: 'max', value: 26 }]);
+
+const positionPoolCode = node(scoutingBriefWorkflow, 'Spielerprofil: Positionspool ermitteln').parameters.jsCode;
+const runPositionPool = new Function('$input', positionPoolCode);
+const positioned = runPositionPool({ item: { json: requested } })[0].json;
+assert(positioned.allowedPositions.includes('Zentrales Mittelfeld'), 'Reviewer-Position muss in der Request-Changes-Folgerunde zulaessig bleiben.');
 
 const profilePrompt = node(scoutingBriefWorkflow, 'Spielerprofil LLM').parameters.text;
-assert(profilePrompt.includes('$json.teamDiagnosis.mainProblem'), 'Request-Changes-LLM muss das synchronisierte teamDiagnosis.mainProblem konsumieren.');
-assert(profilePrompt.includes('$json.teamDiagnosis.uncertainties'), 'Request-Changes-LLM muss die synchronisierten teamDiagnosis.uncertainties konsumieren.');
-const rebuildCode = node(scoutingBriefWorkflow, 'Scouting Brief erstellen').parameters.jsCode;
-assert(rebuildCode.includes('problem: teamDiagnosis.mainProblem'), 'Naechste Brief-Runde muss problem aus synchronisierter teamDiagnosis aufbauen.');
-assert(rebuildCode.includes('teamDiagnosis.uncertainties'), 'Naechste Brief-Runde muss uncertainties aus synchronisierter teamDiagnosis aufbauen.');
+assert(profilePrompt.includes('VERBINDLICHER, VOM REVIEWER BEREITS EDITIERTER AUSGANGSSTAND'), 'Request-Changes-Prompt muss den Reviewer-Stand explizit als Baseline enthalten.');
+assert(profilePrompt.includes('JSON.stringify($json.playerProfile)'), 'Request-Changes-Prompt muss das synchronisierte playerProfile uebergeben.');
+assert(profilePrompt.includes('null = unveraendert'), 'Prompt muss Patch-Semantik fuer unveraenderte Reviewer-Felder definieren.');
 
-console.log('OK: Reviewer-Edits bleiben fuer Approve und Request Changes downstream massgeblich.');
+const schema = JSON.parse(node(scoutingBriefWorkflow, 'Spielerprofil Output-Schema').parameters.inputSchema);
+for (const field of ['position', 'role', 'weightedCriteria', 'constraints', 'reasoning']) {
+  const type = schema.properties[field].type;
+  assert(Array.isArray(type) && type.includes('null'), `${field} muss in der Request-Changes-Patch-Semantik null erlauben.`);
+}
+
+// Simuliere eine LLM-Folgerunde, die laut Feedback nur reasoning aendert und alle
+// anderen Felder als null (= Reviewer-Wert beibehalten) liefert.
+const mergeCode = node(scoutingBriefWorkflow, 'Spielerprofil zusammenfuehren').parameters.jsCode;
+const runMerge = new Function('$json', '$', mergeCode);
+const llmPatch = {
+  output: {
+    position: null,
+    role: null,
+    weightedCriteria: null,
+    constraints: null,
+    reasoning: 'Vom LLM anhand des Feedbacks geschaerfte Begruendung',
+  },
+};
+const merged = runMerge(llmPatch, (name) => {
+  assert.strictEqual(name, 'Spielerprofil: Positionspool ermitteln');
+  return { first: () => ({ json: positioned }) };
+}).json;
+assert.strictEqual(merged.playerProfile.position, 'Zentrales Mittelfeld', 'Reviewer-Position darf durch null-Patch nicht verloren gehen.');
+assert.deepStrictEqual(merged.playerProfile.weightedCriteria, [{ criterion: 'assists', weight: 0.7 }], 'Reviewer-Kriterien duerfen durch null-Patch nicht verloren gehen.');
+assert.deepStrictEqual(merged.playerProfile.constraints, [{ field: 'age', operator: 'max', value: 26 }], 'Reviewer-Constraints duerfen durch null-Patch nicht verloren gehen.');
+assert.strictEqual(merged.playerProfile.reasoning, 'Vom LLM anhand des Feedbacks geschaerfte Begruendung');
+
+const validateProfileCode = node(scoutingBriefWorkflow, 'Spielerprofil pruefen').parameters.jsCode;
+const validatedProfile = new Function('$input', validateProfileCode)({ item: { json: merged } })[0].json;
+assert.strictEqual(validatedProfile.valid, true, validatedProfile.errorMessage);
+
+const rebuildCode = node(scoutingBriefWorkflow, 'Scouting Brief erstellen').parameters.jsCode;
+const nextRound = new Function('$input', rebuildCode)({ item: { json: validatedProfile } })[0].json;
+assert.strictEqual(nextRound.scoutingBrief.targetPosition, 'Zentrales Mittelfeld', 'Naechste Formularrunde muss die Reviewer-Position zeigen.');
+assert.deepStrictEqual(nextRound.scoutingBrief.weightedCriteria, [{ criterion: 'assists', weight: 0.7 }], 'Naechste Formularrunde muss die Reviewer-Kriterien zeigen.');
+assert.deepStrictEqual(nextRound.scoutingBrief.constraints, [{ field: 'age', operator: 'max', value: 26 }], 'Naechste Formularrunde muss die Reviewer-Constraints zeigen.');
+assert.strictEqual(nextRound.scoutingBrief.reasoning, 'Vom LLM anhand des Feedbacks geschaerfte Begruendung');
+assert.strictEqual(nextRound.scoutingBrief.reviewRound, 2);
+
+console.log('OK: Reviewer-Edits bleiben fuer Approve und Request Changes bis in die naechste Formularrunde autoritativ.');
