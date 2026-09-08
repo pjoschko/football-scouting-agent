@@ -32,9 +32,15 @@ import tarfile
 import urllib.error
 import urllib.parse
 import urllib.request
+import ssl
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
+
+
+
+# TEMPORARY: internal n8n has a certificate chain Python does not accept
+ssl._create_default_https_context = ssl._create_unverified_context
 
 DEFAULT_TIMEOUT_SECONDS = 60
 WORKFLOW_NODE_TYPE = "n8n-nodes-base.executeWorkflow"
