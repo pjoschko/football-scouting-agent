@@ -1,1 +1,418 @@
-{"id":"u5ruKZbmPA8YgxjR","name":"Scouting Brief erstellen","nodes":[{"id":"63cfb38f-8276-4614-b61b-bd77304097d8","name":"Wenn von anderem Workflow aufgerufen","type":"n8n-nodes-base.executeWorkflowTrigger","typeVersion":1.1,"position":[-432,0],"parameters":{"inputSource":"passthrough"},"notes":"Wird vom Hauptworkflow ueber 'Execute Workflow: Scouting Brief erstellen' potenziell mehrfach in derselben Hauptworkflow-Ausfuehrung aufgerufen: einmal im Erstlauf, danach erneut je 'Request Changes'-Runde (mit item.reviewFeedback gesetzt, siehe n8n/README.md, Abschnitt \"Scouting Brief Human-Review\"). inputSource: passthrough reicht das jeweils uebergebene Item unveraendert weiter, unabhaengig davon, wie oft dieser Subworkflow in einer Ausfuehrung aufgerufen wird.","notesInFlow":false},{"id":"f4141d0f-b7fc-49f7-acc2-faa5cbe5500f","name":"Spielerprofil: Positionspool ermitteln","type":"n8n-nodes-base.code","typeVersion":2,"position":[-224,0],"parameters":{"jsCode":"const item = $input.item.json;\n\n// Im Erstlauf bleibt der Diagnose-basierte Positionspool unveraendert.\n// In einer Request-Changes-Folgerunde ist die vom Reviewer bereits editierte\n// Position jedoch Teil des verbindlichen Ausgangsstands und muss deshalb\n// weiterhin zulaessig bleiben, auch wenn sie ausserhalb des urspruenglich\n// aus diagnosisCategory abgeleiteten Pools liegt.\nconst DEFENSIVE_POSITIONS = ['Innenverteidiger', 'Linksverteidiger', 'Rechtsverteidiger', 'Defensives Mittelfeld'];\nconst ATTACKING_POSITIONS = ['Offensives Mittelfeld', 'Linksaußen', 'Mittelstürmer'];\nconst ALL_POSITIONS = ['Innenverteidiger', 'Linksverteidiger', 'Rechtsverteidiger', 'Defensives Mittelfeld', 'Zentrales Mittelfeld', 'Offensives Mittelfeld', 'Linksaußen', 'Mittelstürmer'];\n\nconst diagnosisCategory = (item.teamDiagnosis && item.teamDiagnosis.diagnosisCategory) || 'no_data';\nlet allowedPositions = diagnosisCategory === 'defensive'\n  ? [...DEFENSIVE_POSITIONS]\n  : diagnosisCategory === 'offensive'\n    ? [...ATTACKING_POSITIONS]\n    : [...ALL_POSITIONS];\n\nconst reviewedPosition = item.reviewDecision === 'Request Changes' && item.playerProfile\n  ? item.playerProfile.position\n  : null;\nif (typeof reviewedPosition === 'string' && reviewedPosition.trim() && !allowedPositions.includes(reviewedPosition.trim())) {\n  allowedPositions.push(reviewedPosition.trim());\n}\n\nreturn [{ json: { ...item, allowedPositions } }];"}},{"id":"dbf8ecb3-68e4-413f-b132-8dc6add60b16","name":"Spielerprofil LLM","type":"@n8n/n8n-nodes-langchain.chainLlm","typeVersion":1.6,"position":[0,0],"parameters":{"promptType":"define","text":"=Verein: {{ $json.club }}\nZielsetzung des Auftrags: {{ $json.objective }}\nZusaetzlicher Kontext: {{ $json.additionalContext || '(keiner)' }}\n\nTeamdiagnose (bereits erstellt):\nHauptproblem: {{ $json.teamDiagnosis.mainProblem }}\nDiagnosekategorie: {{ $json.teamDiagnosis.diagnosisCategory }}\nHypothesen: {{ $json.teamDiagnosis.hypotheses.join('; ') }}\nGegenhypothesen: {{ $json.teamDiagnosis.counterHypotheses.join('; ') || '(keine)' }}\nLigavergleich: {{ $json.teamDiagnosis.leagueComparison }}\nUnsicherheiten: {{ $json.teamDiagnosis.uncertainties.join('; ') }}\n\nErlaubter Positionspool fuer diese Diagnose - waehle 'position' AUSSCHLIESSLICH aus dieser Liste, keine andere Position: {{ $json.allowedPositions.join(', ') }}\n\n{{ $json.reviewDecision === 'Request Changes' && $json.playerProfile ? ('VERBINDLICHER, VOM REVIEWER BEREITS EDITIERTER AUSGANGSSTAND DER FOLGERUNDE:\\n' + JSON.stringify($json.playerProfile) + '\\n\\nDieser Reviewer-Stand ist die Baseline. Er darf NICHT stillschweigend auf fruehere KI-Werte zurueckgesetzt werden. Bearbeite nur Felder, deren Aenderung aus reviewFeedback tatsaechlich hervorgeht. Fuer jedes Profilfeld, das durch reviewFeedback NICHT geaendert werden soll, liefere null. Bei constraints bedeutet null = unveraendert beibehalten; [] = Constraints bewusst entfernen.') : '' }}\n\nLeite aus der Teamdiagnose ein strukturiertes Anforderungsprofil fuer die Spielersuche ab.\n\nLiefere die Felder 'position', 'role', 'weightedCriteria', 'constraints' und 'reasoning'.\n\nERSTLAUF (kein Request Changes):\n* Liefere fuer ALLE Felder konkrete Werte; null ist im Erstlauf nicht erlaubt.\n* 'position': genau eine Position aus dem oben angegebenen erlaubten Positionspool.\n* 'role': eine kurze taktische Beschreibung der gesuchten Rolle.\n* 'weightedCriteria': ein NICHT LEERES Array mit mindestens einem Kriterium. Verwende AUSSCHLIESSLICH: goals, assists, appearances, age, minutesPlayed. Jeder Eintrag hat exakt { \"criterion\": \"<Name>\", \"weight\": <0..1> }.\n* 'constraints': Objekte der Form { \"field\": \"age\"|\"marketValueMEUR\", \"operator\": \"max\"|\"min\", \"value\": Zahl }. Nur konkrete Zahlen aus additionalContext verwenden; sonst [].\n* 'reasoning': Begruendung bezogen auf das Hauptproblem.\n\nREQUEST-CHANGES-FOLGERUNDE:\n* Behandle den oben gezeigten Reviewer-Ausgangsstand als verbindliche Baseline.\n* Liefere fuer jedes Feld, das laut reviewFeedback unveraendert bleiben soll, null.\n* Liefere nur fuer Felder, deren Aenderung reviewFeedback verlangt, einen neuen konkreten Wert.\n* Fuer 'constraints': null = Reviewer-Constraints beibehalten; [] = aufgrund des Feedbacks bewusst alle Constraints entfernen.\n* Fuer 'weightedCriteria': null = Reviewer-Kriterien samt Gewichten beibehalten.\n* Eine neue Position muss im erlaubten Positionspool liegen.\n\nErfinde keine Position, kein Kriterium und keinen numerischen Constraint ausserhalb der vorgegebenen Regeln.\n\n{{ $json.reviewFeedback ? ('Rueckmeldung des menschlichen Reviewers fuer diese Folgerunde:\\n' + $json.reviewFeedback) : '' }}\n","hasOutputParser":true,"messages":{"messageValues":[{"message":"Du bist ein erfahrener Sporting-Director-Analyst fuer Kaderplanung. Fachliche Grundlage fuer Position, Rolle, Kriterien und Begruendung ist die dir gegebene Teamdiagnose; du haeltst dich strikt an den vorgegebenen Positionspool - du erfindest keine Position ausserhalb dieser Liste. Fuer 'constraints' (Alters-/Budgetrahmen) darfst du zusaetzlich einen im User-Prompt vorliegenden zusaetzlichen Kontext (additionalContext) und/oder eine Reviewer-Rueckmeldung (reviewFeedback) heranziehen, wenn diese einen konkreten Alters- oder Marktwert-/Budgetgrenzwert vorgeben; auch dabei erfindest du keinen Zahlenwert, der aus keiner dieser beiden Quellen ableitbar ist."}]}},"notes":"Leitet im Erstlauf das Profil aus der Teamdiagnose ab. Bei Request Changes wird das bereits vom Reviewer editierte playerProfile als verbindliche Baseline in den Prompt gegeben; das LLM liefert dann Patch-Semantik (null = Feld unveraendert lassen). Der Merge-Node verhindert dadurch ein stilles Zurueckfallen auf fruehere KI-Werte.","notesInFlow":false,"onError":"continueErrorOutput"},{"id":"887355ff-1dfc-47f2-b007-5bec6766d3b4","name":"Spielerprofil Output-Schema","type":"@n8n/n8n-nodes-langchain.outputParserStructured","typeVersion":1.2,"position":[64,208],"parameters":{"schemaType":"manual","inputSchema":"{\n  \"type\": \"object\",\n  \"required\": [\n    \"position\",\n    \"role\",\n    \"weightedCriteria\",\n    \"constraints\",\n    \"reasoning\"\n  ],\n  \"properties\": {\n    \"position\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ]\n    },\n    \"role\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ]\n    },\n    \"weightedCriteria\": {\n      \"type\": [\n        \"array\",\n        \"null\"\n      ],\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"criterion\",\n          \"weight\"\n        ],\n        \"properties\": {\n          \"criterion\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"goals\",\n              \"assists\",\n              \"appearances\",\n              \"age\",\n              \"minutesPlayed\"\n            ]\n          },\n          \"weight\": {\n            \"type\": \"number\"\n          }\n        }\n      }\n    },\n    \"constraints\": {\n      \"type\": [\n        \"array\",\n        \"null\"\n      ],\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"field\",\n          \"operator\",\n          \"value\"\n        ],\n        \"properties\": {\n          \"field\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"age\",\n              \"marketValueMEUR\"\n            ]\n          },\n          \"operator\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"max\",\n              \"min\"\n            ]\n          },\n          \"value\": {\n            \"type\": \"number\"\n          }\n        }\n      }\n    },\n    \"reasoning\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ]\n    }\n  }\n}","autoFix":true}},{"id":"23c97a64-c876-4ebe-b796-0cf922e426e1","name":"Ollama Modell (Qwen3.8:latest)","type":"@n8n/n8n-nodes-langchain.lmChatOllama","typeVersion":1,"position":[0,384],"parameters":{"model":"Qwen3.8:latest","options":{"think":true}},"credentials":{"ollamaApi":{"id":"ReUpCODpTFeMY6rC","name":"[cimt] Ollama"}},"notes":"Eigene Node-Instanz dieser Subworkflow-Datei (technische Utility-Node, bewusst dupliziert statt geteilt - siehe n8n/README.md). Versorgt 'Spielerprofil LLM' ueber ai_languageModel.","notesInFlow":false},{"id":"1f6390df-45d6-4319-9076-b2e3764ced56","name":"LLM-Fehler normalisieren","type":"n8n-nodes-base.code","typeVersion":2,"position":[400,368],"parameters":{"jsCode":"const item = $input.item.json;\nconst rawError = item && item.error;\nconst rawMessage = typeof rawError === 'string'\n  ? rawError\n  : (rawError && rawError.message) ? rawError.message : 'Unbekannter Fehler';\n\n// Eigene Kopie dieser Subworkflow-Datei (technische Utility-Node, siehe\n// n8n/README.md): ergaenzt zusaetzlich valid: false, damit der konsolidierte\n// Phase-Ergebnis-Vertrag (siehe 'Scouting Brief erstellen: Ergebnis') auch\n// auf dem Fehlerpfad korrekt befuellt ist.\nreturn [{\n  json: {\n    ...item,\n    valid: false,\n    errorMessage: 'Bei der Kommunikation mit dem lokalen Ollama-Modell ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.\\n\\nDetails: ' + rawMessage\n  }\n}];"},"notes":"Normalisiert den Fehler-Output von 'Spielerprofil LLM' in eine verstaendliche errorMessage; der gemeinsame Capability-Exit wirft sie bei valid=false an den zentralen Fehlerkanal des Hauptworkflows.","notesInFlow":false},{"id":"42e09b33-c124-49d2-9307-bc455e2e3635","name":"Spielerprofil zusammenfuehren","type":"n8n-nodes-base.code","typeVersion":2,"position":[304,0],"parameters":{"mode":"runOnceForEachItem","jsCode":"const llmResult = $json.output ?? $json;\nconst original = $('Spielerprofil: Positionspool ermitteln').first().json;\nconst isRevision = original.reviewDecision === 'Request Changes' && original.playerProfile && typeof original.playerProfile === 'object';\nconst baseline = isRevision ? original.playerProfile : {};\n\nconst resolved = (field) => {\n  const value = llmResult[field];\n  if (isRevision && (value === null || value === undefined)) return baseline[field];\n  return value;\n};\n\nconst playerProfile = {\n  ...baseline,\n  simulated: false,\n  position: resolved('position'),\n  role: resolved('role'),\n  weightedCriteria: resolved('weightedCriteria'),\n  constraints: resolved('constraints'),\n  reasoning: resolved('reasoning')\n};\n\nif (!playerProfile.position) {\n  throw new Error('Spielerprofil enthaelt nach Merge keine position. Input: ' + JSON.stringify($json));\n}\nif (!playerProfile.role) {\n  throw new Error('Spielerprofil enthaelt nach Merge keine role. Input: ' + JSON.stringify($json));\n}\n\nreturn {\n  json: {\n    ...original,\n    playerProfile\n  }\n};"},"notes":"Im Erstlauf wird das komplette LLM-Profil uebernommen. Bei Request Changes ist das vom Reviewer editierte playerProfile die Baseline; null/undefined im LLM-Patch behaelt den exakten Reviewer-Wert, nur konkrete Patch-Werte ersetzen ihn."},{"id":"ed0503ef-e5df-467c-b92c-0c519f70e7cd","name":"Spielerprofil pruefen","type":"n8n-nodes-base.code","typeVersion":2,"position":[448,0],"parameters":{"jsCode":"const item = $input.item.json;\nconst p = item.playerProfile;\nconst errors = [];\n\nif (!p || typeof p !== 'object') {\n  errors.push('playerProfile fehlt oder ist kein Objekt.');\n} else {\n  if (!p.position) errors.push('playerProfile.position fehlt.');\n  if (!p.role) errors.push('playerProfile.role fehlt.');\n  if (!p.reasoning) errors.push('playerProfile.reasoning fehlt.');\n  if (!Array.isArray(p.weightedCriteria) || p.weightedCriteria.length === 0) {\n    errors.push('playerProfile.weightedCriteria fehlt oder ist leer.');\n  } else if (p.weightedCriteria.some((c) => !c.criterion || typeof c.weight !== 'number')) {\n    errors.push('playerProfile.weightedCriteria enthaelt einen Eintrag ohne criterion oder numerisches weight.');\n  }\n  if (!Array.isArray(p.constraints)) {\n    errors.push('playerProfile.constraints fehlt oder ist kein Array.');\n  } else if (p.constraints.some((c) => !c || !['age', 'marketValueMEUR'].includes(c.field) || !['max', 'min'].includes(c.operator) || typeof c.value !== 'number' || !Number.isFinite(c.value))) {\n    errors.push('playerProfile.constraints enthaelt einen Eintrag ohne gueltiges field/operator/numerisches value.');\n  }\n\n  if (p && p.position) {\n    const allowedPositions = Array.isArray(item.allowedPositions) ? item.allowedPositions : [];\n    if (allowedPositions.length > 0 && !allowedPositions.includes(p.position)) {\n      errors.push(`playerProfile.position ('${p.position}') ist nicht im vorbereiteten Positionspool enthalten (erlaubt: ${allowedPositions.join(', ')}).`);\n    }\n  }\n}\n\nconst valid = errors.length === 0;\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid ? undefined : 'Das Spielerprofil ist ungueltig und wird nicht fuer die Spielersuche verwendet.\\n\\n' + errors.join('\\n')\n  }\n}];"}},{"id":"e98d5d04-e6d2-4e15-9a9a-be86983b2b3e","name":"Spielerprofil gueltig?","type":"n8n-nodes-base.if","typeVersion":2,"position":[672,0],"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":2},"conditions":[{"id":"60eff2d7-5cf3-4d35-b832-0097e9e85f25","leftValue":"={{ $json.valid }}","rightValue":true,"operator":{"type":"boolean","operation":"true","singleValue":true}}],"combinator":"and"},"options":{}}},{"id":"b061b282-e58b-4948-abfa-79de4632ac91","name":"Scouting Brief erstellen","type":"n8n-nodes-base.code","typeVersion":2,"position":[880,0],"parameters":{"jsCode":"const MAX_REVIEW_ROUNDS = 3;\nconst item = $input.item.json;\nconst priorBrief = item.scoutingBrief;\nconst feedbackHistory = Array.isArray(priorBrief && priorBrief.feedbackHistory)\n  ? [...priorBrief.feedbackHistory]\n  : [];\n\nif (item.reviewDecision === 'Request Changes' && priorBrief) {\n  feedbackHistory.push({ round: priorBrief.reviewRound, feedback: item.reviewFeedback || '' });\n}\n\nconst teamDiagnosis = item.teamDiagnosis || {};\nconst playerProfile = item.playerProfile || {};\n\nconst scoutingBrief = {\n  problem: teamDiagnosis.mainProblem,\n  targetPosition: playerProfile.position,\n  role: playerProfile.role,\n  reasoning: playerProfile.reasoning,\n  weightedCriteria: playerProfile.weightedCriteria,\n  constraints: playerProfile.constraints,\n  uncertainties: Array.isArray(teamDiagnosis.uncertainties) ? teamDiagnosis.uncertainties : [],\n  reviewRound: feedbackHistory.length + 1,\n  maxReviewRounds: MAX_REVIEW_ROUNDS,\n  feedbackHistory\n};\n\nreturn [{ json: { ...item, scoutingBrief } }];"}},{"id":"7f40fa77-c0b7-4d88-9670-6a3e424f4bde","name":"Scouting Brief pruefen","type":"n8n-nodes-base.code","typeVersion":2,"position":[1104,0],"parameters":{"jsCode":"const item = $input.item.json;\nconst b = item.scoutingBrief;\nconst errors = [];\n\nif (!b || typeof b !== 'object') {\n  errors.push('scoutingBrief fehlt oder ist kein Objekt.');\n} else {\n  if (!b.problem) errors.push('scoutingBrief.problem fehlt.');\n  if (!b.targetPosition) errors.push('scoutingBrief.targetPosition fehlt.');\n  if (!b.role) errors.push('scoutingBrief.role fehlt.');\n  if (!b.reasoning) errors.push('scoutingBrief.reasoning fehlt.');\n  if (!Array.isArray(b.weightedCriteria) || b.weightedCriteria.length === 0) errors.push('scoutingBrief.weightedCriteria fehlt oder ist leer.');\n  if (!Array.isArray(b.constraints)) errors.push('scoutingBrief.constraints fehlt oder ist kein Array.');\n  if (!Array.isArray(b.uncertainties)) errors.push('scoutingBrief.uncertainties fehlt oder ist kein Array.');\n}\n\nconst valid = errors.length === 0;\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid ? undefined : 'Das Scouting Brief ist ungueltig und wird nicht zur Freigabe vorgelegt.\\n\\n' + errors.join('\\n')\n  }\n}];"}},{"id":"9d059c09-cafb-4b92-9695-054b41d0db9f","name":"Scouting Brief gueltig?","type":"n8n-nodes-base.if","typeVersion":2,"position":[1328,0],"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":2},"conditions":[{"id":"b1a2c3d4-cond-5003","leftValue":"={{ $json.valid }}","rightValue":true,"operator":{"type":"boolean","operation":"true","singleValue":true}}],"combinator":"and"},"options":{}}},{"id":"de37dcc3-600c-4662-a137-b33326331b0d","name":"Scouting Brief erstellen: Ergebnis","type":"n8n-nodes-base.code","typeVersion":2,"position":[1664,288],"parameters":{"jsCode":"const item = $input.item.json;\nif (item.valid === false) {\n  throw new Error('[SCOUTING_BRIEF] ' + (item.errorMessage || 'Scouting Brief erstellen ist fehlgeschlagen.'));\n}\nreturn [{ json: { ...item, status: 'success' } }];"},"notes":"Einziger Capability-Exit: liefert bei Erfolg playerProfile + scoutingBrief. Bei valid=false wird die intern formulierte errorMessage als Subworkflow-Fehler geworfen; der Hauptworkflow braucht kein eigenes Scouting-Brief-gueltig-Gate mehr.","notesInFlow":false}],"connections":{"Wenn von anderem Workflow aufgerufen":{"main":[[{"node":"Spielerprofil: Positionspool ermitteln","type":"main","index":0}]]},"Spielerprofil: Positionspool ermitteln":{"main":[[{"node":"Spielerprofil LLM","type":"main","index":0}]]},"Spielerprofil LLM":{"main":[[{"node":"Spielerprofil zusammenfuehren","type":"main","index":0}],[{"node":"LLM-Fehler normalisieren","type":"main","index":0}]]},"Spielerprofil Output-Schema":{"ai_outputParser":[[{"node":"Spielerprofil LLM","type":"ai_outputParser","index":0}]]},"Ollama Modell (Qwen3.8:latest)":{"ai_languageModel":[[{"node":"Spielerprofil LLM","type":"ai_languageModel","index":0},{"node":"Spielerprofil Output-Schema","type":"ai_languageModel","index":0}]]},"LLM-Fehler normalisieren":{"main":[[{"node":"Scouting Brief erstellen: Ergebnis","type":"main","index":0}]]},"Spielerprofil zusammenfuehren":{"main":[[{"node":"Spielerprofil pruefen","type":"main","index":0}]]},"Spielerprofil pruefen":{"main":[[{"node":"Spielerprofil gueltig?","type":"main","index":0}]]},"Spielerprofil gueltig?":{"main":[[{"node":"Scouting Brief erstellen","type":"main","index":0}],[{"node":"Scouting Brief erstellen: Ergebnis","type":"main","index":0}]]},"Scouting Brief erstellen":{"main":[[{"node":"Scouting Brief pruefen","type":"main","index":0}]]},"Scouting Brief pruefen":{"main":[[{"node":"Scouting Brief gueltig?","type":"main","index":0}]]},"Scouting Brief gueltig?":{"main":[[{"node":"Scouting Brief erstellen: Ergebnis","type":"main","index":0}],[{"node":"Scouting Brief erstellen: Ergebnis","type":"main","index":0}]]}},"settings":{"executionOrder":"v1","binaryMode":"separate"},"versionId":"802dabfb-1dfb-40fa-a9c6-fb0fb5b7f860","parentFolderId":"xvYBFRCqYXtsxMCF","isPublished":true,"isArchived":false}
+{
+  "id": "u5ruKZbmPA8YgxjR",
+  "name": "Scouting Brief erstellen",
+  "nodes": [
+    {
+      "id": "63cfb38f-8276-4614-b61b-bd77304097d8",
+      "name": "Wenn von anderem Workflow aufgerufen",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -432,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "notes": "Wird vom Hauptworkflow ueber 'Execute Workflow: Scouting Brief erstellen' potenziell mehrfach in derselben Hauptworkflow-Ausfuehrung aufgerufen: einmal im Erstlauf, danach erneut je 'Request Changes'-Runde (mit item.reviewFeedback gesetzt, siehe n8n/README.md, Abschnitt \"Scouting Brief Human-Review\"). inputSource: passthrough reicht das jeweils uebergebene Item unveraendert weiter, unabhaengig davon, wie oft dieser Subworkflow in einer Ausfuehrung aufgerufen wird.",
+      "notesInFlow": false
+    },
+    {
+      "id": "f4141d0f-b7fc-49f7-acc2-faa5cbe5500f",
+      "name": "Spielerprofil: Positionspool ermitteln",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\n// Im Erstlauf bleibt der Diagnose-basierte Positionspool unveraendert.\n// In einer Request-Changes-Folgerunde ist die vom Reviewer bereits editierte\n// Position jedoch Teil des verbindlichen Ausgangsstands und muss deshalb\n// weiterhin zulaessig bleiben, auch wenn sie ausserhalb des urspruenglich\n// aus diagnosisCategory abgeleiteten Pools liegt.\nconst DEFENSIVE_POSITIONS = ['Innenverteidiger', 'Linksverteidiger', 'Rechtsverteidiger', 'Defensives Mittelfeld'];\nconst ATTACKING_POSITIONS = ['Offensives Mittelfeld', 'Linksaußen', 'Mittelstürmer'];\nconst ALL_POSITIONS = ['Innenverteidiger', 'Linksverteidiger', 'Rechtsverteidiger', 'Defensives Mittelfeld', 'Zentrales Mittelfeld', 'Offensives Mittelfeld', 'Linksaußen', 'Mittelstürmer'];\n\nconst diagnosisCategory = (item.teamDiagnosis && item.teamDiagnosis.diagnosisCategory) || 'no_data';\nlet allowedPositions = diagnosisCategory === 'defensive'\n  ? [...DEFENSIVE_POSITIONS]\n  : diagnosisCategory === 'offensive'\n    ? [...ATTACKING_POSITIONS]\n    : [...ALL_POSITIONS];\n\nconst reviewedPosition = item.reviewDecision === 'Request Changes' && item.playerProfile\n  ? item.playerProfile.position\n  : null;\nif (typeof reviewedPosition === 'string' && reviewedPosition.trim() && !allowedPositions.includes(reviewedPosition.trim())) {\n  allowedPositions.push(reviewedPosition.trim());\n}\n\nreturn [{ json: { ...item, allowedPositions } }];"
+      }
+    },
+    {
+      "id": "dbf8ecb3-68e4-413f-b132-8dc6add60b16",
+      "name": "Spielerprofil LLM",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.6,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Verein: {{ $json.club }}\nZielsetzung des Auftrags: {{ $json.objective }}\nZusaetzlicher Kontext: {{ $json.additionalContext || '(keiner)' }}\n\nTeamdiagnose (bereits erstellt):\nHauptproblem: {{ $json.teamDiagnosis.mainProblem }}\nDiagnosekategorie: {{ $json.teamDiagnosis.diagnosisCategory }}\nHypothesen: {{ $json.teamDiagnosis.hypotheses.join('; ') }}\nGegenhypothesen: {{ $json.teamDiagnosis.counterHypotheses.join('; ') || '(keine)' }}\nLigavergleich: {{ $json.teamDiagnosis.leagueComparison }}\nUnsicherheiten: {{ $json.teamDiagnosis.uncertainties.join('; ') }}\n\nErlaubter Positionspool fuer diese Diagnose - waehle 'position' AUSSCHLIESSLICH aus dieser Liste, keine andere Position: {{ $json.allowedPositions.join(', ') }}\n\n{{ $json.reviewDecision === 'Request Changes' && $json.playerProfile ? ('VERBINDLICHER, VOM REVIEWER BEREITS EDITIERTER AUSGANGSSTAND DER FOLGERUNDE:\\n' + JSON.stringify($json.playerProfile) + '\\n\\nDieser Reviewer-Stand ist die Baseline. Er darf NICHT stillschweigend auf fruehere KI-Werte zurueckgesetzt werden. Bearbeite nur Felder, deren Aenderung aus reviewFeedback tatsaechlich hervorgeht. Fuer jedes Profilfeld, das durch reviewFeedback NICHT geaendert werden soll, liefere null. Bei constraints bedeutet null = unveraendert beibehalten; [] = Constraints bewusst entfernen.') : '' }}\n\nLeite aus der Teamdiagnose ein strukturiertes Anforderungsprofil fuer die Spielersuche ab.\n\nLiefere die Felder 'position', 'role', 'weightedCriteria', 'constraints' und 'reasoning'.\n\nERSTLAUF (kein Request Changes):\n* Liefere fuer ALLE Felder konkrete Werte; null ist im Erstlauf nicht erlaubt.\n* 'position': genau eine Position aus dem oben angegebenen erlaubten Positionspool.\n* 'role': eine kurze taktische Beschreibung der gesuchten Rolle.\n* 'weightedCriteria': ein NICHT LEERES Array mit mindestens einem Kriterium. Verwende AUSSCHLIESSLICH: goals, assists, appearances, age, minutesPlayed. Jeder Eintrag hat exakt { \"criterion\": \"<Name>\", \"weight\": <0..1> }.\n* 'constraints': Objekte der Form { \"field\": \"age\"|\"marketValueMEUR\", \"operator\": \"max\"|\"min\", \"value\": Zahl }. Nur konkrete Zahlen aus additionalContext verwenden; sonst [].\n* 'reasoning': Begruendung bezogen auf das Hauptproblem.\n\nREQUEST-CHANGES-FOLGERUNDE:\n* Behandle den oben gezeigten Reviewer-Ausgangsstand als verbindliche Baseline.\n* Liefere fuer jedes Feld, das laut reviewFeedback unveraendert bleiben soll, null.\n* Liefere nur fuer Felder, deren Aenderung reviewFeedback verlangt, einen neuen konkreten Wert.\n* Fuer 'constraints': null = Reviewer-Constraints beibehalten; [] = aufgrund des Feedbacks bewusst alle Constraints entfernen.\n* Fuer 'weightedCriteria': null = Reviewer-Kriterien samt Gewichten beibehalten.\n* Eine neue Position muss im erlaubten Positionspool liegen.\n\nErfinde keine Position, kein Kriterium und keinen numerischen Constraint ausserhalb der vorgegebenen Regeln.\n\n{{ $json.reviewFeedback ? ('Rueckmeldung des menschlichen Reviewers fuer diese Folgerunde:\\n' + $json.reviewFeedback) : '' }}\n",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Du bist ein erfahrener Sporting-Director-Analyst fuer Kaderplanung. Fachliche Grundlage fuer Position, Rolle, Kriterien und Begruendung ist die dir gegebene Teamdiagnose; du haeltst dich strikt an den vorgegebenen Positionspool - du erfindest keine Position ausserhalb dieser Liste. Fuer 'constraints' (Alters-/Budgetrahmen) darfst du zusaetzlich einen im User-Prompt vorliegenden zusaetzlichen Kontext (additionalContext) und/oder eine Reviewer-Rueckmeldung (reviewFeedback) heranziehen, wenn diese einen konkreten Alters- oder Marktwert-/Budgetgrenzwert vorgeben; auch dabei erfindest du keinen Zahlenwert, der aus keiner dieser beiden Quellen ableitbar ist."
+            }
+          ]
+        }
+      },
+      "notes": "Leitet im Erstlauf das Profil aus der Teamdiagnose ab. Bei Request Changes wird das bereits vom Reviewer editierte playerProfile als verbindliche Baseline in den Prompt gegeben; das LLM liefert dann Patch-Semantik (null = Feld unveraendert lassen). Der Merge-Node verhindert dadurch ein stilles Zurueckfallen auf fruehere KI-Werte.",
+      "notesInFlow": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "887355ff-1dfc-47f2-b007-5bec6766d3b4",
+      "name": "Spielerprofil Output-Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        64,
+        208
+      ],
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"required\": [\n    \"position\",\n    \"role\",\n    \"weightedCriteria\",\n    \"constraints\",\n    \"reasoning\"\n  ],\n  \"properties\": {\n    \"position\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ]\n    },\n    \"role\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ]\n    },\n    \"weightedCriteria\": {\n      \"type\": [\n        \"array\",\n        \"null\"\n      ],\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"criterion\",\n          \"weight\"\n        ],\n        \"properties\": {\n          \"criterion\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"goals\",\n              \"assists\",\n              \"appearances\",\n              \"age\",\n              \"minutesPlayed\"\n            ]\n          },\n          \"weight\": {\n            \"type\": \"number\"\n          }\n        }\n      }\n    },\n    \"constraints\": {\n      \"type\": [\n        \"array\",\n        \"null\"\n      ],\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"field\",\n          \"operator\",\n          \"value\"\n        ],\n        \"properties\": {\n          \"field\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"age\",\n              \"marketValueMEUR\"\n            ]\n          },\n          \"operator\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"max\",\n              \"min\"\n            ]\n          },\n          \"value\": {\n            \"type\": \"number\"\n          }\n        }\n      }\n    },\n    \"reasoning\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ]\n    }\n  }\n}",
+        "autoFix": true
+      }
+    },
+    {
+      "id": "23c97a64-c876-4ebe-b796-0cf922e426e1",
+      "name": "Ollama Modell (Qwen3.8:latest)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        0,
+        384
+      ],
+      "parameters": {
+        "model": "Qwen3.8:latest",
+        "options": {
+          "think": true
+        }
+      },
+      "credentials": {
+        "ollamaApi": {
+          "id": "ReUpCODpTFeMY6rC",
+          "name": "[cimt] Ollama"
+        }
+      },
+      "notes": "Eigene Node-Instanz dieser Subworkflow-Datei (technische Utility-Node, bewusst dupliziert statt geteilt - siehe n8n/README.md). Versorgt 'Spielerprofil LLM' ueber ai_languageModel.",
+      "notesInFlow": false
+    },
+    {
+      "id": "1f6390df-45d6-4319-9076-b2e3764ced56",
+      "name": "LLM-Fehler normalisieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        368
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst rawError = item && item.error;\nconst rawMessage = typeof rawError === 'string'\n  ? rawError\n  : (rawError && rawError.message) ? rawError.message : 'Unbekannter Fehler';\n\n// Eigene Kopie dieser Subworkflow-Datei (technische Utility-Node, siehe\n// n8n/README.md): ergaenzt zusaetzlich valid: false, damit der konsolidierte\n// Phase-Ergebnis-Vertrag (siehe 'Scouting Brief erstellen: Ergebnis') auch\n// auf dem Fehlerpfad korrekt befuellt ist.\nreturn [{\n  json: {\n    ...item,\n    valid: false,\n    errorMessage: 'Bei der Kommunikation mit dem lokalen Ollama-Modell ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.\\n\\nDetails: ' + rawMessage\n  }\n}];"
+      },
+      "notes": "Normalisiert den Fehler-Output von 'Spielerprofil LLM' in eine verstaendliche errorMessage; der gemeinsame Capability-Exit wirft sie bei valid=false an den zentralen Fehlerkanal des Hauptworkflows.",
+      "notesInFlow": false
+    },
+    {
+      "id": "42e09b33-c124-49d2-9307-bc455e2e3635",
+      "name": "Spielerprofil zusammenfuehren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        304,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const llmResult = $json.output ?? $json;\nconst original = $('Spielerprofil: Positionspool ermitteln').first().json;\nconst isRevision = original.reviewDecision === 'Request Changes' && original.playerProfile && typeof original.playerProfile === 'object';\nconst baseline = isRevision ? original.playerProfile : {};\n\nconst resolved = (field) => {\n  const value = llmResult[field];\n  if (isRevision && (value === null || value === undefined)) return baseline[field];\n  return value;\n};\n\nconst playerProfile = {\n  ...baseline,\n  simulated: false,\n  position: resolved('position'),\n  role: resolved('role'),\n  weightedCriteria: resolved('weightedCriteria'),\n  constraints: resolved('constraints'),\n  reasoning: resolved('reasoning')\n};\n\nif (!playerProfile.position) {\n  throw new Error('Spielerprofil enthaelt nach Merge keine position. Input: ' + JSON.stringify($json));\n}\nif (!playerProfile.role) {\n  throw new Error('Spielerprofil enthaelt nach Merge keine role. Input: ' + JSON.stringify($json));\n}\n\nreturn {\n  json: {\n    ...original,\n    playerProfile\n  }\n};"
+      },
+      "notes": "Im Erstlauf wird das komplette LLM-Profil uebernommen. Bei Request Changes ist das vom Reviewer editierte playerProfile die Baseline; null/undefined im LLM-Patch behaelt den exakten Reviewer-Wert, nur konkrete Patch-Werte ersetzen ihn."
+    },
+    {
+      "id": "ed0503ef-e5df-467c-b92c-0c519f70e7cd",
+      "name": "Spielerprofil pruefen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst p = item.playerProfile;\nconst errors = [];\n\nif (!p || typeof p !== 'object') {\n  errors.push('playerProfile fehlt oder ist kein Objekt.');\n} else {\n  if (!p.position) errors.push('playerProfile.position fehlt.');\n  if (!p.role) errors.push('playerProfile.role fehlt.');\n  if (!p.reasoning) errors.push('playerProfile.reasoning fehlt.');\n  if (!Array.isArray(p.weightedCriteria) || p.weightedCriteria.length === 0) {\n    errors.push('playerProfile.weightedCriteria fehlt oder ist leer.');\n  } else if (p.weightedCriteria.some((c) => !c.criterion || typeof c.weight !== 'number')) {\n    errors.push('playerProfile.weightedCriteria enthaelt einen Eintrag ohne criterion oder numerisches weight.');\n  }\n  if (!Array.isArray(p.constraints)) {\n    errors.push('playerProfile.constraints fehlt oder ist kein Array.');\n  } else if (p.constraints.some((c) => !c || !['age', 'marketValueMEUR'].includes(c.field) || !['max', 'min'].includes(c.operator) || typeof c.value !== 'number' || !Number.isFinite(c.value))) {\n    errors.push('playerProfile.constraints enthaelt einen Eintrag ohne gueltiges field/operator/numerisches value.');\n  }\n\n  if (p && p.position) {\n    const allowedPositions = Array.isArray(item.allowedPositions) ? item.allowedPositions : [];\n    if (allowedPositions.length > 0 && !allowedPositions.includes(p.position)) {\n      errors.push(`playerProfile.position ('${p.position}') ist nicht im vorbereiteten Positionspool enthalten (erlaubt: ${allowedPositions.join(', ')}).`);\n    }\n  }\n}\n\nconst valid = errors.length === 0;\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid ? undefined : 'Das Spielerprofil ist ungueltig und wird nicht fuer die Spielersuche verwendet.\\n\\n' + errors.join('\\n')\n  }\n}];"
+      }
+    },
+    {
+      "id": "e98d5d04-e6d2-4e15-9a9a-be86983b2b3e",
+      "name": "Spielerprofil gueltig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "60eff2d7-5cf3-4d35-b832-0097e9e85f25",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b061b282-e58b-4948-abfa-79de4632ac91",
+      "name": "Scouting Brief erstellen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const MAX_REVIEW_ROUNDS = 3;\nconst item = $input.item.json;\nconst priorBrief = item.scoutingBrief;\nconst feedbackHistory = Array.isArray(priorBrief && priorBrief.feedbackHistory)\n  ? [...priorBrief.feedbackHistory]\n  : [];\n\nif (item.reviewDecision === 'Request Changes' && priorBrief) {\n  feedbackHistory.push({ round: priorBrief.reviewRound, feedback: item.reviewFeedback || '' });\n}\n\nconst teamDiagnosis = item.teamDiagnosis || {};\nconst playerProfile = item.playerProfile || {};\n\nconst scoutingBrief = {\n  problem: teamDiagnosis.mainProblem,\n  targetPosition: playerProfile.position,\n  role: playerProfile.role,\n  reasoning: playerProfile.reasoning,\n  weightedCriteria: playerProfile.weightedCriteria,\n  constraints: playerProfile.constraints,\n  uncertainties: Array.isArray(teamDiagnosis.uncertainties) ? teamDiagnosis.uncertainties : [],\n  reviewRound: feedbackHistory.length + 1,\n  maxReviewRounds: MAX_REVIEW_ROUNDS,\n  feedbackHistory\n};\n\nreturn [{ json: { ...item, scoutingBrief } }];"
+      }
+    },
+    {
+      "id": "7f40fa77-c0b7-4d88-9670-6a3e424f4bde",
+      "name": "Scouting Brief pruefen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst b = item.scoutingBrief;\nconst errors = [];\n\nif (!b || typeof b !== 'object') {\n  errors.push('scoutingBrief fehlt oder ist kein Objekt.');\n} else {\n  if (!b.problem) errors.push('scoutingBrief.problem fehlt.');\n  if (!b.targetPosition) errors.push('scoutingBrief.targetPosition fehlt.');\n  if (!b.role) errors.push('scoutingBrief.role fehlt.');\n  if (!b.reasoning) errors.push('scoutingBrief.reasoning fehlt.');\n  if (!Array.isArray(b.weightedCriteria) || b.weightedCriteria.length === 0) errors.push('scoutingBrief.weightedCriteria fehlt oder ist leer.');\n  if (!Array.isArray(b.constraints)) errors.push('scoutingBrief.constraints fehlt oder ist kein Array.');\n  if (!Array.isArray(b.uncertainties)) errors.push('scoutingBrief.uncertainties fehlt oder ist kein Array.');\n}\n\nconst valid = errors.length === 0;\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid ? undefined : 'Das Scouting Brief ist ungueltig und wird nicht zur Freigabe vorgelegt.\\n\\n' + errors.join('\\n')\n  }\n}];"
+      }
+    },
+    {
+      "id": "9d059c09-cafb-4b92-9695-054b41d0db9f",
+      "name": "Scouting Brief gueltig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b1a2c3d4-cond-5003",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "de37dcc3-600c-4662-a137-b33326331b0d",
+      "name": "Scouting Brief erstellen: Ergebnis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        288
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nif (item.valid === false) {\n  throw new Error('[SCOUTING_BRIEF] ' + (item.errorMessage || 'Scouting Brief erstellen ist fehlgeschlagen.'));\n}\nreturn [{ json: { ...item, status: 'success' } }];"
+      },
+      "notes": "Einziger Capability-Exit: liefert bei Erfolg playerProfile + scoutingBrief. Bei valid=false wird die intern formulierte errorMessage als Subworkflow-Fehler geworfen; der Hauptworkflow braucht kein eigenes Scouting-Brief-gueltig-Gate mehr.",
+      "notesInFlow": false
+    }
+  ],
+  "connections": {
+    "Wenn von anderem Workflow aufgerufen": {
+      "main": [
+        [
+          {
+            "node": "Spielerprofil: Positionspool ermitteln",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielerprofil: Positionspool ermitteln": {
+      "main": [
+        [
+          {
+            "node": "Spielerprofil LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielerprofil LLM": {
+      "main": [
+        [
+          {
+            "node": "Spielerprofil zusammenfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "LLM-Fehler normalisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielerprofil Output-Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Spielerprofil LLM",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Modell (Qwen3.8:latest)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Spielerprofil LLM",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Spielerprofil Output-Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM-Fehler normalisieren": {
+      "main": [
+        [
+          {
+            "node": "Scouting Brief erstellen: Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielerprofil zusammenfuehren": {
+      "main": [
+        [
+          {
+            "node": "Spielerprofil pruefen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielerprofil pruefen": {
+      "main": [
+        [
+          {
+            "node": "Spielerprofil gueltig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spielerprofil gueltig?": {
+      "main": [
+        [
+          {
+            "node": "Scouting Brief erstellen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Scouting Brief erstellen: Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scouting Brief erstellen": {
+      "main": [
+        [
+          {
+            "node": "Scouting Brief pruefen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scouting Brief pruefen": {
+      "main": [
+        [
+          {
+            "node": "Scouting Brief gueltig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scouting Brief gueltig?": {
+      "main": [
+        [
+          {
+            "node": "Scouting Brief erstellen: Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Scouting Brief erstellen: Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "802dabfb-1dfb-40fa-a9c6-fb0fb5b7f860",
+  "parentFolderId": "xvYBFRCqYXtsxMCF",
+  "isPublished": true,
+  "isArchived": false
+}
