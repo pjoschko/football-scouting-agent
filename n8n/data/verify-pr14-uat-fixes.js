@@ -206,4 +206,92 @@ assert(validateCode.includes('researchDegraded'));
 assert(validateCode.includes('r.evidence'));
 assert(!validateCode.includes("errors.push('Fuer keinen Kandidaten konnte eine Recherche erfolgreich durchgefuehrt werden.')"));
 
-console.log('OK: PR14 Input-Vertrag, Agent-Kontext, Evidence, Feasibility, per-Child-Timeout und degraded Research verifiziert.');
+// Ein einzelner Dispatch-Fehler muss denselben nullable Research-Vertrag liefern
+// und darf erfolgreiche parallele Kandidaten nicht blockieren.
+const dispatchErrorCode = node(parent, 'Dispatch-Fehler als Unsicherheit markieren').parameters.jsCode;
+for (const requiredFragment of [
+  'contractEndDate: null',
+  'marketValueMEUR: null',
+  'currentSituation: null',
+  'transferLikelihoodNotes: null',
+  'evidence: []',
+]) {
+  assert(dispatchErrorCode.includes(requiredFragment), `Dispatch-Error-Vertrag fehlt: ${requiredFragment}`);
+}
+const runDispatchError = new Function('$input', dispatchErrorCode);
+const dispatchError = runDispatchError({item: {json: {
+  researchCandidateName: 'Dispatch kaputt',
+  researchBatchId: 'mixed-batch',
+  error: {message: 'Child konnte nicht gestartet werden'},
+}}})[0].json;
+const dispatchPayload = JSON.parse(dispatchError.researchRuntimePayload);
+assert.strictEqual(dispatchPayload.uncertain, true);
+assert.deepStrictEqual(dispatchPayload.evidence, []);
+assert.strictEqual(dispatchPayload.contractEndDate, null);
+assert.strictEqual(dispatchPayload.marketValueMEUR, null);
+assert.strictEqual(dispatchPayload.currentSituation, null);
+assert.strictEqual(dispatchPayload.transferLikelihoodNotes, null);
+
+const successPayload = {
+  candidate: 'Erfolgreich',
+  club: 'Club A',
+  contract: 'Vertrag bis 30.06.2028',
+  contractEndDate: '2028-06-30',
+  marketValue: '20 Mio. EUR',
+  marketValueMEUR: 20,
+  injuries: 'Keine bekannten Verletzungen',
+  currentSituation: 'Stammspieler',
+  transferLikelihoodNotes: 'Verein ist offen fuer einen Wechsel',
+  news: ['Club ist gespraechsbereit'],
+  evidence: [{
+    fact: 'club',
+    claim: 'Club A',
+    source: 'Quelle',
+    url: 'https://example.com/club',
+    timestamp: '2026-09-08T00:00:00Z',
+    confidence: 0.9,
+  }],
+  source: 'Quelle',
+  timestamp: '2026-09-08T00:00:00Z',
+  confidence: 0.9,
+  uncertain: false,
+  uncertaintyReason: null,
+};
+const mixedBase = {
+  researchBatchId: 'mixed-batch',
+  researchStartedAt: '2026-09-08T10:00:00Z',
+  researchTimeoutMs: 120000,
+  playerSearch: {shortlist: [{name: 'Erfolgreich'}, {name: 'Dispatch kaputt'}]},
+};
+const mixedRows = [
+  {
+    batchId: 'mixed-batch',
+    candidate: 'Erfolgreich',
+    status: 'success',
+    payload: JSON.stringify(successPayload),
+    completedAt: '2026-09-08T10:00:10Z',
+  },
+  {
+    batchId: 'mixed-batch',
+    candidate: 'Dispatch kaputt',
+    status: 'dispatch_error',
+    payload: dispatchError.researchRuntimePayload,
+    completedAt: dispatchError.researchRuntimeCompletedAt,
+  },
+];
+const runMixedFanIn = new Function('$input', '$', fanInCode);
+const mixedFanIn = runMixedFanIn(
+  {all: () => mixedRows.map((json) => ({json}))},
+  (name) => { assert.strictEqual(name, 'Research-Lauf vorbereiten'); return {first: () => ({json: mixedBase})}; },
+)[0].json;
+assert.strictEqual(mixedFanIn.researchComplete, true);
+assert.strictEqual(mixedFanIn.research.length, 2);
+assert.strictEqual(mixedFanIn.research.find((r) => r.candidate === 'Dispatch kaputt').uncertain, true);
+assert.strictEqual(mixedFanIn.research.find((r) => r.candidate === 'Erfolgreich').uncertain, false);
+
+const runValidate = new Function('$input', validateCode);
+const mixedValidated = runValidate({item: {json: mixedFanIn}})[0].json;
+assert.strictEqual(mixedValidated.valid, true, mixedValidated.errorMessage);
+assert.strictEqual(mixedValidated.researchDegraded, false, 'Ein gemischter Batch mit erfolgreichem Research darf nicht degraded sein.');
+
+console.log('OK: PR14 Input-Vertrag, Agent-Kontext, Evidence, Feasibility, per-Child-Timeout, Dispatch-Fehler und degraded Research verifiziert.');
