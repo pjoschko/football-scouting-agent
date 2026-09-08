@@ -7,43 +7,19 @@
       "name": "Wenn von anderem Workflow aufgerufen",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
-      "position": [
-        -656,
-        272
-      ],
-      "parameters": {
-        "inputSource": "passthrough"
-      }
+      "position": [-656, 272],
+      "parameters": {"inputSource": "passthrough"}
     },
     {
       "id": "e0ac62f3-bee1-4ac9-90a6-30bc4d7bab37",
       "name": "Shortlist vorhanden?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        -448,
-        272
-      ],
+      "position": [-448, 272],
       "parameters": {
         "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "11993539-cond-1",
-              "leftValue": "={{ Array.isArray($json.playerSearch && $json.playerSearch.shortlist) && $json.playerSearch.shortlist.length > 0 }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
+          "conditions": [{"id": "11993539-cond-1", "leftValue": "={{ Array.isArray($json.playerSearch && $json.playerSearch.shortlist) && $json.playerSearch.shortlist.length > 0 }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true", "singleValue": true}}],
           "combinator": "and"
         },
         "options": {}
@@ -56,13 +32,8 @@
       "name": "Research-Lauf vorbereiten",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        -224,
-        128
-      ],
-      "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst startedAt = new Date().toISOString();\nconst requestPart = String(item.requestId || 'request').replace(/[^a-zA-Z0-9_-]/g, '_');\nconst researchBatchId = `${requestPart}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;\n\nreturn [{\n  json: {\n    ...item,\n    researchBatchId,\n    researchStartedAt: startedAt,\n    researchTimeoutMs: 120000\n  }\n}];"
-      },
+      "position": [-224, 128],
+      "parameters": {"jsCode": "const item = $input.item.json;\nconst startedAt = new Date().toISOString();\nconst requestPart = String(item.requestId || 'request').replace(/[^a-zA-Z0-9_-]/g, '_');\nconst researchBatchId = `${requestPart}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;\n\nreturn [{\n  json: {\n    ...item,\n    researchBatchId,\n    researchStartedAt: startedAt,\n    researchTimeoutMs: 120000\n  }\n}];"},
       "notes": "Erzeugt eine eindeutige Batch-ID. researchTimeoutMs ist der Timeout JE Child-Zweig ab dessen persisted started-Zeitpunkt; der Child selbst hat zusaetzlich settings.executionTimeout=120.",
       "notesInFlow": false
     },
@@ -71,37 +42,13 @@
       "name": "Research-Runtime-Tabelle sicherstellen",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
-      "position": [
-        0,
-        0
-      ],
+      "position": [0, 0],
       "parameters": {
         "resource": "table",
         "operation": "create",
         "tableName": "football_scouting_research_runtime",
-        "columns": {
-          "column": [
-            {
-              "name": "batchId"
-            },
-            {
-              "name": "candidate"
-            },
-            {
-              "name": "status"
-            },
-            {
-              "name": "payload"
-            },
-            {
-              "name": "completedAt",
-              "type": "date"
-            }
-          ]
-        },
-        "options": {
-          "createIfNotExists": true
-        }
+        "columns": {"column": [{"name": "batchId"}, {"name": "candidate"}, {"name": "status"}, {"name": "payload"}, {"name": "completedAt", "type": "date"}]},
+        "options": {"createIfNotExists": true}
       }
     },
     {
@@ -109,14 +56,8 @@
       "name": "Research-Runtime bereit",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
-      "position": [
-        224,
-        128
-      ],
-      "parameters": {
-        "mode": "chooseBranch",
-        "useDataOfInput": 2
-      },
+      "position": [224, 128],
+      "parameters": {"mode": "chooseBranch", "useDataOfInput": 2},
       "notes": "Wartet auf die Tabellenanlage und reicht danach den unveraenderten Research-Kontext weiter.",
       "notesInFlow": false
     },
@@ -125,26 +66,16 @@
       "name": "Kandidaten fuer Recherche aufteilen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        448,
-        128
-      ],
-      "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst shortlist = item.playerSearch.shortlist;\n\nreturn shortlist.map((candidate) => ({\n  json: {\n    ...item,\n    researchCandidateName: candidate.name\n  }\n}));"
-      }
+      "position": [448, 128],
+      "parameters": {"jsCode": "const item = $input.item.json;\nconst shortlist = item.playerSearch.shortlist;\n\nreturn shortlist.map((candidate) => ({\n  json: {\n    ...item,\n    researchCandidateName: candidate.name\n  }\n}));"}
     },
     {
       "id": "096a3941-fc13-48c6-bd9c-138ef0038f37",
       "name": "Research-Children dispatchen",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
-      "position": [
-        672,
-        128
-      ],
-      "parameters": {
-        "options": {}
-      },
+      "position": [672, 128],
+      "parameters": {"options": {}},
       "notes": "Der Loop serialisiert nur den sehr kurzen Dispatch. Der Child-Aufruf wartet NICHT auf Completion; dadurch koennen die gestarteten Research-Executions zeitlich ueberlappen.",
       "notesInFlow": false
     },
@@ -153,51 +84,21 @@
       "name": "Recherche je Kandidat starten",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
-      "position": [
-        880,
-        128
-      ],
+      "position": [880, 128],
       "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "crrgOO7O8bTHnldV",
-          "mode": "list",
-          "cachedResultUrl": "/workflow/crrgOO7O8bTHnldV",
-          "cachedResultName": "Recherche"
-        },
+        "workflowId": {"__rl": true, "value": "crrgOO7O8bTHnldV", "mode": "list", "cachedResultUrl": "/workflow/crrgOO7O8bTHnldV", "cachedResultName": "Recherche"},
         "workflowInputs": {
           "mappingMode": "defineBelow",
-          "value": {
-            "researchCandidateName": "={{ $json.researchCandidateName }}",
-            "researchBatchId": "={{ $json.researchBatchId }}"
-          },
+          "value": {"researchCandidateName": "={{ $json.researchCandidateName }}", "researchBatchId": "={{ $json.researchBatchId }}"},
           "matchingColumns": [],
           "schema": [
-            {
-              "id": "researchCandidateName",
-              "displayName": "researchCandidateName",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "researchBatchId",
-              "displayName": "researchBatchId",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            }
+            {"id": "researchCandidateName", "displayName": "researchCandidateName", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "researchBatchId", "displayName": "researchBatchId", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true}
           ],
           "attemptToConvertTypes": false,
           "convertFieldsToString": true
         },
-        "options": {
-          "waitForSubWorkflow": false
-        }
+        "options": {"waitForSubWorkflow": false}
       },
       "notes": "Fire-and-forget je Kandidat. Der Child hat typed Inputs und ein eigenes 120-s executionTimeout; sein started-Marker liefert dem Fan-in den tatsaechlichen Startzeitpunkt des Zweigs.",
       "notesInFlow": false,
@@ -208,85 +109,29 @@
       "name": "Dispatch-Fehler als Unsicherheit markieren",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        1104,
-        0
-      ],
+      "position": [1104, 0],
       "parameters": {
-        "jsCode": "const current = $input.item.json || {};\nconst candidate = current.researchCandidateName || 'unbekannter Kandidat';\nconst reason = (current.error && (current.error.message || current.error)) || 'Research-Child konnte nicht gestartet werden.';\nconst now = new Date().toISOString();\n\n// Auch ein Dispatch-Fehler erfuellt den aktuellen Research-Vertrag vollstaendig.\n// So bleibt genau dieser Kandidat uncertain, waehrend erfolgreiche parallele\n// Zweige im Fan-in/Validator weiterhin verwertbar bleiben.\nconst researchResult = {\n  candidate,\n  club: null,\n  contract: null,\n  contractEndDate: null,\n  marketValue: null,\n  marketValueMEUR: null,\n  injuries: null,\n  currentSituation: null,\n  transferLikelihoodNotes: null,\n  news: [],\n  evidence: [],\n  source: 'Research-Dispatch fehlgeschlagen (keine Quelle verfuegbar)',\n  timestamp: now,\n  confidence: 0,\n  uncertain: true,\n  uncertaintyReason: String(reason)\n};\n\nreturn [{\n  json: {\n    ...current,\n    researchRuntimeBatchId: current.researchBatchId,\n    researchRuntimeCandidate: candidate,\n    researchRuntimeStatus: 'dispatch_error',\n    researchRuntimePayload: JSON.stringify(researchResult),\n    researchRuntimeCompletedAt: now\n  }\n}];"
+        "jsCode": "const current = $input.item.json || {};\n\n// Execute Sub-workflow v1.3 liefert bei continueErrorOutput im Fehlerfall nur\n// { error } plus pairedItem/Metadata. Den Candidate-/Batch-Kontext daher\n// explizit ueber die Item-Lineage des vorgelagerten Loop-Items wiederherstellen.\nlet dispatchInput = {};\ntry { dispatchInput = $('Research-Children dispatchen').item.json || {}; } catch (_) {}\nif (!dispatchInput.researchCandidateName) {\n  try { dispatchInput = $('Kandidaten fuer Recherche aufteilen').item.json || dispatchInput; } catch (_) {}\n}\nlet base = {};\ntry { base = $('Research-Lauf vorbereiten').first().json || {}; } catch (_) {}\n\nconst candidate = dispatchInput.researchCandidateName || current.researchCandidateName || 'unbekannter Kandidat';\nconst batchId = dispatchInput.researchBatchId || base.researchBatchId || current.researchBatchId;\nconst reason = (current.error && (current.error.message || current.error)) || 'Research-Child konnte nicht gestartet werden.';\nconst now = new Date().toISOString();\n\nconst researchResult = {\n  candidate,\n  club: null,\n  contract: null,\n  contractEndDate: null,\n  marketValue: null,\n  marketValueMEUR: null,\n  injuries: null,\n  currentSituation: null,\n  transferLikelihoodNotes: null,\n  news: [],\n  evidence: [],\n  source: 'Research-Dispatch fehlgeschlagen (keine Quelle verfuegbar)',\n  timestamp: now,\n  confidence: 0,\n  uncertain: true,\n  uncertaintyReason: String(reason)\n};\n\nreturn [{\n  json: {\n    ...current,\n    researchCandidateName: candidate,\n    researchBatchId: batchId,\n    researchRuntimeBatchId: batchId,\n    researchRuntimeCandidate: candidate,\n    researchRuntimeStatus: 'dispatch_error',\n    researchRuntimePayload: JSON.stringify(researchResult),\n    researchRuntimeCompletedAt: now\n  }\n}];"
       },
-      "notes": "Persistiert einen einzelnen Dispatch-Fehler als vollstaendigen uncertain-Research-Vertrag (inkl. nullable kanonischer Felder und evidence: []), damit andere Kandidaten den Batch nicht wegen dieses Fehlers verlieren."
+      "notes": "Stellt bei einem echten Execute-Subworkflow-Fehler Candidate und Batch ueber die paired-item-Lineage des Loop-Inputs wieder her; das Error-Item selbst enthaelt in n8n v1.3 nur error. Persistiert danach einen vollstaendigen uncertain-Research-Vertrag."
     },
     {
       "id": "f1efaf60-f4e8-48db-9f52-29e3bc236fc1",
       "name": "Dispatch-Fehler speichern",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
-      "position": [
-        1328,
-        0
-      ],
+      "position": [1328, 0],
       "parameters": {
-        "dataTableId": {
-          "__rl": true,
-          "mode": "name",
-          "value": "football_scouting_research_runtime"
-        },
+        "dataTableId": {"__rl": true, "mode": "name", "value": "football_scouting_research_runtime"},
         "columns": {
           "mappingMode": "defineBelow",
-          "value": {
-            "batchId": "={{ $json.researchRuntimeBatchId }}",
-            "candidate": "={{ $json.researchRuntimeCandidate }}",
-            "status": "={{ $json.researchRuntimeStatus }}",
-            "payload": "={{ $json.researchRuntimePayload }}",
-            "completedAt": "={{ $json.researchRuntimeCompletedAt }}"
-          },
+          "value": {"batchId": "={{ $json.researchRuntimeBatchId }}", "candidate": "={{ $json.researchRuntimeCandidate }}", "status": "={{ $json.researchRuntimeStatus }}", "payload": "={{ $json.researchRuntimePayload }}", "completedAt": "={{ $json.researchRuntimeCompletedAt }}"},
           "schema": [
-            {
-              "id": "batchId",
-              "displayName": "batchId",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "candidate",
-              "displayName": "candidate",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "status",
-              "displayName": "status",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "payload",
-              "displayName": "payload",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "completedAt",
-              "displayName": "completedAt",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "date",
-              "canBeUsedToMatch": true
-            }
+            {"id": "batchId", "displayName": "batchId", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "candidate", "displayName": "candidate", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "status", "displayName": "status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "payload", "displayName": "payload", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "completedAt", "displayName": "completedAt", "required": false, "defaultMatch": false, "display": true, "type": "date", "canBeUsedToMatch": true}
           ]
         },
         "options": {}
@@ -297,39 +142,20 @@
       "name": "Fan-in-Kontext herstellen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        880,
-        352
-      ],
-      "parameters": {
-        "jsCode": "const base = { ...$('Research-Lauf vorbereiten').first().json };\nreturn [{ json: base }];"
-      }
+      "position": [880, 352],
+      "parameters": {"jsCode": "const base = { ...$('Research-Lauf vorbereiten').first().json };\nreturn [{ json: base }];"}
     },
     {
       "id": "25d7376f-524d-4865-98bf-c7b258272345",
       "name": "Research-Resultate laden",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
-      "position": [
-        1104,
-        352
-      ],
+      "position": [1104, 352],
       "parameters": {
         "operation": "get",
-        "dataTableId": {
-          "__rl": true,
-          "mode": "name",
-          "value": "football_scouting_research_runtime"
-        },
+        "dataTableId": {"__rl": true, "mode": "name", "value": "football_scouting_research_runtime"},
         "matchType": "allConditions",
-        "filters": {
-          "conditions": [
-            {
-              "keyName": "batchId",
-              "keyValue": "={{ $json.researchBatchId }}"
-            }
-          ]
-        },
+        "filters": {"conditions": [{"keyName": "batchId", "keyValue": "={{ $json.researchBatchId }}"}]},
         "returnAll": true
       },
       "alwaysOutputData": true
@@ -339,10 +165,7 @@
       "name": "Research-Fortschritt und Fan-in pruefen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        1328,
-        352
-      ],
+      "position": [1328, 352],
       "parameters": {
         "jsCode": "const base = { ...$('Research-Lauf vorbereiten').first().json };\nconst expected = (base.playerSearch && Array.isArray(base.playerSearch.shortlist))\n  ? base.playerSearch.shortlist.map((c) => c.name)\n  : [];\nconst expectedSet = new Set(expected);\nconst rows = $input.all()\n  .map((item) => item.json || {})\n  .filter((row) => row.batchId === base.researchBatchId && expectedSet.has(row.candidate));\n\nconst startedByCandidate = new Map();\nconst terminalByCandidate = new Map();\nfor (const row of rows) {\n  if (row.status === 'started') {\n    const previous = startedByCandidate.get(row.candidate);\n    if (!previous || String(row.completedAt || '') < String(previous.completedAt || '')) {\n      startedByCandidate.set(row.candidate, row);\n    }\n    continue;\n  }\n  const previous = terminalByCandidate.get(row.candidate);\n  if (!previous || String(row.completedAt || '') >= String(previous.completedAt || '')) {\n    terminalByCandidate.set(row.candidate, row);\n  }\n}\n\nconst branchTimeoutMs = Number(base.researchTimeoutMs || 120000);\nconst nowMs = Date.now();\nconst timedOutCandidates = new Set();\nfor (const name of expected) {\n  if (terminalByCandidate.has(name)) continue;\n  const started = startedByCandidate.get(name);\n  const anchorIso = started && started.completedAt ? started.completedAt : base.researchStartedAt;\n  const anchorMs = new Date(anchorIso).getTime();\n  if (Number.isFinite(anchorMs) && nowMs - anchorMs >= branchTimeoutMs) {\n    timedOutCandidates.add(name);\n  }\n}\n\nconst complete = expected.every((name) => terminalByCandidate.has(name) || timedOutCandidates.has(name));\nconst research = [];\nfor (const name of expected) {\n  const row = terminalByCandidate.get(name);\n  if (!row) {\n    if (timedOutCandidates.has(name)) {\n      const started = startedByCandidate.get(name);\n      const anchorIso = started && started.completedAt ? started.completedAt : base.researchStartedAt;\n      research.push({\n        candidate:name, club:null, contract:null, contractEndDate:null, marketValue:null, marketValueMEUR:null,\n        injuries:null, currentSituation:null, transferLikelihoodNotes:null, news:[], evidence:[],\n        source:'Research-Timeout (keine Quelle verfuegbar)',\n        timestamp:new Date().toISOString(), confidence:0, uncertain:true,\n        uncertaintyReason: started\n          ? `Research-Zweig fuer ${name} hat sein individuelles Timeout von ${branchTimeoutMs} ms ab Start ${anchorIso} ueberschritten.`\n          : `Research-Zweig fuer ${name} hat innerhalb von ${branchTimeoutMs} ms nach Dispatch keinen started- oder Terminalstatus persistiert.`\n      });\n    }\n    continue;\n  }\n\n  try {\n    const parsed = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;\n    if (!parsed || typeof parsed !== 'object') throw new Error('payload ist kein Objekt');\n    research.push({...parsed,candidate:parsed.candidate||name,uncertain:Boolean(parsed.uncertain),uncertaintyReason:parsed.uncertaintyReason??null});\n  } catch (error) {\n    research.push({\n      candidate:name, club:null, contract:null, contractEndDate:null, marketValue:null, marketValueMEUR:null,\n      injuries:null,currentSituation:null,transferLikelihoodNotes:null,news:[],evidence:[],\n      source:'Research-Ergebnis unlesbar',timestamp:row.completedAt||new Date().toISOString(),confidence:0,\n      uncertain:true,uncertaintyReason:`Persistiertes Research-Ergebnis konnte nicht gelesen werden: ${error.message}`\n    });\n  }\n}\n\nreturn [{\n  json: {\n    ...base,\n    research,\n    researchComplete: complete,\n    researchTimedOut: timedOutCandidates.size > 0,\n    researchCompletedCandidates: [...terminalByCandidate.keys()],\n    researchTimedOutCandidates: [...timedOutCandidates],\n    researchStartedCandidates: [...startedByCandidate.keys()]\n  }\n}];"
       },
@@ -354,30 +177,11 @@
       "name": "Research vollstaendig?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        1552,
-        352
-      ],
+      "position": [1552, 352],
       "parameters": {
         "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "5c66cbaf-0e12-46da-9865-df6458a192d1",
-              "leftValue": "={{ $json.researchComplete }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
+          "conditions": [{"id": "5c66cbaf-0e12-46da-9865-df6458a192d1", "leftValue": "={{ $json.researchComplete }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true", "singleValue": true}}],
           "combinator": "and"
         },
         "options": {}
@@ -388,13 +192,8 @@
       "name": "Auf Research-Children warten",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
-      "position": [
-        1552,
-        544
-      ],
-      "parameters": {
-        "amount": 1
-      },
+      "position": [1552, 544],
+      "parameters": {"amount": 1},
       "notes": "Kurzes Polling-Intervall; blockiert keine Child-Execution.",
       "notesInFlow": false,
       "webhookId": "613672f5-899e-4fb7-b2f4-cf5b7554fb4b"
@@ -404,26 +203,12 @@
       "name": "Research-Runtime aufraeumen",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
-      "position": [
-        1760,
-        224
-      ],
+      "position": [1760, 224],
       "parameters": {
         "operation": "deleteRows",
-        "dataTableId": {
-          "__rl": true,
-          "mode": "name",
-          "value": "football_scouting_research_runtime"
-        },
+        "dataTableId": {"__rl": true, "mode": "name", "value": "football_scouting_research_runtime"},
         "matchType": "allConditions",
-        "filters": {
-          "conditions": [
-            {
-              "keyName": "batchId",
-              "keyValue": "={{ $json.researchBatchId }}"
-            }
-          ]
-        },
+        "filters": {"conditions": [{"keyName": "batchId", "keyValue": "={{ $json.researchBatchId }}"}]},
         "options": {}
       },
       "alwaysOutputData": true
@@ -433,26 +218,17 @@
       "name": "Cleanup abwarten",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
-      "position": [
-        1984,
-        352
-      ],
-      "parameters": {
-        "mode": "chooseBranch",
-        "useDataOfInput": 2
-      }
+      "position": [1984, 352],
+      "parameters": {"mode": "chooseBranch", "useDataOfInput": 2}
     },
     {
       "id": "435dad6d-e3ce-46e2-bc4f-f80dcaea34bc",
       "name": "Recherche pruefen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        2208,
-        352
-      ],
+      "position": [2208, 352],
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst research = item.research;\nconst shortlistNames = (item.playerSearch && Array.isArray(item.playerSearch.shortlist)) ? item.playerSearch.shortlist.map((c) => c.name) : [];\nconst errors = [];\n\nif (!Array.isArray(research) || research.length === 0) {\n  errors.push('research fehlt oder ist leer.');\n} else {\n  const researchedNames = research.map((r) => r.candidate).filter(Boolean);\n  const uniqueResearchedNames = new Set(researchedNames);\n  const shortlistSet = new Set(shortlistNames);\n  if (researchedNames.length !== uniqueResearchedNames.size) errors.push('research enthaelt denselben Kandidaten mehrfach.');\n  const missing = shortlistNames.filter((name) => !uniqueResearchedNames.has(name));\n  if (missing.length > 0) errors.push(`research deckt folgende Shortlist-Kandidaten nicht ab: ${missing.join(', ')}.`);\n  const unexpected = [...uniqueResearchedNames].filter((name) => !shortlistSet.has(name));\n  if (unexpected.length > 0) errors.push(`research enthaelt Kandidaten ausserhalb der Shortlist: ${unexpected.join(', ')}.`);\n\n  research.forEach((r, idx) => {\n    if (!r.candidate || !shortlistSet.has(r.candidate)) errors.push(`research[${idx}].candidate fehlt oder ist nicht Teil der Shortlist.`);\n    if (typeof r.confidence !== 'number') errors.push(`research[${idx}].confidence fehlt oder ist keine Zahl.`);\n    if (!r.source) errors.push(`research[${idx}].source fehlt.`);\n    if (!r.timestamp) errors.push(`research[${idx}].timestamp fehlt.`);\n    if (!Array.isArray(r.news)) errors.push(`research[${idx}].news ist kein Array.`);\n    if (!Array.isArray(r.evidence)) errors.push(`research[${idx}].evidence ist kein Array.`);\n    if (!r.uncertain) {\n      if (!r.club) errors.push(`research[${idx}].club fehlt.`);\n      if (!r.contract) errors.push(`research[${idx}].contract fehlt.`);\n      if (!r.marketValue) errors.push(`research[${idx}].marketValue fehlt.`);\n      if (!r.injuries) errors.push(`research[${idx}].injuries fehlt.`);\n      if (Array.isArray(r.news) && r.news.length === 0) errors.push(`research[${idx}].news ist leer.`);\n      if (!Array.isArray(r.evidence) || r.evidence.length === 0) errors.push(`research[${idx}].evidence ist leer.`);\n      (r.evidence || []).forEach((e, evidenceIdx) => {\n        if (!e.fact || !e.claim || !e.source || !e.url || !e.timestamp || typeof e.confidence !== 'number') {\n          errors.push(`research[${idx}].evidence[${evidenceIdx}] ist unvollstaendig.`);\n        }\n      });\n    }\n  });\n}\n\nconst valid = errors.length === 0;\nconst researchDegraded = valid && research.length > 0 && research.every((r) => r.uncertain);\nconst {\n  researchBatchId,\n  researchStartedAt,\n  researchTimeoutMs,\n  researchComplete,\n  researchTimedOut,\n  researchCompletedCandidates,\n  researchTimedOutCandidates,\n  researchStartedCandidates,\n  ...cleanItem\n} = item;\nreturn [{json:{...cleanItem,research,researchDegraded,valid,errorMessage:valid?undefined:'Die Recherche ist ungueltig und wird nicht fuer die Empfehlung verwendet.\n\n'+errors.join('\n')}}];"
+        "jsCode": "const item = $input.item.json;\nconst research = item.research;\nconst shortlistNames = (item.playerSearch && Array.isArray(item.playerSearch.shortlist)) ? item.playerSearch.shortlist.map((c) => c.name) : [];\nconst errors = [];\n\nif (!Array.isArray(research) || research.length === 0) {\n  errors.push('research fehlt oder ist leer.');\n} else {\n  const researchedNames = research.map((r) => r.candidate).filter(Boolean);\n  const uniqueResearchedNames = new Set(researchedNames);\n  const shortlistSet = new Set(shortlistNames);\n  if (researchedNames.length !== uniqueResearchedNames.size) errors.push('research enthaelt denselben Kandidaten mehrfach.');\n  const missing = shortlistNames.filter((name) => !uniqueResearchedNames.has(name));\n  if (missing.length > 0) errors.push(`research deckt folgende Shortlist-Kandidaten nicht ab: ${missing.join(', ')}.`);\n  const unexpected = [...uniqueResearchedNames].filter((name) => !shortlistSet.has(name));\n  if (unexpected.length > 0) errors.push(`research enthaelt Kandidaten ausserhalb der Shortlist: ${unexpected.join(', ')}.`);\n\n  research.forEach((r, idx) => {\n    if (!r.candidate || !shortlistSet.has(r.candidate)) errors.push(`research[${idx}].candidate fehlt oder ist nicht Teil der Shortlist.`);\n    if (typeof r.confidence !== 'number') errors.push(`research[${idx}].confidence fehlt oder ist keine Zahl.`);\n    if (!r.source) errors.push(`research[${idx}].source fehlt.`);\n    if (!r.timestamp) errors.push(`research[${idx}].timestamp fehlt.`);\n    if (!Array.isArray(r.news)) errors.push(`research[${idx}].news ist kein Array.`);\n    if (!Array.isArray(r.evidence)) errors.push(`research[${idx}].evidence ist kein Array.`);\n    if (!r.uncertain) {\n      if (!r.club) errors.push(`research[${idx}].club fehlt.`);\n      if (!r.contract) errors.push(`research[${idx}].contract fehlt.`);\n      if (!r.marketValue) errors.push(`research[${idx}].marketValue fehlt.`);\n      if (!r.injuries) errors.push(`research[${idx}].injuries fehlt.`);\n      if (Array.isArray(r.news) && r.news.length === 0) errors.push(`research[${idx}].news ist leer.`);\n      if (!Array.isArray(r.evidence) || r.evidence.length === 0) errors.push(`research[${idx}].evidence ist leer.`);\n      (r.evidence || []).forEach((e, evidenceIdx) => {\n        if (!e.fact || !e.claim || !e.source || !e.url || !e.timestamp || typeof e.confidence !== 'number') {\n          errors.push(`research[${idx}].evidence[${evidenceIdx}] ist unvollstaendig.`);\n        }\n      });\n    }\n  });\n}\n\nconst valid = errors.length === 0;\nconst researchDegraded = valid && research.length > 0 && research.every((r) => r.uncertain);\nconst {\n  researchBatchId,\n  researchStartedAt,\n  researchTimeoutMs,\n  researchComplete,\n  researchTimedOut,\n  researchCompletedCandidates,\n  researchTimedOutCandidates,\n  researchStartedCandidates,\n  ...cleanItem\n} = item;\nreturn [{json:{...cleanItem,research,researchDegraded,valid,errorMessage:valid?undefined:'Die Recherche ist ungueltig und wird nicht fuer die Empfehlung verwendet.\\n\\n'+errors.join('\\n')}}];"
       }
     },
     {
@@ -460,30 +236,11 @@
       "name": "Recherche gueltig?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        2432,
-        352
-      ],
+      "position": [2432, 352],
       "parameters": {
         "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "1aac50d4-1e63-4cbe-880a-61459db3b797",
-              "leftValue": "={{ $json.valid }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
+          "conditions": [{"id": "1aac50d4-1e63-4cbe-880a-61459db3b797", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true", "singleValue": true}}],
           "combinator": "and"
         },
         "options": {}
@@ -494,277 +251,34 @@
       "name": "Due Diligence: Ergebnis",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        2640,
-        352
-      ],
-      "parameters": {
-        "jsCode": "const item = $input.item.json;\nif (item.valid === false) {\n  throw new Error('[DUE_DILIGENCE] ' + (item.errorMessage || 'Due Diligence ist fehlgeschlagen.'));\n}\nreturn [{ json: { ...item, status: 'success' } }];"
-      },
+      "position": [2640, 352],
+      "parameters": {"jsCode": "const item = $input.item.json;\nif (item.valid === false) {\n  throw new Error('[DUE_DILIGENCE] ' + (item.errorMessage || 'Due Diligence ist fehlgeschlagen.'));\n}\nreturn [{ json: { ...item, status: 'success' } }];"},
       "notes": "Einziger Capability-Exit: liefert bei Erfolg research. Bei valid=false wird die intern formulierte errorMessage als Subworkflow-Fehler geworfen; der Hauptworkflow braucht kein eigenes Due-Diligence-gueltig-Gate mehr.",
       "notesInFlow": false
     }
   ],
   "connections": {
-    "Wenn von anderem Workflow aufgerufen": {
-      "main": [
-        [
-          {
-            "node": "Shortlist vorhanden?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Shortlist vorhanden?": {
-      "main": [
-        [
-          {
-            "node": "Research-Lauf vorbereiten",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Recherche pruefen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Research-Lauf vorbereiten": {
-      "main": [
-        [
-          {
-            "node": "Research-Runtime-Tabelle sicherstellen",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Research-Runtime bereit",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Research-Runtime-Tabelle sicherstellen": {
-      "main": [
-        [
-          {
-            "node": "Research-Runtime bereit",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Research-Runtime bereit": {
-      "main": [
-        [
-          {
-            "node": "Kandidaten fuer Recherche aufteilen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Kandidaten fuer Recherche aufteilen": {
-      "main": [
-        [
-          {
-            "node": "Research-Children dispatchen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Research-Children dispatchen": {
-      "main": [
-        [
-          {
-            "node": "Fan-in-Kontext herstellen",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Recherche je Kandidat starten",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Recherche je Kandidat starten": {
-      "main": [
-        [
-          {
-            "node": "Research-Children dispatchen",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Dispatch-Fehler als Unsicherheit markieren",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Dispatch-Fehler als Unsicherheit markieren": {
-      "main": [
-        [
-          {
-            "node": "Dispatch-Fehler speichern",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Dispatch-Fehler speichern": {
-      "main": [
-        [
-          {
-            "node": "Research-Children dispatchen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fan-in-Kontext herstellen": {
-      "main": [
-        [
-          {
-            "node": "Research-Resultate laden",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Research-Resultate laden": {
-      "main": [
-        [
-          {
-            "node": "Research-Fortschritt und Fan-in pruefen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Research-Fortschritt und Fan-in pruefen": {
-      "main": [
-        [
-          {
-            "node": "Research vollstaendig?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Research vollstaendig?": {
-      "main": [
-        [
-          {
-            "node": "Research-Runtime aufraeumen",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Cleanup abwarten",
-            "type": "main",
-            "index": 1
-          }
-        ],
-        [
-          {
-            "node": "Auf Research-Children warten",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Auf Research-Children warten": {
-      "main": [
-        [
-          {
-            "node": "Research-Resultate laden",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Research-Runtime aufraeumen": {
-      "main": [
-        [
-          {
-            "node": "Cleanup abwarten",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Cleanup abwarten": {
-      "main": [
-        [
-          {
-            "node": "Recherche pruefen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Recherche pruefen": {
-      "main": [
-        [
-          {
-            "node": "Recherche gueltig?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Recherche gueltig?": {
-      "main": [
-        [
-          {
-            "node": "Due Diligence: Ergebnis",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Due Diligence: Ergebnis",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Wenn von anderem Workflow aufgerufen": {"main": [[{"node": "Shortlist vorhanden?", "type": "main", "index": 0}]]},
+    "Shortlist vorhanden?": {"main": [[{"node": "Research-Lauf vorbereiten", "type": "main", "index": 0}], [{"node": "Recherche pruefen", "type": "main", "index": 0}]]},
+    "Research-Lauf vorbereiten": {"main": [[{"node": "Research-Runtime-Tabelle sicherstellen", "type": "main", "index": 0}, {"node": "Research-Runtime bereit", "type": "main", "index": 1}]]},
+    "Research-Runtime-Tabelle sicherstellen": {"main": [[{"node": "Research-Runtime bereit", "type": "main", "index": 0}]]},
+    "Research-Runtime bereit": {"main": [[{"node": "Kandidaten fuer Recherche aufteilen", "type": "main", "index": 0}]]},
+    "Kandidaten fuer Recherche aufteilen": {"main": [[{"node": "Research-Children dispatchen", "type": "main", "index": 0}]]},
+    "Research-Children dispatchen": {"main": [[{"node": "Fan-in-Kontext herstellen", "type": "main", "index": 0}], [{"node": "Recherche je Kandidat starten", "type": "main", "index": 0}]]},
+    "Recherche je Kandidat starten": {"main": [[{"node": "Research-Children dispatchen", "type": "main", "index": 0}], [{"node": "Dispatch-Fehler als Unsicherheit markieren", "type": "main", "index": 0}]]},
+    "Dispatch-Fehler als Unsicherheit markieren": {"main": [[{"node": "Dispatch-Fehler speichern", "type": "main", "index": 0}]]},
+    "Dispatch-Fehler speichern": {"main": [[{"node": "Research-Children dispatchen", "type": "main", "index": 0}]]},
+    "Fan-in-Kontext herstellen": {"main": [[{"node": "Research-Resultate laden", "type": "main", "index": 0}]]},
+    "Research-Resultate laden": {"main": [[{"node": "Research-Fortschritt und Fan-in pruefen", "type": "main", "index": 0}]]},
+    "Research-Fortschritt und Fan-in pruefen": {"main": [[{"node": "Research vollstaendig?", "type": "main", "index": 0}]]},
+    "Research vollstaendig?": {"main": [[{"node": "Research-Runtime aufraeumen", "type": "main", "index": 0}, {"node": "Cleanup abwarten", "type": "main", "index": 1}], [{"node": "Auf Research-Children warten", "type": "main", "index": 0}]]},
+    "Auf Research-Children warten": {"main": [[{"node": "Research-Resultate laden", "type": "main", "index": 0}]]},
+    "Research-Runtime aufraeumen": {"main": [[{"node": "Cleanup abwarten", "type": "main", "index": 0}]]},
+    "Cleanup abwarten": {"main": [[{"node": "Recherche pruefen", "type": "main", "index": 0}]]},
+    "Recherche pruefen": {"main": [[{"node": "Recherche gueltig?", "type": "main", "index": 0}]]},
+    "Recherche gueltig?": {"main": [[{"node": "Due Diligence: Ergebnis", "type": "main", "index": 0}], [{"node": "Due Diligence: Ergebnis", "type": "main", "index": 0}]]}
   },
-  "settings": {
-    "executionOrder": "v1",
-    "binaryMode": "separate"
-  },
+  "settings": {"executionOrder": "v1", "binaryMode": "separate"},
   "versionId": "a8936175-a0bf-46a4-84ef-ceaa8b7b79ff",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
   "isPublished": true,
