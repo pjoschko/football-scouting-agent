@@ -77,13 +77,15 @@
       "position": [1560, 180]
     },
     {
-      "parameters": {},
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nif (item.valid === false) {\n  throw new Error('[RECOMMENDATION] ' + (item.errorMessage || 'Empfehlung erstellen ist fehlgeschlagen.'));\n}\nreturn [{ json: { ...item, status: 'success' } }];"
+      },
       "id": "ed289047-a6c3-46c4-8ea7-202c16a0b77d",
       "name": "Empfehlung erstellen: Ergebnis",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [1780, 180],
-      "notes": "Konsolidierter Phase-Ergebnis-Knoten: liefert recommendation + valid + errorMessage an den Hauptworkflow.",
+      "notes": "Einziger Capability-Exit: liefert bei Erfolg recommendation. Bei valid=false wird die intern formulierte errorMessage als Subworkflow-Fehler geworfen; der Hauptworkflow braucht kein eigenes Empfehlung-gueltig-Gate mehr.",
       "notesInFlow": false
     }
   ],
