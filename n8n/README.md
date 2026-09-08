@@ -865,7 +865,7 @@ CSV-Code) — siehe [`n8n/data/README.md`](./data/README.md) für den Import
 ## Recherche-Subworkflow
 
 [`recherche-subworkflow.json`](./recherche-subworkflow.json) (feste
-Top-Level-ID `crrgOO7O8bTHnldV`, 8 Nodes) ist ein eigenständiger,
+Top-Level-ID `crrgOO7O8bTHnldV`, 9 Nodes) ist ein eigenständiger,
 **technischer** n8n-Workflow. Er kapselt seit der
 Due-Diligence-Parallelisierung (siehe [Due Diligence](#due-diligence-subworkflow)
 oben) die Recherche zu **genau einem** Kandidaten je Ausführung, statt intern
@@ -875,20 +875,14 @@ Seit der Story „Kandidaten-Due-Diligence parallel recherchieren und
 zusammenführen" führt dieser Subworkflow eine **echte externe Recherche**
 durch (kein deterministischer Dummy mehr):
 
-1. **Wenn von anderem Workflow aufgerufen** (Execute Workflow Trigger,
-   `inputSource: passthrough`) — nimmt das übergebene Item (inkl.
-   `researchCandidateName`, `researchBatchId`) unverändert entgegen.
+1. **Wenn von anderem Workflow aufgerufen** (Execute Workflow Trigger, typed `workflowInputs`) — deklariert `researchCandidateName` und `researchBatchId` explizit; der Parent mappt genau diese beiden Felder.
 2. **Recherche-Agent** (`@n8n/n8n-nodes-langchain.agent`, `onError:
    continueErrorOutput`) — recherchiert **genau diesen einen Kandidaten**
    über ein LLM mit Tool-Zugriff auf **Websuche (Tavily)** (`ai_tool`, echte
    Tavily-Search-API-Anfrage statt simulierter Daten) und liefert strukturiert
    (`ai_outputParser`, **Recherche-Ergebnis Output-Schema**) `club`,
    `contract`, `marketValue`, `injuries`, `currentSituation`,
-   `transferLikelihoodNotes`, `news` sowie `source`/`confidence`. Sprachmodell
-   ist dieselbe lokale **Ollama Modell (Qwen3.8:latest)** wie in
-   `team-analysieren-subworkflow.json`/`scouting-brief-subworkflow.json`
-   (eigene Node-Instanz dieser Datei), die dafür Tool-/Function-Calling
-   unterstützen muss. Schlägt der Agent-Aufruf fehl (LLM- oder Tool-Fehler),
+   `transferLikelihoodNotes`, `news` sowie `source`/`confidence`. Sprachmodell ist **Ollama Modell (qwen3.8-agent-128k:latest)**; diese Agent-Variante wird auf der Zielinstanz bereits für Tool-/Function-Calling eingesetzt. Schlägt der Agent-Aufruf fehl (LLM- oder Tool-Fehler),
    läuft der Fehlerausgang zu 3b, ohne andere parallele Research-Zweige zu
    blockieren.
 3. Zwei Pfade konsolidieren zum fachlichen Due-Diligence-Vertrag
@@ -1404,3 +1398,11 @@ vier `analytics-*-subworkflow.json`-Dateien des
 `import-scouting-data.json` (Daten-Import, kein Teil des Sporting-Director-
 Ablaufs selbst) die einzigen erlaubten Ausnahmen vom Grundsatz „ein
 Hauptworkflow, keine parallele Kopie".
+
+
+### PR14 Review-Fixes: Evidenz, Feasibility und Timeout
+
+- Research speichert Quelle/URL/Zeitpunkt/Konfidenz **je Claim** in `evidence`; die Ergebnisdarstellung zeigt diese Provenienz.
+- `contractEndDate` ist kanonisch und wird vor Freitext-Fallbacks wie `auslaufend` bewertet.
+- `transferLikelihoodNotes` und `currentSituation` fließen deterministisch in die Transfer-Realisierbarkeit ein.
+- Jeder `Recherche`-Child hat `executionTimeout: 120` Sekunden. Der Parent verankert den Timeout am jeweiligen `started`-Marker; fehlt dieser vollständig, verhindert ein Batch-Start-Failsafe endloses Polling.
