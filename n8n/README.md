@@ -246,7 +246,14 @@ das Gate-Muster danach bleibt aber identisch.
     überarbeitete `playerProfile.constraints` übernommen wird, statt vom
     Widerspruch zur ursprünglichen, auf `additionalContext` beschränkten
     Formulierung abzuhängen; ist `reviewFeedback` leer (Erstlauf), bleibt der
-    Prompt unverändert.
+    Prompt unverändert. Die zusätzlich konfigurierte Chat-Message (in n8n
+    **2.35.7** als `SystemMessage` vor den User-Prompt gestellt) ist mit
+    dieser Constraints-Instruktion abgestimmt: sie nennt die Teamdiagnose als
+    fachliche Grundlage für Position/Rolle/Kriterien, erlaubt aber ausdrücklich
+    `additionalContext`/`reviewFeedback` als Quelle für einen konkreten
+    Alters-/Budgetgrenzwert — andernfalls würde die System-Message dem
+    User-Prompt widersprechen und das LLM könnte ein Reviewer-Limit trotz
+    korrekter Instruktion im `text`-Prompt ignorieren.
 16. **Spielerprofil Output-Schema** (`@n8n/n8n-nodes-langchain.outputParserStructured`)
     — erzwingt den unter 15. genannten JSON-Vertrag für **Spielerprofil
     LLM**, inkl. des strukturierten `constraints`-Objektvertrags.
