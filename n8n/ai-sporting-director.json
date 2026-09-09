@@ -185,6 +185,10 @@
         "formFields": {
           "values": [
             {
+              "fieldType": "html",
+              "html": "<!-- Your custom HTML here --->\n{{ $json.html }}\n\n"
+            },
+            {
               "fieldLabel": "Entscheidung",
               "fieldType": "dropdown",
               "fieldOptions": {
@@ -670,7 +674,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "2e977dc4-90da-4696-81d3-eed2a9b93515",
+  "versionId": "12fbcda2-1ec8-4ae2-bdf5-e5131da446fd",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
   "isPublished": false,
   "isArchived": false

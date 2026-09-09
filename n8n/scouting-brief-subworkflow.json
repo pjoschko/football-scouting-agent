@@ -240,7 +240,7 @@
         288
       ],
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nif (item.valid === false) {\n  throw new Error('[SCOUTING_BRIEF] ' + (item.errorMessage || 'Scouting Brief erstellen ist fehlgeschlagen.'));\n}\nreturn [{ json: { ...item, status: 'success' } }];"
+        "jsCode": "const item = $input.item.json;\n\nif (item.valid === false) {\n  throw new Error('[SCOUTING_BRIEF] ' + (item.errorMessage || 'Scouting Brief erstellen ist fehlgeschlagen.'));\n}\n\nconst diagnosis = item.teamDiagnosis || {};\nconst performance = item.teamPerformance || {};\nconst playerProfile = item.playerProfile || {};\n\nfunction escapeHtml(str) {\n  return String(str)\n    .replace(/&/g, \"&amp;\")\n    .replace(/</g, \"&lt;\")\n    .replace(/>/g, \"&gt;\");\n}\n\n// Bolds the leading \"Label:\" part of a hypothesis/counter-hypothesis string\nfunction formatText(str) {\n  const safe = escapeHtml(str);\n  const idx = safe.indexOf(':');\n  if (idx > -1 && idx < 80) {\n    return `<strong>${safe.slice(0, idx + 1)}</strong>${safe.slice(idx + 1)}`;\n  }\n  return safe;\n}\n\nfunction sectionHeader(title) {\n  return `<h3>${escapeHtml(title)}</h3>`;\n}\n\n// Number is now inline with the text, not a separate badge\nfunction renderList(items) {\n  return (items || []).map((text, i) => `\n    <p>${i + 1}. ${formatText(text)}</p>\n  `).join('');\n}\n\nfunction renderUncertainties(items) {\n  return (items || []).map(text => `\n    <p>⚠ ${escapeHtml(text)}</p>\n  `).join('');\n}\n\n// --- Hauptproblem ---\nconst mainProblemBlock = diagnosis.mainProblem ? `\n  <p><strong>Hauptproblem</strong></p>\n  <p>${escapeHtml(diagnosis.mainProblem)}</p>\n` : '';\n\n// --- Spielerprofil ---\n// \"Spielerprofil\" is bold; the position name itself (\"Defensives Mittelfeld\") is not\nconst playerProfileBlock = playerProfile.position ? `\n  <p><strong>Spielerprofil</strong></p>\n  <p>${escapeHtml(playerProfile.position)} — ${escapeHtml(playerProfile.role || '')}</p>\n  <p>${escapeHtml(playerProfile.reasoning || '')}</p>\n` : '';\n\nconst html = `\n${mainProblemBlock}\n${playerProfileBlock}\n\n${sectionHeader('Hypothesen')}\n${renderList(diagnosis.hypotheses)}\n\n${sectionHeader('Gegenhypothesen')}\n${renderList(diagnosis.counterHypotheses)}\n\n${sectionHeader('Unsicherheiten')}\n${renderUncertainties(diagnosis.uncertainties)}\n`;\n\nreturn [{ json: { ...item, status: 'success', html } }];"
       },
       "notes": "Einziger Capability-Exit: liefert bei Erfolg playerProfile + scoutingBrief. Bei valid=false wird die intern formulierte errorMessage als Subworkflow-Fehler geworfen; der Hauptworkflow braucht kein eigenes Scouting-Brief-gueltig-Gate mehr.",
       "notesInFlow": false
@@ -410,7 +410,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "b6b5a2c5-2733-46c8-8b7a-9602bce59404",
+  "versionId": "9aa35947-77b2-4117-9ae1-cb5ee31d0f48",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
   "isPublished": false,
   "isArchived": false
