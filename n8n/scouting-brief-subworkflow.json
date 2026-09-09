@@ -71,7 +71,7 @@
       }
     },
     {
-      "id": "23c97a64-c876-4f2-b007-5bec6766d3b4-model",
+      "id": "23c97a64-c876-4ebe-b796-0cf922e426e1",
       "name": "Ollama Modell (Qwen3.8:latest)",
       "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
@@ -249,162 +249,40 @@
   ],
   "connections": {
     "Wenn von anderem Workflow aufgerufen": {
-      "main": [
-        [
-          {
-            "node": "Spielerprofil: Positionspool ermitteln",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node":"Spielerprofil: Positionspool ermitteln","type":"main","index":0}]]
     },
     "Spielerprofil: Positionspool ermitteln": {
-      "main": [
-        [
-          {
-            "node": "Spielerprofil LLM",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node":"Spielerprofil LLM","type":"main","index":0}]]
     },
     "Spielerprofil LLM": {
-      "main": [
-        [
-          {
-            "node": "Spielerprofil zusammenfuehren",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "LLM-Fehler normalisieren",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node":"Spielerprofil zusammenfuehren","type":"main","index":0}],[{"node":"LLM-Fehler normalisieren","type":"main","index":0}]]
     },
     "Spielerprofil Output-Schema": {
-      "ai_outputParser": [
-        [
-          {
-            "node": "Spielerprofil LLM",
-            "type": "ai_outputParser",
-            "index": 0
-          }
-        ]
-      ]
+      "ai_outputParser": [[{"node":"Spielerprofil LLM","type":"ai_outputParser","index":0}]]
     },
     "Ollama Modell (Qwen3.8:latest)": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Spielerprofil LLM",
-            "type": "ai_languageModel",
-            "index": 0
-          },
-          {
-            "node": "Spielerprofil Output-Schema",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
+      "ai_languageModel": [[{"node":"Spielerprofil LLM","type":"ai_languageModel","index":0},{"node":"Spielerprofil Output-Schema","type":"ai_languageModel","index":0}]]
     },
     "LLM-Fehler normalisieren": {
-      "main": [
-        [
-          {
-            "node": "Scouting Brief erstellen: Ergebnis",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node":"Scouting Brief erstellen: Ergebnis","type":"main","index":0}]]
     },
     "Spielerprofil zusammenfuehren": {
-      "main": [
-        [
-          {
-            "node": "Spielerprofil pruefen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node":"Spielerprofil pruefen","type":"main","index":0}]]
     },
     "Spielerprofil pruefen": {
-      "main": [
-        [
-          {
-            "node": "Spielerprofil gueltig?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node":"Spielerprofil gueltig?","type":"main","index":0}]]
     },
     "Spielerprofil gueltig?": {
-      "main": [
-        [
-          {
-            "node": "Scouting Brief erstellen",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Scouting Brief erstellen: Ergebnis",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node":"Scouting Brief erstellen","type":"main","index":0}],[{"node":"Scouting Brief erstellen: Ergebnis","type":"main","index":0}]]
     },
     "Scouting Brief erstellen": {
-      "main": [
-        [
-          {
-            "node": "Scouting Brief pruefen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node":"Scouting Brief pruefen","type":"main","index":0}]]
     },
     "Scouting Brief pruefen": {
-      "main": [
-        [
-          {
-            "node": "Scouting Brief gueltig?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node":"Scouting Brief gueltig?","type":"main","index":0}]]
     },
     "Scouting Brief gueltig?": {
-      "main": [
-        [
-          {
-            "node": "Scouting Brief erstellen: Ergebnis",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Scouting Brief erstellen: Ergebnis",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node":"Scouting Brief erstellen: Ergebnis","type":"main","index":0}],[{"node":"Scouting Brief erstellen: Ergebnis","type":"main","index":0}]]
     }
   },
   "settings": {
