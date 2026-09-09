@@ -8,12 +8,12 @@
       "type": "n8n-nodes-base.formTrigger",
       "typeVersion": 2.2,
       "position": [
-        7472,
+        7888,
         2064
       ],
       "parameters": {
-        "formTitle": "AI Sporting Director",
-        "formDescription": "Beauftragen Sie den AI Sporting Director mit einer offenen sportlichen Zielsetzung. Diagnose, Spielerprofile, Kandidaten oder eine Problemursache werden hier bewusst nicht abgefragt.",
+        "formTitle": "AI Scouting Agent",
+        "formDescription": "Konfrontieren Sie den AI Scouting Agent mit einem offenen sportlichen Problem.",
         "formFields": {
           "values": [
             {
@@ -104,80 +104,12 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        7696,
+        8080,
         2064
       ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const CLUB_CANONICAL_MAP = {\n  'FC Bayern München': 'Bayern Munich',\n  'Borussia Dortmund': 'Borussia Dortmund',\n  'RB Leipzig': 'RasenBallsport Leipzig',\n  'VfB Stuttgart': 'VfB Stuttgart',\n  'TSG Hoffenheim': 'Hoffenheim',\n  'Bayer 04 Leverkusen': 'Bayer Leverkusen',\n  'Sport-Club Freiburg': 'Freiburg',\n  'Eintracht Frankfurt': 'Eintracht Frankfurt',\n  'FC Augsburg': 'Augsburg',\n  '1. FSV Mainz 05': 'Mainz 05',\n  '1. FC Union Berlin': 'Union Berlin',\n  'Borussia Mönchengladbach': 'Borussia M.Gladbach',\n  'Hamburger SV': 'Hamburger SV',\n  '1. FC Köln': 'FC Cologne',\n  'SV Werder Bremen': 'Werder Bremen',\n  'VfL Wolfsburg': 'Wolfsburg',\n  '1. FC Heidenheim 1846': 'FC Heidenheim',\n  'FC St. Pauli': 'St. Pauli',\n};\nconst CLUB_PLAYER_DATA_MAP = {\n  'FC Bayern München': 'Bayern Munich',\n  'Borussia Dortmund': 'Dortmund',\n  'RB Leipzig': 'RB Leipzig',\n  'VfB Stuttgart': 'Stuttgart',\n  'TSG Hoffenheim': 'Hoffenheim',\n  'Bayer 04 Leverkusen': 'Leverkusen',\n  'Sport-Club Freiburg': 'Freiburg',\n  'Eintracht Frankfurt': 'Eint Frankfurt',\n  'FC Augsburg': 'Augsburg',\n  '1. FSV Mainz 05': 'Mainz 05',\n  '1. FC Union Berlin': 'Union Berlin',\n  'Borussia Mönchengladbach': 'Gladbach',\n  'Hamburger SV': 'Hamburger SV',\n  '1. FC Köln': 'Köln',\n  'SV Werder Bremen': 'Werder Bremen',\n  'VfL Wolfsburg': 'Wolfsburg',\n  '1. FC Heidenheim 1846': 'Heidenheim',\n  'FC St. Pauli': 'St. Pauli',\n};\nconst item=$input.item.json;\nconst selectedClub=(item['Verein']||'').toString().trim();\nreturn {json:{club:CLUB_CANONICAL_MAP[selectedClub]||'',clubPlayerData:CLUB_PLAYER_DATA_MAP[selectedClub]||'',objective:(item['Was soll der Sporting Director untersuchen?']||'').toString().trim(),additionalContext:(item['Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?']||'').toString().trim(),requestId:Date.now()+'-'+Math.random().toString(36).slice(2,8),requestedAt:new Date().toISOString()}};"
-      }
-    },
-    {
-      "id": "59115bed-f11d-4b89-bb11-b7dcbc0d80af",
-      "name": "Eingabe validieren",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        7904,
-        2064
-      ],
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "d4e5f6a7-cond-1",
-              "leftValue": "={{ $json.club }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEmpty",
-                "singleValue": true
-              }
-            },
-            {
-              "id": "d4e5f6a7-cond-2",
-              "leftValue": "={{ $json.objective }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEmpty",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      }
-    },
-    {
-      "id": "11bd9dd0-5180-4a3d-affa-b2d6242fd991",
-      "name": "Validierungsfehler formulieren",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        8128,
-        2288
-      ],
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "e5f6a7b8-err-1",
-              "name": "errorMessage",
-              "value": "Bitte füllen Sie 'Verein' und 'Was soll der Sporting Director untersuchen?' aus, bevor Sie fortfahren.",
-              "type": "string"
-            }
-          ]
-        },
-        "includeOtherFields": true,
-        "options": {}
+        "jsCode": "const CLUB_CANONICAL_MAP = {\n  'FC Bayern München': 'Bayern Munich',\n  'Borussia Dortmund': 'Borussia Dortmund',\n  'RB Leipzig': 'RasenBallsport Leipzig',\n  'VfB Stuttgart': 'VfB Stuttgart',\n  'TSG Hoffenheim': 'Hoffenheim',\n  'Bayer 04 Leverkusen': 'Bayer Leverkusen',\n  'Sport-Club Freiburg': 'Freiburg',\n  'Eintracht Frankfurt': 'Eintracht Frankfurt',\n  'FC Augsburg': 'Augsburg',\n  '1. FSV Mainz 05': 'Mainz 05',\n  '1. FC Union Berlin': 'Union Berlin',\n  'Borussia Mönchengladbach': 'Borussia M.Gladbach',\n  'Hamburger SV': 'Hamburger SV',\n  '1. FC Köln': 'FC Cologne',\n  'SV Werder Bremen': 'Werder Bremen',\n  'VfL Wolfsburg': 'Wolfsburg',\n  '1. FC Heidenheim 1846': 'FC Heidenheim',\n  'FC St. Pauli': 'St. Pauli',\n};\nconst CLUB_PLAYER_DATA_MAP = {\n  'FC Bayern München': 'Bayern Munich',\n  'Borussia Dortmund': 'Dortmund',\n  'RB Leipzig': 'RB Leipzig',\n  'VfB Stuttgart': 'Stuttgart',\n  'TSG Hoffenheim': 'Hoffenheim',\n  'Bayer 04 Leverkusen': 'Leverkusen',\n  'Sport-Club Freiburg': 'Freiburg',\n  'Eintracht Frankfurt': 'Eint Frankfurt',\n  'FC Augsburg': 'Augsburg',\n  '1. FSV Mainz 05': 'Mainz 05',\n  '1. FC Union Berlin': 'Union Berlin',\n  'Borussia Mönchengladbach': 'Gladbach',\n  'Hamburger SV': 'Hamburger SV',\n  '1. FC Köln': 'Köln',\n  'SV Werder Bremen': 'Werder Bremen',\n  'VfL Wolfsburg': 'Wolfsburg',\n  '1. FC Heidenheim 1846': 'Heidenheim',\n  'FC St. Pauli': 'St. Pauli',\n};\nconst item=$input.item.json;\nconst selectedClub = (item['Verein'] || '').toString().trim();\nconst objective = (item['Was soll der Sporting Director untersuchen?'] || '').toString().trim();\n\nconst club = CLUB_CANONICAL_MAP[selectedClub] || '';\nconst clubPlayerData = CLUB_PLAYER_DATA_MAP[selectedClub] || '';\n\nif (!club) {\n  throw new Error(`Unbekannter oder fehlender Verein: \"${selectedClub}\"`);\n}\n\nif (!objective) {\n  throw new Error('Die Zielsetzung des Sporting Directors fehlt.');\n}\n\nreturn {json:{club:CLUB_CANONICAL_MAP[selectedClub]||'',clubPlayerData:CLUB_PLAYER_DATA_MAP[selectedClub]||'',objective:(item['Was soll der Sporting Director untersuchen?']||'').toString().trim(),additionalContext:(item['Gibt es zusätzliche Rahmenbedingungen oder Beobachtungen?']||'').toString().trim(),requestId:Date.now()+'-'+Math.random().toString(36).slice(2,8),requestedAt:new Date().toISOString()}};"
       }
     },
     {
@@ -186,7 +118,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        8128,
+        8288,
         2064
       ],
       "parameters": {
@@ -208,8 +140,7 @@
         "options": {}
       },
       "notes": "Fachliche Capability inklusive interner Validierung und Fehlerformulierung. Erfolg geht direkt in die naechste Phase; ein Capability-Fehler laeuft ueber den gemeinsamen technischen Fehlerkanal.",
-      "notesInFlow": false,
-      "onError": "continueErrorOutput"
+      "notesInFlow": false
     },
     {
       "id": "69ef616f-2d96-4cdc-9d05-238863df5664",
@@ -217,7 +148,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        8384,
+        8544,
         2064
       ],
       "parameters": {
@@ -239,8 +170,7 @@
         "options": {}
       },
       "notes": "Fachliche Capability inklusive Spielerprofil-/Brief-Validierung. Wird bei Request Changes erneut aufgerufen; Fehler laufen einheitlich ueber den gemeinsamen Capability-Fehlerkanal.",
-      "notesInFlow": false,
-      "onError": "continueErrorOutput"
+      "notesInFlow": false
     },
     {
       "id": "4cbfa1b8-b23f-4656-88a9-1aa8287ad927",
@@ -248,7 +178,7 @@
       "type": "n8n-nodes-base.form",
       "typeVersion": 1,
       "position": [
-        8656,
+        8736,
         2064
       ],
       "parameters": {
@@ -438,8 +368,7 @@
         "options": {}
       },
       "notes": "Fachliche Kandidatensuche inklusive Ranking-, Profil- und Shortlist-Validierung.",
-      "notesInFlow": false,
-      "onError": "continueErrorOutput"
+      "notesInFlow": false
     },
     {
       "id": "5a688951-543b-4547-a646-18e82081435b",
@@ -447,7 +376,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        9872,
+        9824,
         2064
       ],
       "parameters": {
@@ -469,8 +398,7 @@
         "options": {}
       },
       "notes": "Fachliche Due-Diligence-Capability inklusive Fan-out/Fan-in, interner Validierung und fachlicher Fehlerformulierung.",
-      "notesInFlow": false,
-      "onError": "continueErrorOutput"
+      "notesInFlow": false
     },
     {
       "id": "d0a5dbc2-cf47-4f64-8475-9e9c207acac9",
@@ -478,7 +406,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        10128,
+        10032,
         2064
       ],
       "parameters": {
@@ -509,7 +437,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        10384,
+        10288,
         2064
       ],
       "parameters": {
@@ -540,7 +468,7 @@
       "type": "n8n-nodes-base.form",
       "typeVersion": 1,
       "position": [
-        10656,
+        10560,
         2064
       ],
       "parameters": {
@@ -557,7 +485,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        10128,
+        10032,
         2464
       ],
       "parameters": {
@@ -572,7 +500,7 @@
       "type": "n8n-nodes-base.form",
       "typeVersion": 1,
       "position": [
-        10384,
+        10288,
         2464
       ],
       "parameters": {
@@ -600,36 +528,7 @@
       "main": [
         [
           {
-            "node": "Eingabe validieren",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Eingabe validieren": {
-      "main": [
-        [
-          {
             "node": "Execute Workflow: Team analysieren",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Validierungsfehler formulieren",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validierungsfehler formulieren": {
-      "main": [
-        [
-          {
-            "node": "Fehler anzeigen",
             "type": "main",
             "index": 0
           }
@@ -645,13 +544,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Capability-Fehler normalisieren",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Execute Workflow: Scouting Brief erstellen": {
@@ -663,13 +556,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Capability-Fehler normalisieren",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Scouting Brief zur Freigabe vorlegen": {
@@ -768,13 +655,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Capability-Fehler normalisieren",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Execute Workflow: Due Diligence": {
@@ -786,13 +667,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Capability-Fehler normalisieren",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Execute Workflow: Empfehlung erstellen": {
@@ -847,8 +722,8 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "963ba6b3-ce3b-4dd2-8f85-e42d84110ed5",
+  "versionId": "8bb996d6-2be1-432a-a0a7-3ad8dec8b21e",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
-  "isPublished": true,
+  "isPublished": false,
   "isArchived": false
 }
