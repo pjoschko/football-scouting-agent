@@ -443,8 +443,8 @@
       ],
       "parameters": {
         "operation": "completion",
-        "completionTitle": "Ergebnis (Simulation)",
-        "completionMessage": "={{ $json.formattedResult }}",
+        "completionTitle": "Ergebnis",
+        "completionMessage": "={{ $json.resultHtml }}",
         "options": {}
       },
       "webhookId": "868566ee-a917-4dbb-8250-5e2decc58ce8"
@@ -674,7 +674,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "12fbcda2-1ec8-4ae2-bdf5-e5131da446fd",
+  "versionId": "a60e653f-7326-470d-8b1d-45309b001918",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
   "isPublished": false,
   "isArchived": false

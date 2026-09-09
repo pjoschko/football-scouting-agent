@@ -163,35 +163,13 @@
           "value": "crrgOO7O8bTHnldV",
           "mode": "list",
           "cachedResultUrl": "/workflow/crrgOO7O8bTHnldV",
-          "cachedResultName": "Recherche"
+          "cachedResultName": "Internal — Recherche (Dummy)"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
-          "value": {
-            "researchCandidateName": "={{ $json.researchCandidateName }}",
-            "researchBatchId": "={{ $json.researchBatchId }}"
-          },
+          "value": {},
           "matchingColumns": [],
-          "schema": [
-            {
-              "id": "researchCandidateName",
-              "displayName": "researchCandidateName",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "researchBatchId",
-              "displayName": "researchBatchId",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            }
-          ],
+          "schema": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": true
         },
@@ -765,8 +743,8 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "1c1aa77b-6f1a-4da9-bd60-65826ed224d6",
+  "versionId": "8ed15673-867e-451a-acb7-ce4444a992c4",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
-  "isPublished": true,
+  "isPublished": false,
   "isArchived": false
 }
