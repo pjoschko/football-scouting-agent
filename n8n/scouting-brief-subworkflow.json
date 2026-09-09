@@ -82,7 +82,7 @@
       "parameters": {
         "model": "Qwen3.8:latest",
         "options": {
-          "think": true
+          "think": false
         }
       },
       "credentials": {
