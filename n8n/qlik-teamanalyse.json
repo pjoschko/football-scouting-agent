@@ -1,0 +1,152 @@
+{
+  "id": "2I4XMb5ho5udRsZy",
+  "name": "Qlik Teamanalyse",
+  "nodes": [
+    {
+      "id": "c73a87c2-8761-4ce2-a718-4cbf4f70a5b9",
+      "name": "Qlik MCP",
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        784,
+        224
+      ],
+      "parameters": {
+        "endpointUrl": "https://cimt-ag.de.qlikcloud.com/api/ai/mcp",
+        "authentication": "mcpOAuth2Api",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "mcpOAuth2Api": {
+          "id": "7mk7cj66EspG6vA6",
+          "name": "Qlik MCP - Test1"
+        }
+      }
+    },
+    {
+      "id": "0cbf0cce-4e33-4cfe-b6e9-30bff58e406f",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "af4dca53-e173-4597-bc73-0c85a2a85300",
+      "name": "Qlik Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        560,
+        0
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Verein: {{ $json.club }}\nZielsetzung des Auftrags: {{ $json.objective }}\nZusätzlicher Kontext: {{ $json.additionalContext || '(keiner)' }}\n\nDu bist ein datenorientierter Fußballanalyst.\n\nAnalysiere ausschließlich die im Input tatsächlich vorhandenen Daten. Verwende keine externen Informationen und erfinde keine Zahlen, Spieler, Verletzungen, Aufstellungen, Tabellenplätze, Liga-Durchschnittswerte oder taktischen Details.\n\nWICHTIG:\n- Eine Hypothese ist keine Tatsache. Formuliere Hypothesen ausdrücklich als mögliche Erklärungen.\n- Behaupte niemals, dass eine Kennzahl \"überdurchschnittlich\", \"unterdurchschnittlich\", \"ungewöhnlich hoch/niedrig\" oder \"schlechter/besser als die Liga\" ist, wenn keine entsprechenden Liga-Vergleichsdaten vorliegen.\n- Leite keine konkrete Spielerposition als Transferziel ab, wenn die vorhandenen Daten das nicht ausreichend belegen.\n- Verwende xG/xGA nur dann, wenn diese Daten tatsächlich vorhanden sind.\n- Berücksichtige sowohl tatsächliche Tore als auch xG, sofern beide vorhanden sind.\n- Wenn Daten fehlen, benenne die Einschränkung explizit statt sie zu ergänzen.\n- Vermeide Scheingenauigkeit.\n- Die 3 Diagnosekategorien sind ausschließlich:\n  1. \"defensive\"\n  2. \"offensive\"\n  3. \"neutral\"\n\nKATEGORISIERUNG:\n- \"defensive\": Die verfügbaren Daten sprechen stärker für ein defensives Problem, z. B. viele Gegentore und/oder deutlich zu viel zugelassenes xG im Verhältnis zur eigenen Offensivleistung.\n- \"offensive\": Die verfügbaren Daten sprechen stärker für ein offensives Problem, z. B. geringe eigene Tor- oder xG-Produktion bei gleichzeitig weniger ausgeprägtem Defensivproblem.\n- \"neutral\": Kein eindeutiger Schwerpunkt zwischen Offensive und Defensive kann auf Basis der vorhandenen Daten belastbar festgestellt werden.\n- Die Kategorie muss aus den vorhandenen Daten begründet werden. Ein negatives Torverhältnis allein reicht nicht automatisch für \"defensive\", wenn andere Daten dagegen sprechen.\n- Wenn xG vorhanden ist, berücksichtige die Differenz zwischen Toren und xG als mögliche Information zur Chancenverwertung, aber verwechsel diese nicht mit der Qualität der Chancen selbst.\n\nLIGAVERGLEICH:\nEs liegen ausschließlich Daten des Vereins \"{{ $json.club }}\" vor.\nEs liegen keine aggregierten Kennzahlen anderer Bundesliga-Vereine und keine Liga-Durchschnittswerte vor.\n\nDeshalb:\n- Erfinde keinen Tabellenplatz.\n- Erfinde keinen Liga-Durchschnitt.\n- Erfinde keine Rangfolge.\n- Vergleiche den Verein nicht mit konkreten anderen Vereinen.\n- Formuliere \"leagueComparison\" ausdrücklich als nicht belastbar.\n- Nenne dort konkret, welche Daten für einen belastbaren Vergleich fehlen, z. B. Liga-Durchschnittswerte, Saisonkennzahlen aller Vereine, Tabellenstand oder gegnerbereinigte Kennzahlen.\n\nHYPOTHESEN:\nErstelle mehrere plausible Hypothesen zur Ursache der diagnostizierten Probleme.\nJede Hypothese muss:\n- mit den vorhandenen Fakten vereinbar sein,\n- klar als Hypothese formuliert sein,\n- keine nicht vorhandenen Fakten als gegeben darstellen.\n\nGEGENHYPOTHESEN:\nErstelle mehrere plausible alternative Erklärungen, die ebenfalls mit den vorhandenen Fakten vereinbar sind und die Hauptdiagnose relativieren könnten.\nBeispiele für mögliche Unsicherheiten sind:\n- Gegnerstärke\n- fehlende vollständige Matchdaten\n- fehlende Spieler-/Positionsdaten\n- Verletzungen oder Rotation\n- taktische Veränderungen\n- Heim-/Auswärtsunterschiede\nDiese Punkte dürfen nur genannt werden, wenn die entsprechenden Informationen tatsächlich fehlen.\n\nTRANSFEREMPFEHLUNG:\nLeite aus der Diagnose eine vorsichtige Transferstrategie ab.\nEmpfehle keine konkreten Spieler, wenn keine Scouting- oder Spielerdaten vorliegen.\nFormuliere stattdessen die Art von Verstärkung, die aufgrund der Daten sinnvoll untersucht werden sollte.\nWenn die Daten keine ausreichend konkrete Transferposition erlauben, sage das ausdrücklich.\n\nDATENQUALITÄT:\nBerücksichtige:\n- Anzahl analysierter Spiele\n- Anzahl ungültiger Spiele\n- Umfang der verfügbaren Einzelspiele\n- fehlende Vergleichs-, Spieler- oder Kontextdaten\n\nOUTPUT:\nAntworte ausschließlich mit einem gültigen JSON-Array.\nKein Markdown.\nKeine ```-Codeblöcke.\nKeine Erklärung außerhalb des JSON.\nKeine zusätzlichen Felder außerhalb des vorgegebenen Schemas.\n\nVerwende exakt dieses Schema:\n\n[\n  {\n    \"club\": \"string\",\n    \"clubPlayerData\": \"string\",\n    \"objective\": \"string\",\n    \"additionalContext\": \"string\",\n    \"requestId\": \"string\",\n    \"requestedAt\": \"string\",\n\n    \"teamPerformance\": {\n      \"club\": \"string\",\n      \"source\": \"string\",\n      \"storage\": \"string\",\n      \"dataAvailable\": true,\n      \"matchesAnalyzed\": 0,\n      \"invalidMatches\": 0,\n      \"wins\": 0,\n      \"draws\": 0,\n      \"losses\": 0,\n      \"goalsFor\": 0,\n      \"goalsAgainst\": 0,\n      \"goalDifference\": 0,\n      \"points\": 0,\n      \"avgGoalsFor\": 0,\n      \"avgGoalsAgainst\": 0,\n      \"xGMatchesAnalyzed\": 0,\n      \"xGFor\": 0,\n      \"xGAgainst\": 0,\n      \"xGDifference\": 0,\n      \"avgXGFor\": 0,\n      \"avgXGAgainst\": 0,\n      \"form\": [],\n      \"datasetRowsAvailable\": 0\n    },\n\n    \"teamMatches\": {\n      \"club\": \"string\",\n      \"source\": \"string\",\n      \"storage\": \"string\",\n      \"dataAvailable\": true,\n      \"count\": 0,\n      \"totalAvailable\": 0,\n      \"invalidMatches\": 0,\n      \"matches\": []\n    },\n\n    \"teamDiagnosisInput\": {\n      \"club\": \"string\",\n      \"objective\": \"string\",\n      \"additionalContext\": null,\n      \"performance\": {},\n      \"matches\": []\n    },\n\n    \"teamDiagnosisEvidence\": [\n      \"string\"\n    ],\n\n    \"teamDiagnosis\": {\n      \"simulated\": false,\n      \"dataAvailable\": true,\n      \"diagnosisCategory\": \"defensive | offensive | neutral\",\n      \"evidence\": [\n        \"string\"\n      ],\n      \"leagueComparisonAvailable\": false,\n      \"leagueComparison\": \"string\",\n      \"hypotheses\": [\n        \"string\"\n      ],\n      \"counterHypotheses\": [\n        \"string\"\n      ],\n      \"mainProblem\": \"string\",\n      \"uncertainties\": [\n        \"string\"\n      ]\n    },\n\n    \"transferStrategy\": {\n      \"priority\": \"high | medium | low | unclear\",\n      \"recommendation\": \"string\",\n      \"reasoning\": \"string\",\n      \"dataLimitations\": [\n        \"string\"\n      ]\n    },\n\n    \"valid\": true,\n    \"status\": \"success\"\n  }\n]\n\nREGELN FÜR DIE FELDER:\n\n1. \"teamPerformance\", \"teamMatches\" und \"teamDiagnosisInput\"\n   - Übernimm die vorhandenen Daten aus dem Input.\n   - Verändere keine Zahlen.\n   - Erfinde keine fehlenden Werte.\n   - Wenn ein Feld nicht vorhanden ist, verwende null oder eine leere Liste, sofern das Schema dies zulässt.\n\n2. \"teamDiagnosisEvidence\"\n   - Enthält nur die wichtigsten Rohfakten, die die Diagnose tatsächlich stützen.\n   - Keine erfundenen Fakten.\n   - Keine vollständige Wiederholung aller Input-Daten, wenn sie für die Diagnose nicht relevant sind.\n\n3. \"teamDiagnosis.evidence\"\n   - Verdichte die wichtigsten beobachtbaren Fakten.\n   - Trenne Fakten klar von Interpretation.\n   - Beispiel: \"Der Verein erzielte 40 Tore bei 43,83 xG und kassierte 54 Tore bei 66,06 xGA.\"\n\n4. \"leagueComparison\"\n   - Wenn keine Liga-Daten vorhanden sind, muss eindeutig stehen, dass kein belastbarer Vergleich möglich ist.\n   - Nenne die konkret fehlenden Datengrundlagen.\n\n5. \"hypotheses\"\n   - Keine Hypothese darf als sicherer Fakt formuliert werden.\n   - Verwende Formulierungen wie \"Möglicherweise...\", \"Eine mögliche Erklärung ist...\", \"Das könnte darauf hindeuten...\".\n\n6. \"counterHypotheses\"\n   - Suche aktiv nach alternativen Erklärungen.\n   - Eine Gegenhypothese darf die Hauptdiagnose relativieren.\n\n7. \"mainProblem\"\n   - Genau ein klarer Satz.\n   - Keine Aufzählung.\n   - Keine unbelegte Behauptung.\n\n8. \"uncertainties\"\n   - Nenne nur relevante Informationslücken.\n   - Keine erfundenen Ursachen.\n\n9. \"transferStrategy\"\n   - Keine konkreten Spieler nennen, sofern keine Spieler-/Scoutingdaten vorliegen.\n   - Wenn die Daten primär auf ein defensives Problem hindeuten, kann die Empfehlung z. B. lauten, den Markt nach defensiver Verstärkung zu prüfen.\n   - Wenn nicht ausreichend bestimmt werden kann, welche Position benötigt wird, muss \"priority\" auf \"unclear\" gesetzt und diese Einschränkung erklärt werden.\n\n10. \"valid\"\n   - true nur dann, wenn die Analyse auf den vorhandenen Daten basiert und das JSON-Schema vollständig eingehalten wird.\n   - false bei fehlenden Kerninformationen oder wenn die Analyse nicht zuverlässig möglich ist.\n\n11. \"status\"\n   - \"success\", wenn eine valide Analyse erstellt werden konnte.\n   - \"insufficient_data\", wenn die vorhandenen Daten keine belastbare Diagnose erlauben.\n\nGib jetzt ausschließlich das JSON-Array zurück.\n",
+        "options": {
+          "systemMessage": ""
+        }
+      }
+    },
+    {
+      "id": "9c7f39b7-0a89-40da-ab02-63d077cbbd43",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        560,
+        224
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.6-luna",
+          "mode": "list",
+          "cachedResultName": "gpt-5.6-luna"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "xCCXklmbDwiN41uw",
+          "name": "[EXT] OpenAI Account - Achtung kostenpflichtig!"
+        }
+      }
+    },
+    {
+      "id": "4e63a683-dede-4540-b678-0660d547ca83",
+      "name": "Code in JavaScript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\n// The LLM's raw text output — adjust the source field if it's not `item.output`\n// (e.g. could be `item.text` or the item itself if already a string).\nlet raw = item.output !== undefined ? item.output : item;\n\nlet parsed;\nif (typeof raw === 'string') {\n  parsed = JSON.parse(raw);\n} else {\n  parsed = raw;\n}\n\nreturn {\n  json: {\n    ...parsed,\n    status: 'success'\n  }\n};"
+      }
+    }
+  ],
+  "connections": {
+    "Qlik MCP": {
+      "ai_tool": [
+        [
+          {
+            "node": "Qlik Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Qlik Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Qlik Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qlik Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a124f8bb-8fba-413d-9f31-0a1ffedddf6f",
+  "parentFolderId": "xvYBFRCqYXtsxMCF",
+  "isPublished": true,
+  "isArchived": false
+}

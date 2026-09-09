@@ -30,7 +30,7 @@
             "caseSensitive": true,
             "leftValue": "",
             "typeValidation": "strict",
-            "version": 2
+            "version": 1
           },
           "conditions": [
             {
@@ -174,7 +174,7 @@
           "convertFieldsToString": true
         },
         "options": {
-          "waitForSubWorkflow": false
+          "waitForSubWorkflow": true
         }
       },
       "notes": "Fire-and-forget je Kandidat. Der Child hat typed Inputs und ein eigenes 120-s executionTimeout; sein started-Marker liefert dem Fan-in den tatsaechlichen Startzeitpunkt des Zweigs.",
@@ -219,6 +219,7 @@
             "payload": "={{ $json.researchRuntimePayload }}",
             "completedAt": "={{ $json.researchRuntimeCompletedAt }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "batchId",
@@ -227,7 +228,8 @@
               "defaultMatch": false,
               "display": true,
               "type": "string",
-              "canBeUsedToMatch": true
+              "readOnly": false,
+              "removed": false
             },
             {
               "id": "candidate",
@@ -236,7 +238,8 @@
               "defaultMatch": false,
               "display": true,
               "type": "string",
-              "canBeUsedToMatch": true
+              "readOnly": false,
+              "removed": false
             },
             {
               "id": "status",
@@ -245,7 +248,8 @@
               "defaultMatch": false,
               "display": true,
               "type": "string",
-              "canBeUsedToMatch": true
+              "readOnly": false,
+              "removed": false
             },
             {
               "id": "payload",
@@ -254,7 +258,8 @@
               "defaultMatch": false,
               "display": true,
               "type": "string",
-              "canBeUsedToMatch": true
+              "readOnly": false,
+              "removed": false
             },
             {
               "id": "completedAt",
@@ -262,10 +267,13 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "date",
-              "canBeUsedToMatch": true
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
             }
-          ]
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
         },
         "options": {}
       }
@@ -743,7 +751,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "8ed15673-867e-451a-acb7-ce4444a992c4",
+  "versionId": "e8270b01-a7d9-4dac-8926-3091cc0f22f6",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
   "isPublished": false,
   "isArchived": false

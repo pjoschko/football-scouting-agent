@@ -1,6 +1,6 @@
 {
   "id": "crrgOO7O8bTHnldV",
-  "name": "Recherche (Dummy)",
+  "name": "Recherche",
   "nodes": [
     {
       "id": "501998ec-49b0-4bbf-8324-527c3119bb39",
@@ -21,11 +21,85 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        224,
-        0
+        240,
+        -208
       ],
       "parameters": {
         "jsCode": "const item = $input.item.json;\nconst shortlist = (item.playerSearch && Array.isArray(item.playerSearch.shortlist))\n  ? item.playerSearch.shortlist\n  : [];\nconst now = new Date().toISOString();\n\n// Deterministischer Dummy je Kandidat. Es wird explizit keine echte\n// Qlik-Analyse oder Websuche durchgefuehrt; jeder Eintrag ist klar als\n// simulierte Dummy-Quelle gekennzeichnet.\nconst research = shortlist.map((candidate, idx) => ({\n  candidate: candidate.name,\n  club: `Dummy-Verein ${idx + 1}`,\n  contract: 'Simulierter Vertrag bis 30.06.2027 (keine echte Recherche)',\n  marketValue: `${(5 + idx).toFixed(1)} Mio. EUR (simuliert)`,\n  injuries: 'Keine bekannten Verletzungen (simuliert, keine echte Recherche)',\n  news: [`Simulierte Meldung zu ${candidate.name} (keine echte Websuche durchgefuehrt)`],\n  source: 'Dummy-Quelle (keine echte Web-/Qlik-Recherche)',\n  timestamp: now,\n  confidence: 0.4\n}));\n\nreturn [{ json: { ...item, research } }];"
+      }
+    },
+    {
+      "id": "12d91a1d-1a58-41cb-9700-7448e2ab1808",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        192,
+        0
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Recherchiere {{ $json.researchCandidateName }}..",
+        "options": {
+          "systemMessage": "Du bist ein Scouting-Recherche-Agent. Deine einzige Aufgabe ist es, verlässliche, aktuelle\nInformationen zu einem Fußballspieler zu recherchieren und in einem exakt definierten\nJSON-Format zurückzugeben. Du gibst NIEMALS Fließtext, Erklärungen oder Markdown zurück —\nnur das rohe JSON-Objekt.\n\n## Eingabe\nDu erhältst den Namen eines Spielers (candidate), z. B. \"Maxence Lacroix\".\n\n## Recherche-Vorgehen\n1. Suche gezielt auf transfermarkt.de nach dem Spielerprofil (z. B. über Google-Suche\n   \"<Spielername> transfermarkt\" oder direkte URL-Suche).\n2. Rufe die Transfermarkt-Profilseite auf und extrahiere: aktueller Verein, Vertragslaufzeit\n   (Vertragsende), Marktwert, laufende oder kürzliche Verletzungen.\n3. Nutze wenn möglich mehrere unabhängige Quellen pro Fakt. Wenn Quellen widersprüchlich\n   sind, vermerke das im jeweiligen Feld statt eine der Angaben zu unterdrücken.\n4. Recherchiere maximal [X] Suchanfragen / [X] Sekunden. Wenn du innerhalb des Zeitrahmens\n   keine verwertbaren Daten findest, nutze den Fallback-Modus (siehe unten).\n\n## Ausgabeformat (IMMER exakt dieses Schema, keine zusätzlichen Felder, keine fehlenden Felder)\n\n{\n  \"candidate\": string,                  // Name wie in der Eingabe übergeben, unverändert\n  \"club\": string | null,                // aktueller Verein, exakter Vereinsname\n  \"contract\": string | null,            // Freitext-Zusammenfassung, z. B. \"Vertrag bis 2027, kein Ausstiegsklausel bekannt\"\n  \"contractEndDate\": string | null,     // ISO-Datum \"YYYY-MM-DD\", falls exakt bekannt, sonst null\n  \"marketValue\": string | null,         // Anzeige-String wie auf Transfermarkt, z. B. \"18,00 Mio. €\"\n  \"marketValueMEUR\": number | null,     // gleicher Wert numerisch in Mio. EUR, z. B. 18.0\n  \"injuries\": string | null,            // Freitext: aktuelle/kürzliche Verletzungen, oder \"Keine bekannten Verletzungen\"\n  \"currentSituation\": string | null,    // 2-3 Sätze: Rolle im Team, Form, Konflikte, Spielzeit\n  \"transferLikelihoodNotes\": string | null, // Einschätzung zu Wechselwahrscheinlichkeit, konkrete Gerüchte/Interessenten\n  \"news\": [                             // 0-5 relevante, aktuelle Nachrichten-Einträge\n    {\n      \"headline\": string,\n      \"date\": string,                   // ISO-Datum \"YYYY-MM-DD\"\n      \"source\": string,\n      \"url\": string\n    }\n  ],\n  \"evidence\": [                         // Jede sachliche Aussage in obigen Feldern muss hier belegt sein\n    {\n      \"fact\": string,                   // welches Feld/welcher Fakt belegt wird, z. B. \"marketValue\"\n      \"claim\": string,                  // die konkrete Aussage in eigenen Worten (nicht wörtlich zitiert)\n      \"source\": string,                 // Name der Quelle, z. B. \"Transfermarkt\"\n      \"url\": string,\n      \"timestamp\": string,              // ISO-8601, wann die Quelle abgerufen/veröffentlicht wurde\n      \"confidence\": number              // 0.0-1.0, wie verlässlich dieser einzelne Fakt ist\n    }\n  ],\n  \"source\": string,                     // Zusammenfassung der genutzten Hauptquelle(n), z. B. \"Transfermarkt, Kicker\"\n  \"timestamp\": string,                  // ISO-8601, Zeitpunkt der Antwort-Erstellung\n  \"confidence\": number,                 // 0.0-1.0, Gesamt-Konfidenz über alle Felder hinweg\n  \"uncertain\": boolean,                 // true wenn Recherche unvollständig/fehlgeschlagen ist\n  \"uncertaintyReason\": string | null    // Freitext-Grund, nur gesetzt wenn uncertain == true, sonst null\n}\n\n## Umgang mit fehlenden Daten\n- Wenn ein einzelnes Feld nicht auffindbar ist, setze es auf null — erfinde niemals Werte.\n- \"confidence\" bezieht sich auf die Gesamtheit der recherchierten Daten. Berechne es\n  als groben Mittelwert der einzelnen evidence[].confidence-Werte (0 wenn evidence leer ist).\n- Setze \"uncertain\": true, wenn mehr als die Hälfte der Kernfelder (club, contract,\n  marketValue, currentSituation) null sind ODER wenn du dir bei den gefundenen Angaben\n  nicht sicher bist. Andernfalls \"uncertain\": false und \"uncertaintyReason\": null.\n\n## Fallback-Modus (bei Timeout, Tool-Fehler oder komplett fehlgeschlagener Recherche)\nWenn du innerhalb des vorgegebenen Zeit-/Anfragen-Budgets keine verwertbare Quelle laden\nkonntest oder ein technischer Fehler die Recherche verhindert hat, gib exakt folgendes\nObjekt zurück (nur candidate, timestamp und uncertaintyReason anpassen):\n\n{\n  \"candidate\": \"<eingegebener Name>\",\n  \"club\": null,\n  \"contract\": null,\n  \"contractEndDate\": null,\n  \"marketValue\": null,\n  \"marketValueMEUR\": null,\n  \"injuries\": null,\n  \"currentSituation\": null,\n  \"transferLikelihoodNotes\": null,\n  \"news\": [],\n  \"evidence\": [],\n  \"source\": \"Research-Timeout (keine Quelle verfuegbar)\",\n  \"timestamp\": \"<aktuelles ISO-8601 Datum/Zeit>\",\n  \"confidence\": 0,\n  \"uncertain\": true,\n  \"uncertaintyReason\": \"<kurze technische Begründung, z. B. 'Transfermarkt-Seite nach 3 Versuchen nicht erreichbar' oder 'Keine Suchergebnisse für <Name> gefunden'>\"\n}\n\n## Wichtige Regeln\n- Gib IMMER valides JSON zurück, ohne Markdown-Codeblock, ohne Kommentare, ohne Text davor/danach.\n- Zitiere niemals wörtlich aus Artikeln — fasse Fakten in eigenen Worten zusammen (Feld \"claim\").\n- Erfinde keine URLs, Daten oder Zahlen. Wenn du eine Quelle nicht wirklich aufgerufen hast,\n  darf sie nicht in \"evidence\" oder \"news\" auftauchen.\n- Datumsangaben immer im ISO-8601-Format."
+        }
+      }
+    },
+    {
+      "id": "ccb6a704-69fb-46cb-957f-2b3e308bb29a",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        192,
+        240
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.6-luna",
+          "mode": "list",
+          "cachedResultName": "gpt-5.6-luna"
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "medium"
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "xCCXklmbDwiN41uw",
+          "name": "[EXT] OpenAI Account - Achtung kostenpflichtig!"
+        }
+      }
+    },
+    {
+      "id": "bd2720ed-9339-4f21-9546-367feeb7f538",
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        464,
+        352
+      ],
+      "parameters": {
+        "jsonSchemaExample": "{\n\"candidate\": \"Maxence Lacroix\",\n\"club\": null,\n\"contract\": null,\n\"contractEndDate\": null,\n\"marketValue\": null,\n\"marketValueMEUR\": null,\n\"injuries\": null,\n\"currentSituation\": null,\n\"transferLikelihoodNotes\": null,\n\"news\": [\n],\n\"evidence\": [\n],\n\"source\": \"Research-Timeout (keine Quelle verfuegbar)\", \n\"timestamp\": \"2026-09-09T09:25:49.391Z\",\n\"confidence\": 0,\n\"uncertain\": true,\n\"uncertaintyReason\": \"Research-Zweig fuer Maxence Lacroix hat innerhalb von 120000 ms nach Dispatch keinen started- oder Terminalstatus persistiert.\"\n}"
+      },
+      "retryOnFail": true
+    },
+    {
+      "id": "629f59fe-70e5-4785-a112-38d382621996",
+      "name": "Code in JavaScript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\nlet agentResult = item.output !== undefined ? item.output : item;\n\nif (typeof agentResult === 'string') {\n  try {\n    agentResult = JSON.parse(agentResult);\n  } catch (e) {\n    // Not valid JSON — pass through as-is.\n  }\n}\n\nreturn { research: agentResult };"
       }
     }
   ],
@@ -34,7 +108,39 @@
       "main": [
         [
           {
-            "node": "Recherche-Dummy je Kandidat erzeugen",
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        []
+      ]
+    },
+    "Recherche-Dummy je Kandidat erzeugen": {
+      "main": [
+        []
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
             "type": "main",
             "index": 0
           }
@@ -46,7 +152,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "412abad1-7878-461b-afd3-6c5e62ddaf4e",
+  "versionId": "a85ea2a3-2c79-4176-8979-671ffee8d7f5",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
   "isPublished": true,
   "isArchived": false

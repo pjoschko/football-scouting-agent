@@ -124,10 +124,10 @@
       "parameters": {
         "workflowId": {
           "__rl": true,
-          "value": "vTFABYuHE8aTJxYY",
+          "value": "2I4XMb5ho5udRsZy",
           "mode": "list",
-          "cachedResultUrl": "/workflow/vTFABYuHE8aTJxYY",
-          "cachedResultName": "Internal — Team analysieren"
+          "cachedResultUrl": "/workflow/2I4XMb5ho5udRsZy",
+          "cachedResultName": "Internal — Qlik Teamanalyse"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
@@ -352,10 +352,10 @@
       "parameters": {
         "workflowId": {
           "__rl": true,
-          "value": "Sm45DFmUGIC3SRIL",
+          "value": "xOHx5efKpXcGxnvF",
           "mode": "list",
-          "cachedResultUrl": "/workflow/Sm45DFmUGIC3SRIL",
-          "cachedResultName": "Internal — Due Diligence"
+          "cachedResultUrl": "/workflow/xOHx5efKpXcGxnvF",
+          "cachedResultName": "Internal — Due Diligence Simple"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
@@ -674,7 +674,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "a60e653f-7326-470d-8b1d-45309b001918",
+  "versionId": "caabce86-db96-4a1e-82b1-0044a04b140b",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
   "isPublished": false,
   "isArchived": false

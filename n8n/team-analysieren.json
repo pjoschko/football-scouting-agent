@@ -1,44 +1,35 @@
 {
-  "id": "vTFABYuHE8aTJxYY",
+  "id": "0MK3JGdxudMuOAN1",
   "name": "Team analysieren",
   "nodes": [
     {
-      "id": "748d71b2-0564-444e-8db0-10e806dc5cec",
+      "id": "4ebd3c30-1508-4e05-aff2-e9a852b7d8db",
       "name": "Wenn von anderem Workflow aufgerufen",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
       "position": [
         -880,
-        80
+        -272
       ],
       "parameters": {
         "inputSource": "passthrough"
       }
     },
     {
-      "id": "8883edbd-1a9c-4b6f-b5f1-9c2247980dcd",
+      "id": "ccfd4e40-bc6f-4496-824c-585cd06faca5",
       "name": "Team-Performance abrufen",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         -656,
-        80
+        -432
       ],
       "parameters": {
         "workflowId": {
           "__rl": true,
-          "value": "9iu74bLLAjpUZ73C",
+          "value": "e7a415a1-6e8b-4f26-a724-3f728588c6b3",
           "mode": "list",
-          "cachedResultUrl": "/workflow/9iu74bLLAjpUZ73C",
-          "cachedResultName": "Internal — Team-Performance (CSV)"
-        },
-        "workflowInputs": {
-          "mappingMode": "defineBelow",
-          "value": {},
-          "matchingColumns": [],
-          "schema": [],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": true
+          "cachedResultName": "Team-Performance (CSV)"
         },
         "options": {}
       },
@@ -46,29 +37,20 @@
       "notesInFlow": false
     },
     {
-      "id": "3770b74c-bbd4-4a61-a203-6d3449559f4c",
+      "id": "5662baf8-c9a2-444a-95dc-ede350d91054",
       "name": "Team-Matches abrufen",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         -448,
-        80
+        -432
       ],
       "parameters": {
         "workflowId": {
           "__rl": true,
-          "value": "XT5LmIBrxt6nrDGv",
+          "value": "68f47ebf-1e64-41a1-af75-b2afae2c0fbc",
           "mode": "list",
-          "cachedResultUrl": "/workflow/XT5LmIBrxt6nrDGv",
-          "cachedResultName": "Internal — Team-Matches (CSV)"
-        },
-        "workflowInputs": {
-          "mappingMode": "defineBelow",
-          "value": {},
-          "matchingColumns": [],
-          "schema": [],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": true
+          "cachedResultName": "Team-Matches (CSV)"
         },
         "options": {}
       },
@@ -76,13 +58,13 @@
       "notesInFlow": false
     },
     {
-      "id": "ea61abd9-9e56-4bcf-b01f-dda8effdf326",
+      "id": "7105f19d-ddfd-4064-8185-2b1616ec5402",
       "name": "Teamdiagnose: Datenverfuegbarkeit pruefen",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
         -224,
-        80
+        -432
       ],
       "parameters": {
         "conditions": {
@@ -112,39 +94,39 @@
       "notesInFlow": false
     },
     {
-      "id": "17e464a8-1a42-4783-933c-5915595da625",
+      "id": "4ecf8b69-9ab7-42cc-b8b4-62b41f20d228",
       "name": "Teamdiagnose (keine Daten) erzeugen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         0,
-        272
+        -240
       ],
       "parameters": {
         "jsCode": "const item = $input.item.json;\n\nconst teamDiagnosis = {\n  simulated: false,\n  dataAvailable: false,\n  diagnosisCategory: 'no_data',\n  evidence: [\n    `Keine importierten Analytics-Daten fuer '${item.club}' vorhanden (Data Table 'football_scouting_raw') - es werden keine Ersatzwerte erfunden.`\n  ],\n  leagueComparisonAvailable: false,\n  leagueComparison: `Ohne Datengrundlage ist kein Ligavergleich fuer '${item.club}' moeglich.`,\n  hypotheses: [\n    'Ohne Datengrundlage kann keine belastbare Hypothese zur sportlichen Situation abgeleitet werden.'\n  ],\n  counterHypotheses: [],\n  mainProblem: `Fuer '${item.club}' liegen keine CSV-Analytics-Daten vor; auf dieser Datengrundlage ist keine Diagnose moeglich.`,\n  uncertainties: [\n    'Diese Aussage stammt aus dem CSV-Analytics-Adapter (Data Table football_scouting_raw), nicht aus einer echten Qlik-Analyse oder Websuche.',\n    'Ohne Datengrundlage konnte kein LLM zur Interpretation herangezogen werden.'\n  ]\n};\n\nreturn [{ json: { ...item, teamDiagnosis } }];"
       }
     },
     {
-      "id": "ff540e0e-35d1-47ae-b1c9-45fdb3afd51a",
+      "id": "b69685c9-b7b0-4cd4-a03f-6f4e9882586e",
       "name": "Teamdiagnose: Evidenz aufbereiten",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         0,
-        0
+        -512
       ],
       "parameters": {
-        "jsCode": "const item = $input.item.json;\n\nconst perf = item.teamPerformance || {};\nconst matchesContainer = item.teamMatches || {};\nconst matches = Array.isArray(matchesContainer.matches)\n  ? matchesContainer.matches\n  : [];\n\n// Alle fachlich relevanten aggregierten Teamdaten.\n// Technische Transport-/Storage-Felder lassen wir bewusst weg.\nconst performance = {\n  matchesAnalyzed: perf.matchesAnalyzed,\n  invalidMatches: perf.invalidMatches,\n\n  wins: perf.wins,\n  draws: perf.draws,\n  losses: perf.losses,\n  points: perf.points,\n\n  goalsFor: perf.goalsFor,\n  goalsAgainst: perf.goalsAgainst,\n  goalDifference: perf.goalDifference,\n\n  avgGoalsFor: perf.avgGoalsFor,\n  avgGoalsAgainst: perf.avgGoalsAgainst,\n\n  xGMatchesAnalyzed: perf.xGMatchesAnalyzed,\n  xGFor: perf.xGFor,\n  xGAgainst: perf.xGAgainst,\n  xGDifference: perf.xGDifference,\n\n  avgXGFor: perf.avgXGFor,\n  avgXGAgainst: perf.avgXGAgainst,\n\n  form: perf.form\n};\n\n// Alle verfügbaren fachlichen Daten der einzelnen Spiele.\nconst matchData = matches.map((m) => ({\n  date: m.date,\n  opponent: m.opponent,\n  homeAway: m.homeAway,\n\n  goalsFor: m.goalsFor,\n  goalsAgainst: m.goalsAgainst,\n\n  xGFor: m.xGFor,\n  xGAgainst: m.xGAgainst,\n\n  result: m.result,\n  competition: m.competition\n}));\n\n// Strukturierter Snapshot für das LLM.\n// Hier entscheidet JavaScript nicht mehr, welche Kennzahl \"wichtig\" ist.\nconst teamDiagnosisInput = {\n  club: item.club,\n  objective: item.objective,\n  additionalContext: item.additionalContext || null,\n  performance,\n  matches: matchData\n};\n\n// Evidence bleibt erhalten, weil der spätere Merge-Node dieses Feld verwendet.\n// Statt einer starken Vorinterpretation enthält es jetzt den vollständigen\n// fachlichen Snapshot.\nconst teamDiagnosisEvidence = [\n  `Aggregierte Team-Performance:\\n${JSON.stringify(performance, null, 2)}`,\n  `Verfügbare Einzelspiele:\\n${JSON.stringify(matchData, null, 2)}`\n];\n\nreturn [{\n  json: {\n    ...item,\n    teamDiagnosisInput,\n    teamDiagnosisEvidence\n  }\n}];"
+        "jsCode": "const item = $input.item.json;\nconst perf = item.teamPerformance;\nconst matches = item.teamMatches;\n\nconst recentResults = (matches && Array.isArray(matches.matches))\n  ? matches.matches.map((m) => `${m.result} ${m.goalsFor}:${m.goalsAgainst} vs. ${m.opponent} (${m.date})`)\n  : [];\n\nconst teamDiagnosisEvidence = [\n  `Bilanz der letzten ${perf.matchesAnalyzed} Pflichtspiele: ${perf.wins}S/${perf.draws}U/${perf.losses}N, Tore ${perf.goalsFor}:${perf.goalsAgainst}, Punkte ${perf.points} (CSV-Analytics-Adapter, Data Table football_scouting_raw).`,\n  `Form (neuestes Spiel zuerst): ${perf.form.join('-')}.`,\n  `Punkteschnitt der letzten ${perf.matchesAnalyzed} Spiele: ${(perf.points / perf.matchesAnalyzed).toFixed(2)} pro Spiel.`,\n  `Durchschnittliche Tore pro Spiel: ${perf.avgGoalsFor} erzielt, ${perf.avgGoalsAgainst} kassiert (Tordifferenz ${perf.goalDifference}).`,\n  ...recentResults\n];\n\nreturn [{ json: { ...item, teamDiagnosisEvidence } }];"
       }
     },
     {
-      "id": "93bcc6c2-bde2-4d64-95fe-b7a5b7772f39",
+      "id": "dbc3cadd-82aa-4af6-8106-32773785e8f2",
       "name": "Teamdiagnose LLM",
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.6,
       "position": [
-        176,
-        0
+        224,
+        -512
       ],
       "parameters": {
         "promptType": "define",
@@ -163,13 +145,13 @@
       "onError": "continueErrorOutput"
     },
     {
-      "id": "c67b5385-e46c-42ff-97b0-171929eb40ae",
+      "id": "e275e1b0-7387-4279-8cbf-6186587825f6",
       "name": "Teamdiagnose Output-Schema",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
       "position": [
         224,
-        208
+        -304
       ],
       "parameters": {
         "schemaType": "manual",
@@ -177,13 +159,13 @@
       }
     },
     {
-      "id": "4cef67e4-9751-4615-a0c0-5fe4a27c8652",
+      "id": "75692eba-dd3b-41e7-aba2-ea9ef0d6dbfa",
       "name": "Ollama Modell (Qwen3.8:latest)",
       "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
       "position": [
         224,
-        384
+        -128
       ],
       "parameters": {
         "model": "Qwen3.8:latest",
@@ -199,13 +181,13 @@
       }
     },
     {
-      "id": "4e72235d-93e0-4596-9b54-8e91e5960f68",
+      "id": "6aa8f57a-cba3-4aee-a3dc-a6beb842c5da",
       "name": "LLM-Fehler normalisieren",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         448,
-        384
+        -128
       ],
       "parameters": {
         "jsCode": "const item = $input.item.json;\nconst rawError = item && item.error;\nconst rawMessage = typeof rawError === 'string'\n  ? rawError\n  : (rawError && rawError.message) ? rawError.message : 'Unbekannter Fehler';\n\nreturn [{\n  json: {\n    ...item,\n    valid: false,\n    errorMessage: 'Bei der Kommunikation mit dem lokalen Ollama-Modell ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.\\n\\nDetails: ' + rawMessage\n  }\n}];"
@@ -213,40 +195,39 @@
       "notes": "Normalisiert den LLM-Fehler intern; der gemeinsame Capability-Exit wirft diese fachliche Fehlermeldung an den Hauptworkflow."
     },
     {
-      "id": "b43621a8-f771-4a57-9dd2-582a5f4a105a",
+      "id": "e98e59cf-df66-484d-8e0b-4e4907c57338",
       "name": "Teamdiagnose zusammenfuehren",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         448,
-        0
+        -512
       ],
       "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "const llmResult = $json.output ?? $json;\nconst original = $('Teamdiagnose: Evidenz aufbereiten').first().json;\n\nif (!llmResult.diagnosisCategory) {\n  throw new Error(\n    'LLM-Ausgabe enthält keine diagnosisCategory. Input: ' +\n    JSON.stringify($json)\n  );\n}\n\nif (!llmResult.mainProblem) {\n  throw new Error(\n    'LLM-Ausgabe enthält kein mainProblem. Input: ' +\n    JSON.stringify($json)\n  );\n}\n\nconst teamDiagnosis = {\n  simulated: false,\n  dataAvailable: true,\n\n  diagnosisCategory: llmResult.diagnosisCategory,\n\n  evidence: Array.isArray(original.teamDiagnosisEvidence)\n    ? original.teamDiagnosisEvidence\n    : [],\n\n  leagueComparisonAvailable: false,\n  leagueComparison: llmResult.leagueComparison,\n\n  hypotheses: llmResult.hypotheses,\n  counterHypotheses: llmResult.counterHypotheses,\n  mainProblem: llmResult.mainProblem,\n  uncertainties: llmResult.uncertainties\n};\n\nreturn {\n  json: {\n    ...original,\n    teamDiagnosis\n  }\n};"
+        "jsCode": "const parsed = $input.item.json;\nconst original = $('Teamdiagnose: Evidenz aufbereiten').first().json;\nconst leagueComparisonAvailable = false;\n\nconst teamDiagnosis = {\n  simulated: false,\n  dataAvailable: true,\n  diagnosisCategory: parsed.diagnosisCategory,\n  evidence: original.teamDiagnosisEvidence,\n  leagueComparisonAvailable,\n  leagueComparison: leagueComparisonAvailable\n    ? parsed.leagueComparison\n    : `Auf dieser Datengrundlage liegt kein belastbarer Vergleich zur Bundesliga-Konkurrenz vor: es liegen ausschliesslich Kennzahlen von '${original.club}' vor, keine Liga-Durchschnittswerte oder Kennzahlen anderer Vereine.`,\n  hypotheses: parsed.hypotheses,\n  counterHypotheses: parsed.counterHypotheses,\n  mainProblem: parsed.mainProblem,\n  uncertainties: parsed.uncertainties\n};\n\nreturn [{ json: { ...original, teamDiagnosis } }];"
       }
     },
     {
-      "id": "54f8baaa-7d8f-4a85-a8d9-9646c615269d",
+      "id": "022e85e5-bb8b-4d61-b35f-f3756ee58a30",
       "name": "Teamdiagnose pruefen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         672,
-        80
+        -432
       ],
       "parameters": {
         "jsCode": "const item = $input.item.json;\nconst d = item.teamDiagnosis;\nconst errors = [];\n\nif (!d || typeof d !== 'object') {\n  errors.push('teamDiagnosis fehlt oder ist kein Objekt.');\n} else {\n  if (!Array.isArray(d.evidence) || d.evidence.length === 0) errors.push('teamDiagnosis.evidence fehlt oder ist leer.');\n  if (typeof d.leagueComparisonAvailable !== 'boolean') errors.push('teamDiagnosis.leagueComparisonAvailable fehlt oder ist kein boolean.');\n  if (typeof d.leagueComparison !== 'string' || !d.leagueComparison.trim()) errors.push('teamDiagnosis.leagueComparison fehlt.');\n  if (!Array.isArray(d.hypotheses) || d.hypotheses.length === 0) errors.push('teamDiagnosis.hypotheses fehlt oder ist leer.');\n  if (!Array.isArray(d.counterHypotheses)) errors.push('teamDiagnosis.counterHypotheses fehlt oder ist kein Array.');\n  if (typeof d.mainProblem !== 'string' || !d.mainProblem.trim()) errors.push('teamDiagnosis.mainProblem fehlt.');\n  if (!Array.isArray(d.uncertainties)) errors.push('teamDiagnosis.uncertainties fehlt oder ist kein Array.');\n}\n\nconst valid = errors.length === 0;\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid ? undefined : 'Die Teamdiagnose ist ungueltig und wird nicht als fachliche Grundlage verwendet.\\n\\n' + errors.join('\\n')\n  }\n}];"
       }
     },
     {
-      "id": "0a8c5b03-d9eb-4378-8fb2-b60ce6ceb309",
+      "id": "8fbf872d-5d86-4375-93a9-91253b29aad4",
       "name": "Teamdiagnose gueltig?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
         880,
-        80
+        -432
       ],
       "parameters": {
         "conditions": {
@@ -274,26 +255,26 @@
       }
     },
     {
-      "id": "2a780322-1c16-49a5-bdda-97558f51b580",
+      "id": "35a18a7a-23d6-48f1-9b2a-11436f2ea2dc",
       "name": "Teamdiagnose: Datengrundlage pruefen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         1104,
-        0
+        -512
       ],
       "parameters": {
         "jsCode": "const item = $input.item.json;\nconst d = item.teamDiagnosis;\nconst valid = !!d && d.diagnosisCategory !== 'no_data';\n\nreturn [{\n  json: {\n    ...item,\n    valid,\n    errorMessage: valid\n      ? undefined\n      : `Fuer '${item.club}' liegen keine ausreichenden Analytics-Daten fuer eine Teamdiagnose vor. Eine Bedarfsermittlung (Spielerprofil) und Spielersuche werden deshalb nicht durchgefuehrt, statt auf einen beliebigen Positionspool zurueckzufallen. Bitte weitere Analytics-Daten fuer diesen Verein bereitstellen.\\n\\n${d && d.mainProblem ? d.mainProblem : ''}`\n  }\n}];"
       }
     },
     {
-      "id": "9b537679-f65c-4655-bde2-fcb6d4777d5c",
+      "id": "bc7f7a08-93c1-4d3c-9579-4ea266a39b87",
       "name": "Teamdiagnose: Datengrundlage ausreichend?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
         1328,
-        0
+        -512
       ],
       "parameters": {
         "conditions": {
@@ -301,7 +282,7 @@
             "caseSensitive": true,
             "leftValue": "",
             "typeValidation": "strict",
-            "version": 1
+            "version": 2
           },
           "conditions": [
             {
@@ -321,17 +302,16 @@
       }
     },
     {
-      "id": "fa9053ca-2e3b-4cac-8627-679ba8b6056c",
+      "id": "5f2d78af-859c-41d7-8173-a852720e2cf0",
       "name": "Team analysieren: Ergebnis",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         1552,
-        80
+        -432
       ],
       "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "const item = $json;\n\nif (item.valid === false) {\n  throw new Error(\n    '[TEAM_ANALYSIS] ' +\n    (item.errorMessage || 'Team analysieren ist fehlgeschlagen.')\n  );\n}\n\nreturn {\n  json: {\n    ...item,\n    status: 'success'\n  }\n};"
+        "jsCode": "const item = $input.item.json;\nif (item.valid === false) {\n  throw new Error('[TEAM_ANALYSIS] ' + (item.errorMessage || 'Team analysieren ist fehlgeschlagen.'));\n}\nreturn [{ json: { ...item, status: 'success' } }];"
       },
       "notes": "Einziger Capability-Exit: liefert bei Erfolg teamDiagnosis. Bei valid=false wird die intern formulierte errorMessage als Subworkflow-Fehler geworfen; der Hauptworkflow braucht kein eigenes Team-analysieren-gueltig-Gate mehr.",
       "notesInFlow": false
@@ -534,13 +514,10 @@
   },
   "settings": {
     "executionOrder": "v1",
-    "binaryMode": "separate",
-    "timeSavedMode": "fixed",
-    "callerPolicy": "workflowsFromSameOwner",
-    "availableInMCP": false
+    "binaryMode": "separate"
   },
-  "versionId": "7f6a8e3b-ae03-40b1-8592-fb653b6ce05e",
+  "versionId": "bb7d93b2-b6df-4050-b2f3-5ddd895c2f57",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
   "isPublished": false,
-  "isArchived": false
+  "isArchived": true
 }
