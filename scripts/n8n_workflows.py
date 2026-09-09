@@ -194,16 +194,25 @@ def load_local_workflows(directory: Path) -> list[LocalWorkflow]:
         raise SyncError(f"Workflow path is not a directory: {directory}")
 
     workflows: list[LocalWorkflow] = []
+    skipped_files: list[Path] = []
     for path in sorted(directory.glob("*.json")):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            raise SyncError(f"Invalid JSON in {path}: {exc}") from exc
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"ERROR   Skipping invalid/unreadable workflow file {path}: {exc}", file=sys.stderr)
+            skipped_files.append(path)
+            continue
         if is_workflow(data):
             workflows.append(LocalWorkflow(path=path, data=data))
 
+    if skipped_files:
+        print(
+            f"Skipped {len(skipped_files)} invalid/unreadable workflow file(s); continuing with valid files.",
+            file=sys.stderr,
+        )
+
     if not workflows:
-        raise SyncError(f"No workflow JSON files found in {directory}")
+        raise SyncError(f"No valid workflow JSON files found in {directory}")
     _assert_unique_local_identity(workflows)
     return workflows
 
@@ -397,8 +406,18 @@ def upload(config: Config, *, dry_run: bool) -> None:
     # parent workflow be rewritten to a remote child ID even when both already exist.
     id_mapping: dict[str, str] = {}
     matches: dict[Path, dict[str, Any] | None] = {}
+    failed: list[tuple[str, str]] = []
+    preflight_failed_paths: set[Path] = set()
+
     for workflow in local:
-        match = _match_remote(workflow, remote_by_id, remote_by_name)
+        try:
+            match = _match_remote(workflow, remote_by_id, remote_by_name)
+        except SyncError as exc:
+            message = str(exc)
+            failed.append((workflow.name, message))
+            preflight_failed_paths.add(workflow.path)
+            print(f"ERROR   {workflow.name}: {message}", file=sys.stderr)
+            continue
         matches[workflow.path] = match
         if workflow.id and match and isinstance(match.get("id"), str):
             id_mapping[workflow.id] = match["id"]
@@ -407,62 +426,88 @@ def upload(config: Config, *, dry_run: bool) -> None:
     for index, data in enumerate(ordered_data, start=1):
         print(f"  {index:02d}. {_workflow_label(data)}")
 
+    successful = 0
     for data in ordered_data:
         local_workflow = local_by_object[id(data)]
-        unresolved = [
-            dep
-            for dep in static_subworkflow_ids(data)
-            if dep in local_by_id and dep not in id_mapping
-        ]
-        if unresolved:
-            raise SyncError(
-                f"Cannot upload {local_workflow.name}: local dependencies have no remote ID yet: "
-                + ", ".join(sorted(unresolved))
-            )
+        if local_workflow.path in preflight_failed_paths:
+            continue
 
-        rewritten = rewrite_subworkflow_ids(data, id_mapping)
-        payload = sanitize_write_payload(rewritten)
-        payload["parentFolderId"] = config.folder_id
-        match = matches[local_workflow.path]
+        try:
+            unresolved = [
+                dep
+                for dep in static_subworkflow_ids(data)
+                if dep in local_by_id and dep not in id_mapping
+            ]
+            if unresolved:
+                raise SyncError(
+                    f"Cannot upload {local_workflow.name}: local dependencies have no remote ID yet: "
+                    + ", ".join(sorted(unresolved))
+                )
 
-        if match:
-            remote_id = match.get("id")
-            if not isinstance(remote_id, str) or not remote_id:
-                raise SyncError(f"Remote workflow match for {local_workflow.name} has no id")
-            print(f"UPDATE  {local_workflow.name} -> {remote_id}")
-            if dry_run:
-                continue
-            response = client.update_workflow(remote_id, payload)
-        else:
-            create_payload = dict(payload)
-            create_payload["projectId"] = config.project_id
-            print(f"CREATE  {local_workflow.name}")
-            if dry_run:
-                # A future remote ID cannot be known without creating the workflow.
-                # Dry-run therefore stops if another local workflow depends on it.
-                if local_workflow.id and any(
-                    local_workflow.id in static_subworkflow_ids(other.data) for other in local
-                ):
-                    raise SyncError(
-                        f"Dry-run cannot continue past missing dependency {local_workflow.name!r}: "
-                        "n8n assigns its remote ID only when it is created. Run upload without --dry-run."
-                    )
-                continue
-            response = client.create_workflow(create_payload)
-            matches[local_workflow.path] = response
+            rewritten = rewrite_subworkflow_ids(data, id_mapping)
+            payload = sanitize_write_payload(rewritten)
+            payload["parentFolderId"] = config.folder_id
+            match = matches[local_workflow.path]
 
-        response_id = response.get("id")
-        if not isinstance(response_id, str) or not response_id:
-            raise SyncError(f"n8n returned no workflow id for {local_workflow.name}")
-        if local_workflow.id:
-            id_mapping[local_workflow.id] = response_id
-        remote_by_id[response_id] = response
-        remote_by_name.setdefault(local_workflow.name, []).append(response)
+            if match:
+                remote_id = match.get("id")
+                if not isinstance(remote_id, str) or not remote_id:
+                    raise SyncError(f"Remote workflow match for {local_workflow.name} has no id")
+                print(f"UPDATE  {local_workflow.name} -> {remote_id}")
+                if dry_run:
+                    successful += 1
+                    continue
+                response = client.update_workflow(remote_id, payload)
+            else:
+                create_payload = dict(payload)
+                create_payload["projectId"] = config.project_id
+                print(f"CREATE  {local_workflow.name}")
+                if dry_run:
+                    # A future remote ID cannot be known without creating the workflow.
+                    # Dry-run therefore cannot resolve dependent local workflows.
+                    if local_workflow.id and any(
+                        local_workflow.id in static_subworkflow_ids(other.data) for other in local
+                    ):
+                        raise SyncError(
+                            f"Dry-run cannot continue past missing dependency {local_workflow.name!r}: "
+                            "n8n assigns its remote ID only when it is created. Run upload without --dry-run."
+                        )
+                    successful += 1
+                    continue
+                response = client.create_workflow(create_payload)
+                matches[local_workflow.path] = response
+
+            response_id = response.get("id")
+            if not isinstance(response_id, str) or not response_id:
+                raise SyncError(f"n8n returned no workflow id for {local_workflow.name}")
+            if local_workflow.id:
+                id_mapping[local_workflow.id] = response_id
+            remote_by_id[response_id] = response
+            remote_by_name.setdefault(local_workflow.name, []).append(response)
+            successful += 1
+
+        except SyncError as exc:
+            message = str(exc)
+            failed.append((local_workflow.name, message))
+            print(f"ERROR   {local_workflow.name}: {message}", file=sys.stderr)
+            continue
 
     if dry_run:
-        print("Dry-run complete; no workflows were changed.")
+        print(f"Dry-run complete; {successful} workflow(s) checked successfully; no workflows were changed.")
     else:
-        print(f"Uploaded {len(local)} workflow(s) into n8n folder {config.folder_id}.")
+        print(
+            f"Upload processing complete: {successful} workflow(s) uploaded successfully, "
+            f"{len(failed)} failed."
+        )
+
+    if failed:
+        print("Failed workflows:", file=sys.stderr)
+        for name, message in failed:
+            print(f"  - {name}: {message}", file=sys.stderr)
+        raise SyncError(
+            f"Upload completed with {len(failed)} failed workflow(s); "
+            f"{successful} workflow(s) completed successfully."
+        )
 
 
 def _slugify(value: str) -> str:
