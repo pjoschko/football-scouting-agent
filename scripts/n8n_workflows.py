@@ -607,11 +607,34 @@ def publish(config: Config, *, dry_run: bool) -> None:
         print("Dry-run complete; no workflow was published.")
         return
 
+    failed: list[tuple[str, str]] = []
+    successful = 0
     for workflow in ordered:
         workflow_id = workflow["id"]
-        print(f"PUBLISH {_workflow_label(workflow)} ({workflow_id})")
-        client.publish_workflow(workflow_id)
-    print(f"Published {len(ordered)} workflow(s) from n8n folder {config.folder_id}.")
+        name = _workflow_label(workflow)
+        print(f"PUBLISH {name} ({workflow_id})")
+        try:
+            client.publish_workflow(workflow_id)
+            successful += 1
+        except SyncError as exc:
+            message = str(exc)
+            failed.append((name, message))
+            print(f"ERROR   {name}: {message}", file=sys.stderr)
+            continue
+
+    print(
+        f"Publish processing complete: {successful} workflow(s) published successfully, "
+        f"{len(failed)} failed."
+    )
+
+    if failed:
+        print("Failed workflows:", file=sys.stderr)
+        for name, message in failed:
+            print(f"  - {name}: {message}", file=sys.stderr)
+        raise SyncError(
+            f"Publish completed with {len(failed)} failed workflow(s); "
+            f"{successful} workflow(s) completed successfully."
+        )
 
 
 def build_parser() -> argparse.ArgumentParser:
