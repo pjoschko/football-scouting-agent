@@ -1,9 +1,9 @@
 {
-  "id": "GkRTiKu4JBkOUlG5",
-  "name": "[Demo] Qlik Demo Ollama via MCP",
+  "id": "x1A5QwHEpmCMdgvz",
+  "name": "[Demo] Qlik Demo OpenAI via MCP",
   "nodes": [
     {
-      "id": "656ff165-49b9-42b2-ab4f-cf8596d5b4ce",
+      "id": "31941f5d-1d7b-4587-b97e-06c0cae42546",
       "name": "Chat",
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.4,
@@ -16,10 +16,10 @@
           "responseMode": "lastNode"
         }
       },
-      "webhookId": "9a8b5d50-d40f-4f83-a9e6-a9b30354cee6"
+      "webhookId": "433b37e3-1469-4af0-87b4-30ea3452bc41"
     },
     {
-      "id": "95f24aff-1ddc-42e0-85de-ed0bf79298c8",
+      "id": "32e88caf-80ae-44d1-816a-d4f801c9088e",
       "name": "Qlik Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3.1,
@@ -29,32 +29,12 @@
       ],
       "parameters": {
         "options": {
-          "systemMessage": "Analysiere die sportliche Performance vom Hamburger SV anhand der \"Team Analytics Application\" in Qlik. Rufe notwendige Daten ab, erstelle eine Hypothese passend zu dem User Prompt, prüfe mögliche Gegenhypothesen und ordne ihn als offensive, defensive oder neutrale Problemlage ein. Nutze dafür Team-Kennzahlen, Ligavergleich und relevante Einzelspiele. Liefere das Ergebnis strukturiert als diagnosisCategory, leagueComparison, hypotheses, counterHypotheses, mainProblem, uncertainties."
+          "systemMessage": "Analysiere die sportliche Performance des genannten Fußballvereins anhand der \"Team Analytics Application\" in Qlik. Rufe notwendige Daten ab, erstelle eine Hypothese passend zu dem User Prompt, prüfe mögliche Gegenhypothesen und ordne ihn als offensive, defensive oder neutrale Problemlage ein. Nutze dafür Team-Kennzahlen, Ligavergleich und relevante Einzelspiele. Liefere das Ergebnis strukturiert als diagnosisCategory, leagueComparison, hypotheses, counterHypotheses, mainProblem, uncertainties."
         }
       }
     },
     {
-      "id": "a8a14dae-b5aa-446d-8c2b-a58ef887dbd1",
-      "name": "Ollama Chat Model",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
-      "typeVersion": 1,
-      "position": [
-        1200,
-        224
-      ],
-      "parameters": {
-        "model": "qwen3.8-agent-128k:latest",
-        "options": {}
-      },
-      "credentials": {
-        "ollamaApi": {
-          "id": "ReUpCODpTFeMY6rC",
-          "name": "[cimt] Ollama"
-        }
-      }
-    },
-    {
-      "id": "e109e147-c5cc-4f93-8f1f-ae754a9a27da",
+      "id": "555a52ab-17e7-40d3-a507-9bf1dcfae341",
       "name": "Simple Memory",
       "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
       "typeVersion": 1.3,
@@ -67,7 +47,7 @@
       }
     },
     {
-      "id": "5cacb21c-1c6d-482e-b237-4b32e512603f",
+      "id": "fd1d0ba8-d298-4dcc-a42b-07b3129ece2d",
       "name": "Qlik MCP",
       "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
       "typeVersion": 1.4,
@@ -90,7 +70,7 @@
       }
     },
     {
-      "id": "81ad9b3a-bbb4-4cdb-9883-63bfe9c58584",
+      "id": "0cb8dca6-a77e-4d80-aa05-951c96291cbc",
       "name": "Sticky Note 4a8947ec",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -106,12 +86,12 @@
       }
     },
     {
-      "id": "5328a97c-4258-4d82-9d19-92c29d7ee35a",
+      "id": "2091e8fd-c1b5-4942-8e5f-4a6a86836e18",
       "name": "Chat1",
       "type": "@n8n/n8n-nodes-langchain.chat",
       "typeVersion": 1.3,
       "position": [
-        1632,
+        1824,
         0
       ],
       "parameters": {
@@ -119,7 +99,46 @@
         "message": "Hallo",
         "options": {}
       },
-      "webhookId": "49d08154-f8ec-4cb5-8c0f-cdad650a77c3"
+      "webhookId": "4ea55335-71c9-411e-b7be-7e64d8bfea2f"
+    },
+    {
+      "id": "d5ed08fc-2169-49c4-999c-4f9ba4d2a4de",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1184,
+        224
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.6-luna",
+          "mode": "list",
+          "cachedResultName": "gpt-5.6-luna"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "xCCXklmbDwiN41uw",
+          "name": "[EXT] OpenAI Account - Achtung kostenpflichtig!"
+        }
+      }
+    },
+    {
+      "id": "191c281c-4674-48c8-a021-c0c3bc947084",
+      "name": "Transform Output1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\n// The LLM's raw text output — adjust the source field if it's not `item.output`\n// (e.g. could be `item.text` or the item itself if already a string).\nlet raw = item.output !== undefined ? item.output : item;\n\nlet parsed;\nif (typeof raw === 'string') {\n  parsed = JSON.parse(raw);\n} else {\n  parsed = raw;\n}\n\nreturn {\n  json: {\n    ...parsed,\n    status: 'success'\n  }\n};"
+      }
     }
   ],
   "connections": {
@@ -129,17 +148,6 @@
           {
             "node": "Qlik Agent",
             "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Ollama Chat Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Qlik Agent",
-            "type": "ai_languageModel",
             "index": 0
           }
         ]
@@ -171,6 +179,28 @@
       "main": [
         [
           {
+            "node": "Transform Output1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Qlik Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform Output1": {
+      "main": [
+        [
+          {
             "node": "Chat1",
             "type": "main",
             "index": 0
@@ -183,7 +213,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "7b2d8948-0fae-4d43-9c0b-e8100ecab4e6",
+  "versionId": "ea6e87d7-7ab0-4451-80b3-f7d7e51dd47c",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
   "isPublished": false,
   "isArchived": false
