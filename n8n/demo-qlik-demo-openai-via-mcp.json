@@ -29,7 +29,7 @@
       ],
       "parameters": {
         "options": {
-          "systemMessage": "Analysiere die sportliche Performance des genannten Fußballvereins anhand der \"Team Analytics Application\" in Qlik. Rufe notwendige Daten ab, erstelle eine Hypothese passend zu dem User Prompt, prüfe mögliche Gegenhypothesen und ordne ihn als offensive, defensive oder neutrale Problemlage ein. Nutze dafür Team-Kennzahlen, Ligavergleich und relevante Einzelspiele. Liefere das Ergebnis strukturiert als diagnosisCategory, leagueComparison, hypotheses, counterHypotheses, mainProblem, uncertainties."
+          "systemMessage": "Für Saisonanalysen der Bundesliga 2025/26 gilt:\n\nVerwende TeamSeason als führende Quelle für saisonweite Teamkennzahlen wie Spiele, Siege, Unentschieden, Niederlagen, Punkte, Tore, Gegentore, xG und xGA.\nVerwende TeamMatches für Analysen einzelner Spiele und stelle sicher, dass die betrachteten Spiele zum selben Analysezeitraum gehören.\nFür Saisonanalysen 2025/26 ist TeamSeason die führende Tabelle für\naggregierte Teamwerte und TeamMatches die führende Tabelle für\nEinzelspiele. xG und xGA sind in den Matchdaten vorhanden.\nVermische niemals Kennzahlen unterschiedlicher Datenstände oder Zeiträume. TeamSnapshot enthält möglicherweise einen historischen Zwischenstand und darf nicht mit einer vollständigen Saisonaggregation kombiniert werden.\nPrüfe zentrale Kennzahlen auf Konsistenz:\nmatches = wins + draws + losses\npoints = wins * 3 + draws\nWenn Quellen widersprüchliche Werte liefern, entscheide dich nicht eigenständig für einen Wert, sondern benenne den Datenkonflikt.\nJede genannte Zahl muss aus einem Qlik-Tool-Ergebnis stammen oder unmittelbar daraus berechnet werden. Erfinde keine Werte.\nBevor du eine sportliche Hypothese formulierst, ermittle zuerst die relevanten Teamkennzahlen und vergleiche sie mit der Bundesliga-Konkurrenz.\nNutze anschließend passende Einzelspiele, um die Hypothese zu prüfen oder Gegenhypothesen zu bilden.\n\nLiefere diagnosisCategory, leagueComparison, hypotheses, counterHypotheses, mainProblem und uncertainties."
         }
       }
     },
@@ -213,7 +213,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "ea6e87d7-7ab0-4451-80b3-f7d7e51dd47c",
+  "versionId": "7051286b-af4f-4351-a27e-072233fe7369",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
   "isPublished": false,
   "isArchived": false
