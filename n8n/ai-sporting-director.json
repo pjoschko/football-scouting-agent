@@ -224,41 +224,7 @@
         2064
       ],
       "parameters": {
-        "jsCode": "const MAX_REVIEW_ROUNDS=3;\nconst submitted=$input.item.json;\nconst original=$('Execute Workflow: Scouting Brief erstellen').first().json;\nconst reviewDecision=(submitted['Entscheidung']||'').toString().trim();\nconst reviewFeedback=(submitted['Feedback (Pflicht bei Request Changes)']||'').toString().trim();\nconst errors=[];\nif(!['Approve','Request Changes','Reject'].includes(reviewDecision)) errors.push('Unbekannte Review-Entscheidung: '+reviewDecision);\nif(reviewDecision==='Request Changes'&&!reviewFeedback) errors.push('Fuer \"Request Changes\" ist ein Feedback-Text erforderlich.');\nconst reviewRound=(original.scoutingBrief&&original.scoutingBrief.reviewRound)||1;\nconst maxRoundsReached=reviewDecision==='Request Changes'&&reviewRound>=MAX_REVIEW_ROUNDS;\nconst reviewOutcome=maxRoundsReached?'Reject':reviewDecision;\nconst valid=errors.length===0;\nreturn [{json:{...original,reviewDecision,reviewFeedback,reviewOutcome,maxRoundsReached,valid,errorMessage:valid?undefined:'Die Review-Entscheidung ist ungueltig.\\n\\n'+errors.join('\\n')}}];"
-      }
-    },
-    {
-      "id": "c62f87f6-d26f-40e8-959a-ef3aa762f7bf",
-      "name": "Review-Entscheidung gueltig?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        9136,
-        2064
-      ],
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "b1a2c3d4-cond-5006",
-              "leftValue": "={{ $json.valid }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
+        "jsCode": "const MAX_REVIEW_ROUNDS = 3;\n\nconst submitted = $input.item.json;\nconst original = $('Execute Workflow: Scouting Brief erstellen').first().json;\n\nconst reviewDecision = (submitted['Entscheidung'] || '').toString().trim();\nconst reviewFeedback = (submitted['Feedback (Pflicht bei Request Changes)'] || '').toString().trim();\n\nconst errors = [];\n\nif (!['Approve', 'Request Changes', 'Reject'].includes(reviewDecision)) {\n  errors.push('Unbekannte Review-Entscheidung: ' + reviewDecision);\n}\n\nif (reviewDecision === 'Request Changes' && !reviewFeedback) {\n  errors.push('Fuer \"Request Changes\" ist ein Feedback-Text erforderlich.');\n}\n\nif (errors.length > 0) {\n  throw new Error(\n    'Die Review-Entscheidung ist ungueltig.\\n\\n' + errors.join('\\n')\n  );\n}\n\nconst reviewRound =\n  (original.scoutingBrief && original.scoutingBrief.reviewRound) || 1;\n\nconst maxRoundsReached =\n  reviewDecision === 'Request Changes' &&\n  reviewRound >= MAX_REVIEW_ROUNDS;\n\nconst reviewOutcome =\n  maxRoundsReached ? 'Reject' : reviewDecision;\n\nreturn [{\n  json: {\n    ...original,\n    reviewDecision,\n    reviewFeedback,\n    reviewOutcome,\n    maxRoundsReached\n  }\n}];"
       }
     },
     {
@@ -267,7 +233,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        9344,
+        9088,
         2064
       ],
       "parameters": {
@@ -346,7 +312,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        9616,
+        9360,
         2064
       ],
       "parameters": {
@@ -376,7 +342,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        9824,
+        9568,
         2064
       ],
       "parameters": {
@@ -406,7 +372,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        10032,
+        9776,
         2064
       ],
       "parameters": {
@@ -437,7 +403,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        10288,
+        10048,
         2064
       ],
       "parameters": {
@@ -468,7 +434,7 @@
       "type": "n8n-nodes-base.form",
       "typeVersion": 1,
       "position": [
-        10560,
+        10256,
         2064
       ],
       "parameters": {
@@ -485,8 +451,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        10032,
-        2464
+        10304,
+        2288
       ],
       "parameters": {
         "jsCode": "const item=$input.item.json||{};\nconst rawError=item.error;\nconst errorMessage=typeof rawError==='string'?rawError:(rawError&&rawError.message)?rawError.message:(item.errorMessage||'Es ist ein unbekannter Capability-Fehler aufgetreten.');\nreturn [{json:{...item,errorMessage}}];"
@@ -500,7 +466,7 @@
       "type": "n8n-nodes-base.form",
       "typeVersion": 1,
       "position": [
-        10288,
+        10512,
         2464
       ],
       "parameters": {
@@ -574,25 +540,7 @@
       "main": [
         [
           {
-            "node": "Review-Entscheidung gueltig?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Review-Entscheidung gueltig?": {
-      "main": [
-        [
-          {
             "node": "Review: Approve?",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Fehler anzeigen",
             "type": "main",
             "index": 0
           }
@@ -722,7 +670,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "8bb996d6-2be1-432a-a0a7-3ad8dec8b21e",
+  "versionId": "2e977dc4-90da-4696-81d3-eed2a9b93515",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
   "isPublished": false,
   "isArchived": false

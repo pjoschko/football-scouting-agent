@@ -129,7 +129,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        448,
+        464,
         0
       ],
       "parameters": {
@@ -151,7 +151,7 @@
             "caseSensitive": true,
             "leftValue": "",
             "typeValidation": "strict",
-            "version": 2
+            "version": 1
           },
           "conditions": [
             {
@@ -410,8 +410,8 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "3d955d0e-b5e7-4061-9e36-94a6efd84e11",
+  "versionId": "b6b5a2c5-2733-46c8-8b7a-9602bce59404",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
-  "isPublished": true,
+  "isPublished": false,
   "isArchived": false
 }
