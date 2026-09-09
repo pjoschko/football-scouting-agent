@@ -1,52 +1,153 @@
 {
   "id": "crrgOO7O8bTHnldV",
-  "name": "Recherche (Dummy)",
+  "name": "Recherche",
   "nodes": [
     {
       "id": "501998ec-49b0-4bbf-8324-527c3119bb39",
       "name": "Wenn von anderem Workflow aufgerufen",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
-      "typeVersion": 1.1,
-      "position": [
-        0,
-        0
-      ],
-      "parameters": {
-        "inputSource": "passthrough"
-      }
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "parameters": {"workflowInputs": {"values": [{"name": "researchCandidateName", "type": "string"}, {"name": "researchBatchId", "type": "string"}]}},
+      "notes": "Expliziter Parent→Child-Vertrag fuer genau einen Research-Zweig. Der Parent mappt researchCandidateName und researchBatchId explizit; der Child ist damit nicht mehr von implizitem Passthrough abhaengig.",
+      "notesInFlow": false
     },
     {
-      "id": "9d903b1d-c96f-40df-a41d-ef8e982d659e",
-      "name": "Recherche-Dummy je Kandidat erzeugen",
+      "id": "7c1f9e2a-3b4d-4e5f-8a6b-1c2d3e4f5a6b",
+      "name": "Recherche-Start markieren",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [128, 0],
+      "parameters": {
+        "dataTableId": {"__rl": true, "mode": "name", "value": "football_scouting_research_runtime"},
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {"batchId": "={{ $json.researchBatchId }}", "candidate": "={{ $json.researchCandidateName }}", "status": "started", "payload": "", "completedAt": "={{ $now.toISO() }}"},
+          "schema": [
+            {"id": "batchId", "displayName": "batchId", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "candidate", "displayName": "candidate", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "status", "displayName": "status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "payload", "displayName": "payload", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "completedAt", "displayName": "completedAt", "required": false, "defaultMatch": false, "display": true, "type": "date", "canBeUsedToMatch": true}
+          ]
+        },
+        "options": {}
+      },
+      "notes": "Persistiert VOR dem Agent-Aufruf einen 'started'-Datensatz mit batchId+candidate. Dieser Zeitpunkt ist die Basis fuer den 120-Sekunden-Timeout genau dieses Zweigs. Data-Table-Insert gibt Insert-Metadaten aus; deshalb liest der Agent seinen Kontext direkt aus dem Trigger.",
+      "notesInFlow": false
+    },
+    {
+      "id": "d4d27501-134b-4a8f-a0f6-74c12cf349aa",
+      "name": "Recherche-Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [256, 0],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Recherchiere ausschliesslich den folgenden Fussballspieler mithilfe der Websuche: {{ $('Wenn von anderem Workflow aufgerufen').first().json.researchCandidateName }}.\n\nSuche gezielt und mit mehreren Anfragen nach: aktuellem Verein, Marktwert, Vertragslaufzeit/-ende, aktuellen Verletzungen, der aktuellen sportlichen Situation (z. B. Einsatzzeiten, Formkurve, Rolle im Team) sowie relevanten aktuellen News und Hinweisen auf eine moegliche Wechselwahrscheinlichkeit.\n\nLiefere ausschliesslich strukturierte Daten fuer GENAU diesen einen Kandidaten. Liefere zusaetzlich zu den freitextlichen Feldern 'contract' und 'marketValue' zwingend auch die maschinenlesbaren Felder 'contractEndDate' und 'marketValueMEUR'. Fuer JEDE belastbare Information muss ein passender Eintrag in 'evidence' enthalten sein. Der Evidence-Claim muss den tatsaechlich ausgegebenen Feldwert belegen: fuer club, contract, marketValue, injuries, currentSituation, transferLikelihoodNotes und news entspricht claim dem konkreten normalisierten Feldinhalt. Wenn contractEndDate gesetzt ist, muss derselbe contract-Claim dieses Datum als YYYY-MM-DD oder DD.MM.YYYY enthalten. Wenn marketValueMEUR gesetzt ist, muss derselbe marketValue-Claim den entsprechenden Zahlenwert in Mio. EUR enthalten.",
+        "hasOutputParser": true,
+        "options": {"systemMessage": "Du bist ein Recherche-Assistent fuer Fussball-Scouting-Due-Diligence. Du nutzt ausschliesslich das Websuche-Tool fuer aktuelle externe Informationen und erfindest keine Fakten oder Quellen. Stelle mehrere gezielte Suchanfragen je Kandidat.\n\nFuer jedes fachliche Feld lieferst du nur einen Wert, wenn du ihn durch Webtreffer belegen kannst; sonst null bzw. [] bei news. Zusaetzlich lieferst du 'evidence': fuer JEDE belastbare Information mindestens einen Evidence-Eintrag mit:\n- fact: einer von club, contract, marketValue, injuries, currentSituation, transferLikelihoodNotes, news\n- claim: der konkrete normalisierte Feldinhalt, den diese Quelle belegt. Fuer club, contract, marketValue, injuries, currentSituation, transferLikelihoodNotes und news muss claim inhaltlich exakt dem ausgegebenen Feldwert entsprechen (abgesehen von reinem Whitespace).\n- source: Titel/Domain der konkreten Quelle\n- url: konkrete URL der Quelle\n- timestamp: Publikations-/Aktualisierungszeitpunkt als ISO-String, wenn aus der Quelle ermittelbar, sonst null; der Workflow setzt bei null spaeter den Abrufzeitpunkt\n- confidence: 0..1 fuer genau diesen Claim\n\nKanonische Werte muessen durch denselben Claim nachvollziehbar sein: wenn contractEndDate gesetzt ist, muss der contract-Claim das gleiche Datum als YYYY-MM-DD oder DD.MM.YYYY enthalten. Wenn marketValueMEUR gesetzt ist, muss der marketValue-Claim den gleichen numerischen Wert in Mio. EUR enthalten. Dadurch kann die nachgelagerte Logik keinen kanonischen/scoring-relevanten Wert verwenden, der nicht von der Evidence gedeckt ist.\n\nVerwende nicht nur eine kandidatenweite Sammelquelle. Wenn unterschiedliche Fakten aus unterschiedlichen Quellen stammen, erzeuge entsprechend getrennte Evidence-Eintraege.\n\n'contractEndDate' ist ein ISO-Datum YYYY-MM-DD oder null; erfinde keinen Tag/Monat. 'marketValueMEUR' ist eine Zahl in Mio. EUR oder null. 'contract' und 'marketValue' bleiben zusaetzlich als lesbare Freitexte erhalten. 'confidence' auf Top-Level ist nur eine optionale Gesamteinschaetzung; die nachgelagerte Logik berechnet die kanonische Gesamtkonfidenz aus evidence."}
+      },
+      "notes": "Eigenstaendiger Research-Zweig fuer genau einen Kandidaten. Nutzt echte Websuche und liefert claim-spezifische Provenienz; Claims werden downstream an die tatsaechlich verwendeten Feldwerte gebunden.",
+      "notesInFlow": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "ee5904d6-8d13-4070-aed4-3fa3c310f5fe",
+      "name": "Ollama Modell (qwen3.8-agent-128k:latest)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [96, 240],
+      "parameters": {"model": "qwen3.8-agent-128k:latest", "options": {"think": true}},
+      "credentials": {"ollamaApi": {"id": "REPLACE_WITH_LOCAL_CREDENTIAL_ID", "name": "[cimt] Ollama"}},
+      "notes": "Eigene Node-Instanz dieser Subworkflow-Datei. Nutzt qwen3.8-agent-128k:latest, da dieses Modell auf der Zielinstanz bereits fuer Tool-/Function-Calling in einem Agent-Workflow eingesetzt wird.",
+      "notesInFlow": false
+    },
+    {
+      "id": "435b3d03-b5e2-46bf-acce-623434b22af2",
+      "name": "Websuche (Tavily)",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 1.1,
+      "position": [256, 240],
+      "parameters": {
+        "method": "POST", "url": "https://api.tavily.com/search", "sendBody": true, "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"{{ $fromAI('searchQuery', 'Praezise Suchanfrage, z. B. Spielername kombiniert mit dem gesuchten Detail (Marktwert/Vertrag/Verletzung/Transfer News)', 'string') }}\",\n  \"search_depth\": \"advanced\",\n  \"include_answer\": true,\n  \"max_results\": 5\n}",
+        "authentication": "genericCredentialType", "genericAuthType": "httpHeaderAuth",
+        "toolDescription": "Fuehrt eine echte Websuche aus (Tavily Search API) und liefert Titel, URL und Zusammenfassung/Inhalt der Top-Treffer. Rufe das Tool mit praezisen, faktbezogenen Anfragen mehrfach auf, damit jede Information einer konkreten Quelle zugeordnet werden kann."
+      },
+      "credentials": {"httpHeaderAuth": {"id": "REPLACE_WITH_LOCAL_CREDENTIAL_ID", "name": "[cimt] Tavily Search"}},
+      "notes": "Erfordert nach dem Import eine lokale HTTP Header Auth-Credential '[cimt] Tavily Search' (Authorization: Bearer <TAVILY_API_KEY>). Es gelangt kein echtes Secret nach Git.",
+      "notesInFlow": false
+    },
+    {
+      "id": "afd2eae9-9862-441e-9d27-0facee02539d",
+      "name": "Recherche-Ergebnis Output-Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [416, 240],
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"required\": [\"club\", \"contract\", \"contractEndDate\", \"marketValue\", \"marketValueMEUR\", \"injuries\", \"currentSituation\", \"news\", \"transferLikelihoodNotes\", \"evidence\"],\n  \"properties\": {\n    \"club\": {\"type\": [\"string\", \"null\"]},\n    \"contract\": {\"type\": [\"string\", \"null\"]},\n    \"contractEndDate\": {\"type\": [\"string\", \"null\"], \"description\": \"ISO-Datum YYYY-MM-DD des recherchierten Vertragsendes oder null.\"},\n    \"marketValue\": {\"type\": [\"string\", \"null\"]},\n    \"marketValueMEUR\": {\"type\": [\"number\", \"null\"], \"description\": \"Marktwert in Mio. EUR oder null.\"},\n    \"injuries\": {\"type\": [\"string\", \"null\"]},\n    \"currentSituation\": {\"type\": [\"string\", \"null\"]},\n    \"news\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}},\n    \"transferLikelihoodNotes\": {\"type\": [\"string\", \"null\"]},\n    \"evidence\": {\"type\": \"array\", \"items\": {\"type\": \"object\", \"required\": [\"fact\", \"claim\", \"source\", \"url\", \"timestamp\", \"confidence\"], \"properties\": {\"fact\": {\"type\": \"string\", \"enum\": [\"club\", \"contract\", \"marketValue\", \"injuries\", \"currentSituation\", \"transferLikelihoodNotes\", \"news\"]}, \"claim\": {\"type\": \"string\"}, \"source\": {\"type\": \"string\"}, \"url\": {\"type\": \"string\"}, \"timestamp\": {\"type\": [\"string\", \"null\"]}, \"confidence\": {\"type\": \"number\"}}}},\n    \"confidence\": {\"type\": [\"number\", \"null\"]}\n  }\n}",
+        "autoFix": true
+      },
+      "notes": "Erzwingt strukturierte Recherche inklusive claim-spezifischer Evidence-Provenienz. Normalisierung ergaenzt Abrufzeitpunkte und bindet Claims an die tatsaechlich verwendeten Feldwerte.",
+      "notesInFlow": false
+    },
+    {
+      "id": "b56248c5-76c9-4531-9f8a-ceef1fb171e0",
+      "name": "Recherche-Ergebnis normalisieren",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        224,
-        0
-      ],
+      "position": [512, -120],
+      "parameters": {"jsCode": "const trigger = $('Wenn von anderem Workflow aufgerufen').first().json;\nconst candidate = trigger.researchCandidateName;\nconst raw = $input.item.json;\nconst out = (raw.output && typeof raw.output === 'object') ? raw.output : raw;\nconst now = new Date().toISOString();\n\nconst cleanText = (value) => typeof value === 'string' ? value.trim().replace(/\\s+/g, ' ') : '';\nconst sameText = (claim, value) => cleanText(claim) === cleanText(value);\nconst claimHasDate = (claim, isoDate) => {\n  if (!isoDate) return true;\n  const text = cleanText(claim);\n  if (text.includes(isoDate)) return true;\n  const parts = isoDate.split('-');\n  if (parts.length !== 3) return false;\n  return text.includes(`${parts[2]}.${parts[1]}.${parts[0]}`);\n};\nconst claimNumber = (claim) => {\n  const match = cleanText(claim).match(/(-?\\d+(?:[.,]\\d+)?)/);\n  return match ? Number(match[1].replace(',', '.')) : null;\n};\n\nconst news = Array.isArray(out.news) ? out.news.filter((entry) => typeof entry === 'string' && entry.trim().length > 0).map((entry) => entry.trim()) : [];\nconst club = cleanText(out.club) || null;\nconst contract = cleanText(out.contract) || null;\nconst marketValue = cleanText(out.marketValue) || null;\nconst injuries = cleanText(out.injuries) || null;\nconst currentSituation = cleanText(out.currentSituation) || null;\nconst transferLikelihoodNotes = cleanText(out.transferLikelihoodNotes) || null;\nconst contractEndDateRaw = cleanText(out.contractEndDate) || null;\nconst contractEndDate = (contractEndDateRaw && /^\\d{4}-\\d{2}-\\d{2}$/.test(contractEndDateRaw) && !Number.isNaN(Date.parse(contractEndDateRaw))) ? contractEndDateRaw : null;\nconst marketValueMEUR = (typeof out.marketValueMEUR === 'number' && Number.isFinite(out.marketValueMEUR)) ? out.marketValueMEUR : null;\n\nconst allowedFacts = new Set(['club','contract','marketValue','injuries','currentSituation','transferLikelihoodNotes','news']);\nconst evidence = (Array.isArray(out.evidence) ? out.evidence : []).map((entry) => {\n  if (!entry || typeof entry !== 'object') return null;\n  const fact = cleanText(entry.fact);\n  const claim = cleanText(entry.claim);\n  const source = cleanText(entry.source);\n  const url = cleanText(entry.url);\n  if (!allowedFacts.has(fact) || !claim || !source || !/^https?:\\/\\//i.test(url)) return null;\n  let confidence = typeof entry.confidence === 'number' && Number.isFinite(entry.confidence) ? entry.confidence : 0;\n  confidence = Math.max(0, Math.min(1, confidence));\n  const parsedTimestamp = typeof entry.timestamp === 'string' && entry.timestamp.trim() && !Number.isNaN(Date.parse(entry.timestamp)) ? new Date(entry.timestamp).toISOString() : now;\n  return {fact, claim, source, url, timestamp: parsedTimestamp, confidence};\n}).filter(Boolean);\n\nconst requiredEvidenceFacts = [];\nconst requireEvidence = (label, matcher) => { if (!evidence.some(matcher)) requiredEvidenceFacts.push(label); };\nif (club) requireEvidence('club', (entry) => entry.fact === 'club' && sameText(entry.claim, club));\nif (contract) requireEvidence('contract', (entry) => entry.fact === 'contract' && sameText(entry.claim, contract));\nif (contractEndDate) requireEvidence('contractEndDate', (entry) => entry.fact === 'contract' && claimHasDate(entry.claim, contractEndDate));\nif (marketValue) requireEvidence('marketValue', (entry) => entry.fact === 'marketValue' && sameText(entry.claim, marketValue));\nif (marketValueMEUR !== null) requireEvidence('marketValueMEUR', (entry) => entry.fact === 'marketValue' && claimNumber(entry.claim) === marketValueMEUR);\nif (injuries) requireEvidence('injuries', (entry) => entry.fact === 'injuries' && sameText(entry.claim, injuries));\nif (currentSituation) requireEvidence('currentSituation', (entry) => entry.fact === 'currentSituation' && sameText(entry.claim, currentSituation));\nif (transferLikelihoodNotes) requireEvidence('transferLikelihoodNotes', (entry) => entry.fact === 'transferLikelihoodNotes' && sameText(entry.claim, transferLikelihoodNotes));\nconst missingEvidenceFacts = requiredEvidenceFacts;\nconst uncoveredNews = news.filter((headline) => !evidence.some((entry) => entry.fact === 'news' && sameText(entry.claim, headline)));\n\nconst hasCoreFacts = Boolean(club) && Boolean(contract) && Boolean(marketValue) && Boolean(injuries) && news.length > 0;\nconst provenanceComplete = evidence.length > 0 && missingEvidenceFacts.length === 0 && uncoveredNews.length === 0;\nconst uncertain = !hasCoreFacts || !provenanceComplete;\nconst confidence = evidence.length ? evidence.reduce((sum, entry) => sum + entry.confidence, 0) / evidence.length : 0;\nconst sources = [...new Set(evidence.map((entry) => entry.source))];\nconst source = sources.length === 1 ? sources[0] : `${sources.length} Quellen – siehe evidence`;\nconst provenanceIssues = [...missingEvidenceFacts.map((fact) => `keine zum Feldwert passende Evidence fuer ${fact}`), ...uncoveredNews.map((headline) => `keine zum News-Text passende Evidence fuer: ${headline}`)];\n\nconst researchResult = {candidate, club, contract, contractEndDate, marketValue, marketValueMEUR, injuries, currentSituation, transferLikelihoodNotes, news, evidence, source: evidence.length ? source : 'Websuche (keine belastbare Evidence persistiert)', timestamp: now, confidence: uncertain ? 0 : Number(confidence.toFixed(3)), uncertain, uncertaintyReason: uncertain ? `Websuche konnte den erforderlichen Due-Diligence-Vertrag nicht vollstaendig und wertgebunden belegen.${provenanceIssues.length ? ' ' + provenanceIssues.join('; ') : ''}` : null};\nreturn [{json:{...trigger,researchRuntimeBatchId:trigger.researchBatchId,researchRuntimeCandidate:candidate,researchRuntimeStatus:uncertain?'uncertain':'success',researchRuntimePayload:JSON.stringify(researchResult),researchRuntimeCompletedAt:now}}];"},
+      "notes": "Erzwingt den Due-Diligence-Datenvertrag inklusive Evidence je Claim. Eine Evidence zaehlt nur, wenn ihr Claim zum tatsaechlich verwendeten Feldwert passt; kanonisches Vertragsdatum und Marktwert werden aus demselben Claim gegengeprueft."
+    },
+    {
+      "id": "d5ab4757-cbdb-44b5-8b9a-19b0e4b30aa2",
+      "name": "Recherche-Fehler als Unsicherheit markieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [512, 120],
+      "parameters": {"jsCode": "const trigger = $('Wenn von anderem Workflow aufgerufen').first().json;\nconst candidate = trigger.researchCandidateName || 'unbekannter Kandidat';\nconst current = $input.item.json || {};\nconst reason = (current.error && (current.error.message || current.error)) || 'Recherche-Agent konnte kein Ergebnis liefern.';\nconst now = new Date().toISOString();\nconst researchResult = {candidate,club:null,contract:null,contractEndDate:null,marketValue:null,marketValueMEUR:null,injuries:null,currentSituation:null,transferLikelihoodNotes:null,news:[],evidence:[],source:'Websuche fehlgeschlagen (keine Quelle verfuegbar)',timestamp:now,confidence:0,uncertain:true,uncertaintyReason:String(reason)};\nreturn [{json:{...trigger,researchRuntimeBatchId:trigger.researchBatchId,researchRuntimeCandidate:candidate,researchRuntimeStatus:'agent_error',researchRuntimePayload:JSON.stringify(researchResult),researchRuntimeCompletedAt:now}}];"},
+      "notes": "Faengt Tool-/LLM-Fehler ab und markiert nur diesen Kandidaten als unsicher."
+    },
+    {
+      "id": "24981783-7a3b-4a05-98a2-d985894b309e",
+      "name": "Recherche-Ergebnis speichern",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [768, 0],
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst shortlist = (item.playerSearch && Array.isArray(item.playerSearch.shortlist))\n  ? item.playerSearch.shortlist\n  : [];\nconst now = new Date().toISOString();\n\n// Deterministischer Dummy je Kandidat. Es wird explizit keine echte\n// Qlik-Analyse oder Websuche durchgefuehrt; jeder Eintrag ist klar als\n// simulierte Dummy-Quelle gekennzeichnet.\nconst research = shortlist.map((candidate, idx) => ({\n  candidate: candidate.name,\n  club: `Dummy-Verein ${idx + 1}`,\n  contract: 'Simulierter Vertrag bis 30.06.2027 (keine echte Recherche)',\n  marketValue: `${(5 + idx).toFixed(1)} Mio. EUR (simuliert)`,\n  injuries: 'Keine bekannten Verletzungen (simuliert, keine echte Recherche)',\n  news: [`Simulierte Meldung zu ${candidate.name} (keine echte Websuche durchgefuehrt)`],\n  source: 'Dummy-Quelle (keine echte Web-/Qlik-Recherche)',\n  timestamp: now,\n  confidence: 0.4\n}));\n\nreturn [{ json: { ...item, research } }];"
-      }
+        "dataTableId": {"__rl": true, "mode": "name", "value": "football_scouting_research_runtime"},
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {"batchId": "={{ $json.researchRuntimeBatchId }}", "candidate": "={{ $json.researchRuntimeCandidate }}", "status": "={{ $json.researchRuntimeStatus }}", "payload": "={{ $json.researchRuntimePayload }}", "completedAt": "={{ $json.researchRuntimeCompletedAt }}"},
+          "schema": [
+            {"id": "batchId", "displayName": "batchId", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "candidate", "displayName": "candidate", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "status", "displayName": "status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "payload", "displayName": "payload", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "completedAt", "displayName": "completedAt", "required": false, "defaultMatch": false, "display": true, "type": "date", "canBeUsedToMatch": true}
+          ]
+        },
+        "options": {}
+      },
+      "notes": "Persistiert success/uncertain/agent_error inklusive Evidence im Payload fuer den asynchronen Fan-in.",
+      "notesInFlow": false
     }
   ],
   "connections": {
-    "Wenn von anderem Workflow aufgerufen": {
-      "main": [
-        [
-          {
-            "node": "Recherche-Dummy je Kandidat erzeugen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Wenn von anderem Workflow aufgerufen": {"main": [[{"node": "Recherche-Start markieren", "type": "main", "index": 0}]]},
+    "Recherche-Start markieren": {"main": [[{"node": "Recherche-Agent", "type": "main", "index": 0}]]},
+    "Recherche-Agent": {"main": [[{"node": "Recherche-Ergebnis normalisieren", "type": "main", "index": 0}], [{"node": "Recherche-Fehler als Unsicherheit markieren", "type": "main", "index": 0}]]},
+    "Websuche (Tavily)": {"ai_tool": [[{"node": "Recherche-Agent", "type": "ai_tool", "index": 0}]]},
+    "Recherche-Ergebnis Output-Schema": {"ai_outputParser": [[{"node": "Recherche-Agent", "type": "ai_outputParser", "index": 0}]]},
+    "Recherche-Ergebnis normalisieren": {"main": [[{"node": "Recherche-Ergebnis speichern", "type": "main", "index": 0}]]},
+    "Recherche-Fehler als Unsicherheit markieren": {"main": [[{"node": "Recherche-Ergebnis speichern", "type": "main", "index": 0}]]},
+    "Ollama Modell (qwen3.8-agent-128k:latest)": {"ai_languageModel": [[{"node": "Recherche-Agent", "type": "ai_languageModel", "index": 0}]]}
   },
-  "settings": {
-    "executionOrder": "v1",
-    "binaryMode": "separate"
-  },
-  "versionId": "412abad1-7878-461b-afd3-6c5e62ddaf4e",
+  "settings": {"executionOrder": "v1", "binaryMode": "separate", "executionTimeout": 120},
+  "versionId": "fd556e4e-8ddf-4121-a6c2-845f515a7ffd",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
   "isPublished": true,
   "isArchived": false

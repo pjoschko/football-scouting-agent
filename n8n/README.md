@@ -60,9 +60,12 @@ Gegenhypothesen, Unsicherheiten), ohne die Kennzahlen selbst zu erfinden;
 **Spielerprofil** leitet aus dieser LLM-Teamdiagnose ein strukturiertes
 Anforderungsprofil ab. **Spielersuche** greift ebenfalls über den
 CSV-Analytics-Adapter auf echte Daten zu (weiterhin deterministisch
-ausgewertet, siehe unten). Nur **Recherche** bleibt ein deterministischer,
-sichtbar als Simulation gekennzeichneter Dummy, da hierfür noch keine reale
-Implementierung möglich ist. Zwischen **Spielerprofil** und **Spielersuche**
+ausgewertet, siehe unten). **Recherche** führt seit der
+Kandidaten-Due-Diligence-Story eine echte externe Recherche je Kandidat durch
+(**Recherche-Agent**, ein LLM mit echtem Websuche-Tool statt eines
+deterministischen Dummys) — siehe
+[Recherche-Subworkflow](#recherche-subworkflow) unten. Zwischen
+**Spielerprofil** und **Spielersuche**
 steht ein echtes **Human-Review-Gate** (siehe
 [Scouting Brief Human-Review](#scouting-brief-human-review) unten): ein
 Mensch prüft ein aus **Teamdiagnose** und **Spielerprofil** abgeleitetes
@@ -78,10 +81,16 @@ Hauptworkflow als Teil des erlaubten „zentralen Routings/Reviews" (siehe
 [Human Review bleibt im Hauptworkflow](#human-review-bleibt-im-hauptworkflow)
 unten).
 
-Credentials werden ausschließlich referenziert (`[cimt] Ollama` an den beiden
-Nodes **Ollama Modell (Qwen3.8:latest)** in `team-analysieren-subworkflow.json`
-und `scouting-brief-subworkflow.json`, mit dem Platzhalter-Wert
-`REPLACE_WITH_LOCAL_CREDENTIAL_ID` statt einer echten Credential-ID), nie
+Credentials werden ausschließlich referenziert: `[cimt] Ollama` am Node
+**Ollama Modell (Qwen3.8:latest)** in `team-analysieren-subworkflow.json` und
+`scouting-brief-subworkflow.json` sowie separat am Research-Node **Ollama
+Modell (qwen3.8-agent-128k:latest)** in `recherche-subworkflow.json`. Dazu
+kommt `[cimt] Tavily Search` am Node **Websuche (Tavily)** in
+`recherche-subworkflow.json`, mit dem Platzhalter-Wert
+`REPLACE_WITH_LOCAL_CREDENTIAL_ID` statt einer echten Credential-ID. Die
+unterschiedlichen Modellnamen sind beabsichtigt: der Research-Agent verwendet
+`qwen3.8-agent-128k:latest` für Tool-/Function-Calling; Teamdiagnose und
+Scouting-Brief verwenden weiterhin `Qwen3.8:latest`. Credentials werden nie
 exportiert oder dupliziert. Alle Subworkflows werden über ihre feste
 Top-Level-ID referenziert; n8n übernimmt diese ID beim Import
 (`import:workflow`) per Upsert unverändert, sodass nach dem Import (siehe
@@ -255,27 +264,18 @@ Routings/Reviews", nicht als eigener Subworkflow:
    `operation: "completion"`, d. h. eine zusätzliche Formularseite innerhalb
    desselben mehrstufigen Formulars wie **AI Sporting Director beauftragen**,
    nicht dessen Abschluss) — zeigt `scoutingBrief` (Hauptproblem,
-   Zielposition, Rolle, Begründung, gewichtete Kriterien, Constraints,
-   Unsicherheiten) **vollständig und editierbar** im Formular an: jedes
-   dieser Felder ist ein eigenes Formularfeld (`text`/`textarea`), dessen
-   `defaultValue` per Ausdruck (`={{ $json.scoutingBrief.<feld> }}`) mit dem
-   von der KI erzeugten Inhalt vorausgefüllt wird — die Array-Felder
-   (gewichtete Kriterien, Constraints, Unsicherheiten) werden dabei als
-   JSON-Array-Text vorausgefüllt. Der Reviewer kann jedes dieser Felder vor
-   dem Absenden frei bearbeiten; ohne Bearbeitung werden die vorausgefüllten
-   KI-Werte unverändert übernommen. Danach folgen wie zuvor zwei weitere
-   Eingabefelder: `Entscheidung` (Dropdown, Pflichtfeld, Optionen
-   `Approve`/`Request Changes`/`Reject`) und `Feedback (Pflicht bei Request
-   Changes)` (Textarea, im Formular selbst nicht als Pflichtfeld hinterlegt —
-   die eigentliche Pflicht bei `Request Changes` erzwingt der nachfolgende
-   Code-Node). Pausiert die Workflow-Ausführung, bis ein Mensch das Formular
-   absendet.
-9. **Review-Entscheidung auswerten** (Code) — liest `$json['Entscheidung']`,
-   `$json['Feedback (Pflicht bei Request Changes)']` sowie die editierbaren
-   Brief-Felder (`Hauptproblem (Diagnose)`, `Zielposition`, `Rolle`,
-   `Begruendung`, sowie die drei JSON-Array-Felder für gewichtete Kriterien,
-   Constraints und Unsicherheiten) aus der Formulareingabe und holt das
-   vollständige Item vor der Formularseite über
+   Zielposition/Rolle, Begründung, gewichtete Kriterien, Constraints,
+   Unsicherheiten, aktuelle Überarbeitungsrunde und ggf. bereits gesammeltes
+   Feedback früherer Runden) rein lesend in `formDescription` an und
+   erfragt zwei Eingabefelder: `Entscheidung` (Dropdown, Pflichtfeld,
+   Optionen `Approve`/`Request Changes`/`Reject`) und `Feedback (Pflicht bei
+   Request Changes)` (Textarea, im Formular selbst nicht als Pflichtfeld
+   hinterlegt — die eigentliche Pflicht bei `Request Changes` erzwingt der
+   nachfolgende Code-Node). Pausiert die Workflow-Ausführung, bis ein Mensch
+   das Formular absendet.
+9. **Review-Entscheidung auswerten** (Code) — liest `$json['Entscheidung']`
+   und `$json['Feedback (Pflicht bei Request Changes)']` aus der
+   Formulareingabe und holt das vollständige Item vor der Formularseite über
    `$('Execute Workflow: Scouting Brief erstellen').first().json` zurück
    (bewusst defensiv wie bei den LLM-Chain-Knoten in den Subworkflows,
    unabhängig davon, ob der Form-Node selbst bereits alle Felder
@@ -285,25 +285,8 @@ Routings/Reviews", nicht als eigener Subworkflow:
    dem Hauptworkflow heraus nicht mehr per `$()` adressierbar ist; der
    Execute-Workflow-Aufrufknoten selbst liefert dasselbe vollständige Item
    zurück). Validiert, dass `Entscheidung` einer von `Approve`/`Request
-   Changes`/`Reject` ist, dass bei `Request Changes` ein nichtleeres Feedback
-   vorliegt, dass die Text-Felder (`Hauptproblem`, `Zielposition`, `Rolle`,
-   `Begruendung`) nicht leer sind und dass die drei JSON-Array-Felder
-   gültiges JSON (jeweils ein Array) enthalten; setzt `valid`/`errorMessage`.
-   Baut bei gültiger Eingabe ein neues `scoutingBrief`-Objekt, das
-   `reviewRound`/`maxReviewRounds`/`feedbackHistory` unverändert aus dem
-   ursprünglichen `scoutingBrief` übernimmt, dessen Inhaltsfelder aber exakt
-   den zuletzt im Formular sichtbaren (ggf. vom Reviewer bearbeiteten) Werten
-   entsprechen — die ursprünglichen, unbearbeiteten KI-Werte überschreiben
-   die Bearbeitung des Reviewers also nicht mehr. Hält außerdem `playerProfile`
-   (`position`/`role`/`reasoning`/`weightedCriteria`/`constraints`) mit diesem
-   freigegebenen `scoutingBrief` synchron: **Player-Ranking-Anfrage
-   vorbereiten** im Subworkflow **Kandidaten suchen** (siehe unten) bevorzugt
-   ausdrücklich `item.playerProfile` und verwendet `scoutingBrief` nur als
-   Fallback, falls `playerProfile` fehlt — ohne diese Synchronisierung würden
-   Reviewer-Edits an Zielposition/Rolle/Begründung/gewichteten
-   Kriterien/Constraints nach `Approve` von der Kandidatensuche stillschweigend
-   ignoriert und durch die ursprünglichen KI-Werte aus `playerProfile` ersetzt.
-   Erzwingt außerdem den
+   Changes`/`Reject` ist und dass bei `Request Changes` ein nichtleeres
+   Feedback vorliegt; setzt `valid`/`errorMessage`. Erzwingt außerdem den
    **begrenzten** Feedback-Loop: ist `scoutingBrief.reviewRound` bereits
    `maxReviewRounds` (3) erreicht und die Entscheidung erneut `Request
    Changes`, wird `reviewOutcome` trotzdem auf `'Reject'` gesetzt
@@ -330,12 +313,8 @@ Routings/Reviews", nicht als eigener Subworkflow:
     Kandidatensuche damit kontrolliert, ohne eine Empfehlung zu erzeugen.
 
 Position und Profil werden dabei weiterhin ausschließlich vom Agenten
-hergeleitet und initial vorgeschlagen — der Reviewer gibt kein eigenes
-Profil "aus dem Nichts" vor, kann die vorgeschlagenen Werte im Formular
-(`Zielposition`, `Rolle`, `Begruendung`, gewichtete Kriterien, Constraints)
-aber vor der Freigabe korrigieren; diese Korrekturen werden bei `Approve`
-mit `playerProfile` synchronisiert und sind damit für die nachfolgende
-Kandidatensuche maßgeblich (siehe **Review-Entscheidung auswerten** oben).
+hergeleitet — der Reviewer entscheidet nur über Freigabe, Überarbeitung oder
+Ablehnung, gibt aber keine eigene Position/kein eigenes Profil vor.
 
 ## Team analysieren (Subworkflow)
 
@@ -696,7 +675,14 @@ sowie `valid`/`errorMessage`.
    eine Positionsgruppe DF/MF/FW/GK angenähert statt exakt gematcht — mit der
    FBref-Datengrundlage der Regelfall) oder liegt für den Sieger keine
    belastbare Recherche vor, wird das explizit als zusätzlicher Eintrag in
-   `recommendation.uncertainties` ausgewiesen.
+   `recommendation.uncertainties` ausgewiesen. `uncertainties` beginnt dabei
+   immer mit einem sachlichen Basis-Hinweis, dass die Empfehlung auf zum
+   Recherchezeitpunkt extern verfügbaren Web-Informationen beruht, deren
+   Aktualität/Vollständigkeit nicht garantiert ist — dadurch ist das Array
+   auch auf dem vollständig erfolgreichen Happy Path (keine
+   Positionsapproximation, Feasibility bekannt, Recherche vorhanden und
+   nicht `uncertain`, Konfidenz ≥ 0,5) nie leer, wie es **Empfehlung
+   technisch prüfen** (siehe unten) verlangt.
 2. **Player-Profil-Anfrage vorbereiten** (Code) — setzt `playerName` auf
    `recommendation.candidate`.
 3. **Player-Profil abrufen** (Execute Workflow) — ruft
@@ -881,38 +867,56 @@ CSV-Code) — siehe [`n8n/data/README.md`](./data/README.md) für den Import
 
 ## Recherche-Subworkflow
 
-[`recherche-subworkflow.json`](./recherche-subworkflow.json) ist ein
-eigenständiger, **technischer** n8n-Workflow mit zwei Nodes. Er kapselt
-seit der Due-Diligence-Parallelisierung (siehe
-[Due Diligence](#due-diligence-subworkflow) oben) die Recherche zu **genau
-einem** Kandidaten je Ausführung, statt intern über die gesamte Shortlist zu
-iterieren — der Fan-out/Fan-in über alle Shortlist-Kandidaten passiert jetzt
-im aufrufenden `due-diligence-subworkflow.json`:
+[`recherche-subworkflow.json`](./recherche-subworkflow.json) (feste
+Top-Level-ID `crrgOO7O8bTHnldV`, 9 Nodes) ist ein eigenständiger,
+**technischer** n8n-Workflow. Er kapselt seit der
+Due-Diligence-Parallelisierung (siehe [Due Diligence](#due-diligence-subworkflow)
+oben) die Recherche zu **genau einem** Kandidaten je Ausführung, statt intern
+über die gesamte Shortlist zu iterieren — der Fan-out/Fan-in über alle
+Shortlist-Kandidaten passiert im aufrufenden `due-diligence-subworkflow.json`.
+Seit der Story „Kandidaten-Due-Diligence parallel recherchieren und
+zusammenführen" führt dieser Subworkflow eine **echte externe Recherche**
+durch (kein deterministischer Dummy mehr):
 
-1. **Wenn von anderem Workflow aufgerufen** (Execute Workflow Trigger,
-   `inputSource: passthrough`) — nimmt das übergebene Item unverändert
-   entgegen.
-2. **Recherche-Dummy für Kandidat erzeugen** (Code) — liest
-   `researchCandidateName` aus dem übergebenen Item und erzeugt für **genau
-   diesen einen Kandidaten** einen deterministischen Dummy-Rechercheeintrag
-   (`club`, `contract`, `marketValue`, `injuries`, `news`, dazu `source`
-   (immer `"Dummy-Quelle (keine echte Web-/Qlik-Recherche)"`), `timestamp`
-   und `confidence`) unter `researchResult`. Fehlt `researchCandidateName`,
-   wirft der Node einen Fehler, den der Aufrufer (**Recherche je Kandidat
-   durchführen** in `due-diligence-subworkflow.json`, `onError:
-   continueErrorOutput`) als fehlgeschlagenen, isolierten Research-Zweig
-   dieses einen Kandidaten behandelt, ohne die übrigen Zweige zu
-   beeinträchtigen. Es wird an keiner Stelle eine echte Qlik-Analyse oder
-   Websuche behauptet oder simuliert vorgetäuscht — jeder Wert ist
-   ausdrücklich als Platzhalter gekennzeichnet.
+1. **Wenn von anderem Workflow aufgerufen** (Execute Workflow Trigger, typed `workflowInputs`) — deklariert `researchCandidateName` und `researchBatchId` explizit; der Parent mappt genau diese beiden Felder.
+2. **Recherche-Agent** (`@n8n/n8n-nodes-langchain.agent`, `onError:
+   continueErrorOutput`) — recherchiert **genau diesen einen Kandidaten**
+   über ein LLM mit Tool-Zugriff auf **Websuche (Tavily)** (`ai_tool`, echte
+   Tavily-Search-API-Anfrage statt simulierter Daten) und liefert strukturiert
+   (`ai_outputParser`, **Recherche-Ergebnis Output-Schema**) `club`,
+   `contract`, `marketValue`, `injuries`, `currentSituation`,
+   `transferLikelihoodNotes`, `news` sowie `source`/`confidence`. Sprachmodell ist **Ollama Modell (qwen3.8-agent-128k:latest)**; diese Agent-Variante wird auf der Zielinstanz bereits für Tool-/Function-Calling eingesetzt. Schlägt der Agent-Aufruf fehl (LLM- oder Tool-Fehler),
+   läuft der Fehlerausgang zu 3b, ohne andere parallele Research-Zweige zu
+   blockieren.
+3. Zwei Pfade konsolidieren zum fachlichen Due-Diligence-Vertrag
+   (`candidate`, `timestamp`, `confidence` in `[0,1]`, `uncertain`,
+   `uncertaintyReason`) und schreiben ihn in `researchRuntime*`-Felder:
+   - 3a. **Recherche-Ergebnis normalisieren** (Code, Erfolgspfad) — erzwingt
+     `candidate` aus `researchCandidateName` (nicht aus der LLM-Antwort),
+     setzt `timestamp` serverseitig und markiert den Eintrag als `uncertain`,
+     sobald mindestens eines der Pflichtfelder `club`/`contract`/
+     `marketValue`/`injuries`/`news` (nichtleer) fehlt — die Websuche liefert
+     nicht für jeden Kandidaten garantiert vollständige Treffer.
+   - 3b. **Recherche-Fehler als Unsicherheit markieren** (Code, Fehlerpfad)
+     — analog zum gleichnamigen Muster in `due-diligence-subworkflow.json`:
+     markiert nur diesen einen Kandidaten als `uncertain` mit
+     `confidence: 0`.
+4. **Recherche-Ergebnis speichern** (Data Table, Tabelle
+   `football_scouting_research_runtime`) — da der Aufruf aus
+   `due-diligence-subworkflow.json` Fire-and-forget ist
+   (`waitForSubWorkflow: false`), persistiert dieser Subworkflow sein eigenes
+   Ergebnis selbst in dieselbe Runtime-Tabelle, aus der der Aufrufer per
+   Fan-in liest (dieselben Spalten `batchId`/`candidate`/`status`/`payload`/
+   `completedAt` wie **Dispatch-Fehler speichern** in
+   `due-diligence-subworkflow.json`). Beide Pfade aus 3. münden hier.
 
-Aufgerufen von **Recherche je Kandidat durchführen** in
+Aufgerufen von **Recherche je Kandidat starten** in
 [`due-diligence-subworkflow.json`](./due-diligence-subworkflow.json), einmal
-separat je Shortlist-Kandidat (vor der Restrukturierung direkt aus
-`ai-sporting-director.json`). n8n übernimmt die feste Top-Level-ID
-`802fdb6b-4c0a-413f-952d-250c91ddc476` beim Import (`import:workflow`) per
-Upsert, sodass alle Workflow-Dateien nach dem Import ohne manuelle Anpassung
-verbunden sind — siehe [Import & run](#import--run).
+separat je Shortlist-Kandidat. Erfordert nach dem Import eine lokale
+`ollamaApi`-Credential `[cimt] Ollama` am Node **Ollama Modell
+(qwen3.8-agent-128k:latest)** sowie eine lokale `httpHeaderAuth`-Credential
+`[cimt] Tavily Search` (Header `Authorization`, Wert `Bearer <TAVILY_API_KEY>`)
+am Node **Websuche (Tavily)** — siehe [Import & run](#import--run).
 
 ## Import & run
 
@@ -936,10 +940,17 @@ verbunden sind — siehe [Import & run](#import--run).
 3. Import [`ai-sporting-director.json`](./ai-sporting-director.json) the
    same way — its Execute-Workflow nodes already reference the subworkflows'
    fixed IDs, so no manual edit is needed there.
-4. On the **Ollama Modell (Qwen3.8:latest)** node in **both**
-   `team-analysieren-subworkflow.json` and `scouting-brief-subworkflow.json`,
-   select the local `[cimt] Ollama` credential (once per file, per
-   n8n-instance).
+4. In `team-analysieren-subworkflow.json` and
+   `scouting-brief-subworkflow.json`, select the local `[cimt] Ollama`
+   credential on each **Ollama Modell (Qwen3.8:latest)** node.
+4a. In `recherche-subworkflow.json`, select the local `[cimt] Ollama`
+   credential on **Ollama Modell (qwen3.8-agent-128k:latest)** and verify
+   that the model field is exactly `qwen3.8-agent-128k:latest`. This is the
+   tool-/function-calling model used by **Recherche-Agent**.
+4b. On **Websuche (Tavily)** in `recherche-subworkflow.json`, create and
+   select a local `httpHeaderAuth` credential named `[cimt] Tavily Search`
+   (header `Authorization`, value `Bearer <TAVILY_API_KEY>`) once per
+   n8n-instance.
 5. Use **Test workflow** on the main workflow to obtain a test-mode form URL
    for manual testing, or activate it (toggle **Active**) to make the form
    reachable at its production URL shown on the **AI Sporting Director
@@ -973,24 +984,23 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    untersuchen?` already contains the club-agnostic default order text.
 2. Click `Analyse starten` without changing anything. **Expected result:**
    the browser now shows the **Scouting Brief zur Freigabe vorlegen** page
-   (Human Review) instead of directly proceeding to the recommendation — the
-   Teamdiagnose-derived `Hauptproblem (Diagnose)` and the
-   Spielerprofil-derived `Zielposition`, `Rolle`, `Begruendung`, `Gewichtete
-   Kriterien (JSON-Array)`, `Constraints (JSON-Array)` and `Unsicherheiten
-   (JSON-Array)` of the `scoutingBrief` are each pre-filled, editable form
-   fields (not read-only text). In the n8n **Executions** list, this run
-   appears as the main-workflow execution plus two nested sub-executions
-   (**Team analysieren**, **Scouting Brief erstellen**), each independently
-   inspectable.
-3. Without editing any of the pre-filled brief fields, select `Approve` in
-   the `Entscheidung` dropdown, leave `Feedback` empty, and submit.
-   **Expected result:** the browser shows the **Ergebnis
+   (Human Review) instead of directly proceeding to the recommendation —
+   `formDescription` renders the Teamdiagnose-derived Hauptproblem,
+   Zielposition/Rolle, Begründung, gewichtete Kriterien, Constraints and
+   Unsicherheiten of the Spielerprofil-derived `scoutingBrief`, and shows
+   `Ueberarbeitungsrunde: 1 von max. 3` with no prior feedback. In the n8n
+   **Executions** list, this run appears as the main-workflow execution plus
+   two nested sub-executions (**Team analysieren**, **Scouting Brief
+   erstellen**), each independently inspectable.
+3. Select `Approve` in the `Entscheidung` dropdown, leave `Feedback` empty,
+   and submit. **Expected result:** the browser shows the **Ergebnis
    anzeigen** page with five clearly separated sections — Teamdiagnose,
    Spielerprofil, Spielersuche, Recherche, Empfehlung — with a hint
-   distinguishing the sections backed by the CSV-Analytics-Adapter and the
-   LLM interpretation (Teamdiagnose, Spielerprofil, Spielersuche) from the
-   still fully simulated one (Recherche), and the recommended candidate is
-   one of the shortlisted CSV players (not the Hamburger SV squad itself).
+   distinguishing the sections backed by the CSV-Analytics-Adapter/LLM
+   interpretation (Teamdiagnose, Spielerprofil, Spielersuche) and by a real
+   websearch-backed AI agent (Recherche, since the
+   Kandidaten-Due-Diligence-Parallelisierung), and the recommended candidate
+   is one of the shortlisted CSV players (not the Hamburger SV squad itself).
    In the n8n **Executions** list the main-workflow run is successful and
    passes all eight top-level gates (**Eingabe validieren**, **Team
    analysieren gültig?**, **Scouting Brief gültig?**, **Review-Entscheidung
@@ -1034,23 +1044,7 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    'Reject'` (`maxRoundsReached: true`); zusätzlich verifiziert dieselbe
    Datei, dass ein konkretes Reviewer-Alters-/Budgetlimit aus
    `reviewFeedback` unverändert in `playerProfile.constraints` und von dort
-   in `scoutingBrief.constraints` der Folgerunde landet. Für die im Rahmen
-   dieser Story editierbar gemachten Brief-Felder verifiziert dieselbe Datei
-   zusätzlich: ein unbearbeitet abgesendetes Formular (alle Felder auf ihrem
-   `defaultValue`) liefert ein `scoutingBrief`, das exakt dem ursprünglichen
-   KI-Ergebnis entspricht; vom Reviewer bearbeitete Felder (z. B.
-   `Hauptproblem (Diagnose)`, `Begruendung`) landen unverändert im
-   resultierenden `scoutingBrief`, ohne dass unbearbeitete Felder
-   (`reviewRound`, `feedbackHistory`) davon berührt werden; ein leeres
-   Pflichtfeld sowie ein ungültiges JSON-Array in einem der drei
-   JSON-Array-Felder liefern `valid: false` mit einer feldspezifischen
-   Fehlermeldung. Zusätzlich verifiziert dieselbe Datei per
-   `playerRankingRequestFromItem()` (1:1 aus **Player-Ranking-Anfrage
-   vorbereiten** im Subworkflow **Kandidaten suchen** übernommen) end-to-end,
-   dass eine bei `Approve` editierte `Zielposition`/gewichtete
-   Kriterien/Constraints tatsächlich im an die Kandidatensuche übergebenen
-   `position`/`criteria`/`constraints` ankommt und nicht durch das
-   ursprüngliche, unveränderte `playerProfile` überschrieben wird.
+   in `scoutingBrief.constraints` der Folgerunde landet.
 
    `node n8n/data/verify-import-architecture.js` (grün) verifiziert zusätzlich
    die vier `analytics-*-subworkflow.json`-Dateien sowie
@@ -1075,7 +1069,11 @@ n8n import:workflow --input=n8n/ai-sporting-director.json
    n8n-Weboberfläche mit erreichbarem Ollama-Endpunkt nötig ist — offen für
    die nächste Person (oder Session) mit interaktivem Zugriff auf eine
    importierte Instanz mit bereits über `import-scouting-data.json`
-   importierten Originaldaten.
+   importierten Originaldaten. Ebenfalls nicht ausgeführt (aus demselben
+   Grund): ein echter Aufruf von **Recherche-Agent** inkl. Tool-Calling gegen
+   das konfigurierte Ollama-Modell und die Tavily-Search-API — offen für
+   dieselbe nächste Person/Session; insbesondere ist noch zu verifizieren,
+   dass das konfigurierte Ollama-Modell Tool-Calling tatsächlich unterstützt.
 
 ### Player-Ranking-Subworkflow: gezielte Tests
 
@@ -1280,11 +1278,13 @@ Subworkflow-Dateien (`team-analysieren-subworkflow.json`, 16 Nodes;
 `empfehlung-erstellen-subworkflow.json`, 8 Nodes;
 `ergebnis-aufbereiten-subworkflow.json`, 5 Nodes) tragen die technischen
 Details je fachlicher Fähigkeit; die fünf **technischen** Subworkflow-Dateien
-(Recherche + die vier CSV-Analytics-Tools) bleiben strukturell (Tool-Verträge,
-feste IDs) unverändert bestehen — bis auf `recherche-subworkflow.json`, das
-seit der Due-Diligence-Parallelisierung nur noch einen einzelnen Kandidaten je
-Ausführung verarbeitet (siehe [Recherche-Subworkflow](#recherche-subworkflow)
-oben).
+bleiben in ihrem Tool-Vertrag (Ein-/Ausgabefelder) sowie ihren festen IDs
+unverändert — die vier CSV-Analytics-Tools zusätzlich intern unverändert;
+`recherche-subworkflow.json` verarbeitet seit der
+Due-Diligence-Parallelisierung nur noch einen einzelnen Kandidaten je
+Ausführung und führt seit der Kandidaten-Due-Diligence-Story eine echte
+externe Recherche statt eines Dummys durch (siehe
+[Recherche-Subworkflow](#recherche-subworkflow) oben).
 Beim Import (alle elf Subworkflows zuerst, `n8n/ai-sporting-director.json`
 danach, siehe [Import & run](#import--run)) öffnet sich der Hauptworkflow mit
 den 24 oben beschriebenen Nodes; jeder fachliche Subworkflow öffnet sich mit
@@ -1402,3 +1402,12 @@ vier `analytics-*-subworkflow.json`-Dateien des
 `import-scouting-data.json` (Daten-Import, kein Teil des Sporting-Director-
 Ablaufs selbst) die einzigen erlaubten Ausnahmen vom Grundsatz „ein
 Hauptworkflow, keine parallele Kopie".
+
+
+### PR14 Review-Fixes: Evidenz, Feasibility und Timeout
+
+- Research speichert Quelle/URL/Zeitpunkt/Konfidenz **je Claim** in `evidence`; die Ergebnisdarstellung zeigt diese Provenienz.
+- `contractEndDate` ist kanonisch und wird vor Freitext-Fallbacks wie `auslaufend` bewertet.
+- `transferLikelihoodNotes` und `currentSituation` fließen deterministisch in die Transfer-Realisierbarkeit ein.
+- Jeder `Recherche`-Child hat `executionTimeout: 120` Sekunden. Der Parent verankert den Timeout am jeweiligen `started`-Marker; fehlt dieser vollständig, verhindert ein Batch-Start-Failsafe endloses Polling.
+- Ein `dispatch_error` wird im selben nullable Research-Vertrag wie andere unsichere Ergebnisse persistiert (`evidence: []`, kanonische Felder `null`), sodass ein einzelner Dispatch-Fehler erfolgreiche parallele Kandidaten nicht invalidiert.
