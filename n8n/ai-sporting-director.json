@@ -124,10 +124,10 @@
       "parameters": {
         "workflowId": {
           "__rl": true,
-          "value": "2I4XMb5ho5udRsZy",
+          "value": "vTFABYuHE8aTJxYY",
           "mode": "list",
-          "cachedResultUrl": "/workflow/2I4XMb5ho5udRsZy",
-          "cachedResultName": "Internal — Qlik Teamanalyse"
+          "cachedResultUrl": "/workflow/vTFABYuHE8aTJxYY",
+          "cachedResultName": "Internal — Team analysieren"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
@@ -674,8 +674,8 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "caabce86-db96-4a1e-82b1-0044a04b140b",
+  "versionId": "085b8bc7-54ef-4661-b61f-7c196fcf7226",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
-  "isPublished": false,
+  "isPublished": true,
   "isArchived": false
 }
