@@ -8,8 +8,8 @@
       "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
       "typeVersion": 1.4,
       "position": [
-        784,
-        224
+        736,
+        208
       ],
       "parameters": {
         "endpointUrl": "https://cimt-ag.de.qlikcloud.com/api/ai/mcp",
@@ -31,7 +31,7 @@
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.2,
       "position": [
-        0,
+        384,
         0
       ],
       "parameters": {
@@ -61,8 +61,8 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.3,
       "position": [
-        560,
-        224
+        544,
+        208
       ],
       "parameters": {
         "model": {
@@ -83,11 +83,11 @@
     },
     {
       "id": "4e63a683-dede-4540-b678-0660d547ca83",
-      "name": "Code in JavaScript",
+      "name": "Transform Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        928,
+        864,
         0
       ],
       "parameters": {
@@ -133,7 +133,7 @@
       "main": [
         [
           {
-            "node": "Code in JavaScript",
+            "node": "Transform Output",
             "type": "main",
             "index": 0
           }
@@ -145,8 +145,8 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "a124f8bb-8fba-413d-9f31-0a1ffedddf6f",
+  "versionId": "a19f875f-2a50-4913-a1cf-4e2992901dc2",
   "parentFolderId": "xvYBFRCqYXtsxMCF",
-  "isPublished": true,
+  "isPublished": false,
   "isArchived": false
 }
